@@ -1,0 +1,22 @@
+version: "3.9"  # optional since v1.27.0
+services:
+  authentication_service:
+    image: authentication_service
+    container_name: aurthentication_service
+    environment:
+    - ASPNETCORE_ENVIRONMENT=Release
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mongodb
+  authentication_service_example_client:
+    image: authentication_service_example_client
+    container_name: aurthentication_service_example_client
+    environment:
+    - ASPNETCORE_ENVIRONMENT=Release
+    ports:
+      - "8081:8080"
+  mongodb:
+    image : mongo:latest
+    ports:
+      - 27017:27017
