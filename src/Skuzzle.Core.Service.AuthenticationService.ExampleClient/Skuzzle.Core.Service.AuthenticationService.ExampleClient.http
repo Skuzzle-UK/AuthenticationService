@@ -1,0 +1,6 @@
+@Skuzzle.Core.Service.AuthenticationService.ExampleClient_HostAddress = http://localhost:5269
+
+GET {{Skuzzle.Core.Service.AuthenticationService.ExampleClient_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

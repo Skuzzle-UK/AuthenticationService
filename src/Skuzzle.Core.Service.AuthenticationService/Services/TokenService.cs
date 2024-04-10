@@ -10,16 +10,18 @@ namespace Skuzzle.Core.Service.AuthenticationService.Services;
 public class TokenService : ITokenService
 {
     private readonly string _securityKey;
+    private readonly string _issuer;
+    private readonly string _audience;
 
-    public TokenService(IOptions<ServiceSettings> settings)
+    public TokenService(IOptions<JwtSettings> settings)
     {
-        _securityKey = settings.Value.SecurityKey;
+        _securityKey = settings.Value.Key;
+        _issuer = settings.Value.Issuer;
+        _audience = settings.Value.Audience;
     }
 
     public string GetNewToken(User user)
     {
-
-
         //TODO: Add a tonne of claims
         List<Claim> claims = new List<Claim>()
         {
@@ -34,7 +36,9 @@ public class TokenService : ITokenService
         var token = new JwtSecurityToken(
             claims: claims,
             expires: DateTime.UtcNow.AddDays(1),
-            signingCredentials: cred);
+            signingCredentials: cred,
+            issuer: _issuer,
+            audience: _audience);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }

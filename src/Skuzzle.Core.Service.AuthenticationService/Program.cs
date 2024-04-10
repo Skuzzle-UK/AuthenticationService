@@ -14,8 +14,8 @@ builder.Services.AddSingleton<ITokenService, TokenService>();
 
 builder.Services.AddSingleton<IRepository<User>, Repository<User, UserEntity>>();
 
-builder.Services.AddOptions<ServiceSettings>()
-    .Bind(builder.Configuration.GetSection(nameof(ServiceSettings)))
+builder.Services.AddOptions<JwtSettings>()
+    .Bind(builder.Configuration.GetSection(nameof(JwtSettings)))
     .ValidateDataAnnotations();
 builder.Services.AddOptions<MongoDbSettings>()
     .Bind(builder.Configuration.GetSection(nameof(MongoDbSettings)))
@@ -24,18 +24,10 @@ builder.Services.AddOptions<MongoDbSettings>()
 builder.Services.AddAutoMapper(cfg => cfg.AddExpressionMapping(), typeof(MappingProfiles));
 
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+app.UseHttpsRedirection();
 
 app.MapControllers();
 

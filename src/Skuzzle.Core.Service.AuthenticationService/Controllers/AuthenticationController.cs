@@ -44,7 +44,7 @@ public class AuthenticationController : ControllerBase
 
         await _userRepository.InsertAsync(user);
 
-        return Ok(user);
+        return Ok();
     }
 
     [HttpPost("login")]
@@ -54,12 +54,12 @@ public class AuthenticationController : ControllerBase
 
         if(user is null || user.Username != request.Username)
         {
-            return BadRequest("User not found");
+            return BadRequest("Incorrect login details");
         }
 
         if(!_passwordHashService.Verify(request, user))
         {
-            return BadRequest("Wrong password");
+            return BadRequest("Incorrect login details");
         }
 
         return Ok(_tokenService.GetNewToken(user) ?? string.Empty);
