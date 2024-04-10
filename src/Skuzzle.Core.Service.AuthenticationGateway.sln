@@ -1,0 +1,30 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.9.34723.18
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Skuzzle.Core.Service.AuthenticationGateway", "Skuzzle.Core.Service.AuthenticationGateway\Skuzzle.Core.Service.AuthenticationGateway.csproj", "{AC92189F-C9A9-498E-85CF-6F0DE3466D25}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SolutionItems", "SolutionItems", "{4ACFF4D1-19BE-457B-B086-34F079923807}"
+	ProjectSection(SolutionItems) = preProject
+		..\README.MD = ..\README.MD
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AC92189F-C9A9-498E-85CF-6F0DE3466D25}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AC92189F-C9A9-498E-85CF-6F0DE3466D25}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AC92189F-C9A9-498E-85CF-6F0DE3466D25}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC92189F-C9A9-498E-85CF-6F0DE3466D25}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F7A0E46D-2FD9-4F21-B9EE-BA106CB99710}
+	EndGlobalSection
+EndGlobal
