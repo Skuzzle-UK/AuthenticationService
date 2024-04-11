@@ -1,9 +1,11 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using FluentValidation;
+using Microsoft.AspNetCore.Mvc;
 using Skuzzle.Core.Service.AuthenticationService.Dtos;
 using Skuzzle.Core.Service.AuthenticationService.Extensions;
 using Skuzzle.Core.Service.AuthenticationService.Models;
 using Skuzzle.Core.Service.AuthenticationService.Services;
 using Skuzzle.Core.Service.AuthenticationService.Storage;
+using System.Runtime.CompilerServices;
 
 namespace Skuzzle.Core.Service.AuthenticationService.Controllers;
 
@@ -14,20 +16,29 @@ public class AuthenticationController : ControllerBase
     private readonly IPasswordHashService _passwordHashService;
     private readonly ITokenService _tokenService;
     private readonly IRepository<User> _userRepository;
+    private readonly IValidator<UserDto> _userValidator;
     
     public AuthenticationController(
         IPasswordHashService passwordHashService,
         ITokenService tokenService,
-        IRepository<User> userRepository)
+        IRepository<User> userRepository,
+        IValidator<UserDto> userValidator)
     {
         _passwordHashService = passwordHashService;
         _tokenService = tokenService;
         _userRepository = userRepository;
+        _userValidator = userValidator;
     }
 
     [HttpPost("register")]
     public async Task<ActionResult<string>> Register(UserDto request)
     {
+        var validationResults = await _userValidator.ValidateAsync(request);
+        if (!validationResults.IsValid)
+        {
+            return BadRequest(validationResults);
+        }
+
         var (hash, salt) = _passwordHashService.Create(request.Password);
 
         var user = new User()
@@ -52,12 +63,12 @@ public class AuthenticationController : ControllerBase
     {
         var user = await _userRepository.FindAsync(o => o.Username == request.Username);
 
-        if(user is null || user.Username != request.Username)
+        if (user is null || user.Username != request.Username)
         {
             return BadRequest("Incorrect login details");
         }
 
-        if(!_passwordHashService.Verify(request, user))
+        if (!_passwordHashService.Verify(request, user))
         {
             return BadRequest("Incorrect login details");
         }

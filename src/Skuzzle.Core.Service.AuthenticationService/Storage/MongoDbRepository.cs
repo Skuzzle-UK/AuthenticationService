@@ -1,16 +1,15 @@
 ﻿using AutoMapper;
 using Microsoft.Extensions.Options;
-using MongoDB.Bson;
 using MongoDB.Driver;
+using Skuzzle.Core.Service.AuthenticationService.Extensions;
 using Skuzzle.Core.Service.AuthenticationService.Models;
 using Skuzzle.Core.Service.AuthenticationService.Settings;
-using Skuzzle.Core.Service.AuthenticationService.Storage.Attributes;
 using Skuzzle.Core.Service.AuthenticationService.Storage.Entities;
 using System.Linq.Expressions;
 
 namespace Skuzzle.Core.Service.AuthenticationService.Storage;
 
-public class Repository<TModel, TEntity> : IRepository<TModel>
+public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
     where TModel : IModel
     where TEntity : IEntity
 {
@@ -18,7 +17,7 @@ public class Repository<TModel, TEntity> : IRepository<TModel>
     private readonly IMapper _mapper;
     private readonly IMongoCollection<TEntity> _collection;
 
-    public Repository(
+    public MongoDbRepository(
         IOptions<MongoDbSettings> settings,
         IMapper mapper)
     {
@@ -26,67 +25,32 @@ public class Repository<TModel, TEntity> : IRepository<TModel>
         _mapper = mapper;
 
         var mongoClient = new MongoClient(_settings.ConnectionString);
-
         var mongoDatabase = mongoClient.GetDatabase(_settings.DatabaseName);
-
         _collection = mongoDatabase.GetCollection<TEntity>($"{typeof(TModel).Name}s");
-
-        var compoundIndexFields = new Dictionary<string, string>();
-        var compoundIndexDirections = new Dictionary<string, int>();
 
         var properties = typeof(TEntity).GetProperties();
 
-        foreach (var property in properties)
+        var createIndexModels = properties.CreateIndexModels<TEntity>();
+        var createCompoundIndexModels = properties.CreateCompoundIndexModels<TEntity>();
+
+        _collection.Indexes.CreateMany(createIndexModels);
+        _collection.Indexes.CreateMany(createCompoundIndexModels);
+
+        var updatedIndexes = _collection.Indexes.List().ToList();
+
+        var createdIndexNames = createIndexModels.Select(index => index.Options.Name).Concat(createCompoundIndexModels.Select(index => index.Options.Name));
+
+        var updatedIndexNames = updatedIndexes.Select(index => index["name"].AsString);
+
+        var obsoleteIndexes = updatedIndexNames.Except(createdIndexNames);
+        foreach (var index in obsoleteIndexes)
         {
-            object[] attributes = property.GetCustomAttributes(true);
-            foreach (object attribute in attributes)
+            if (index != "_id_")
             {
-                var indexAttribute = attribute as IndexAttribute;
-                if (indexAttribute is not null)
-                {
-                    IndexKeysDefinition<TEntity>? indexKeysDefinition = indexAttribute.Direction switch
-                    {
-                        IndexDirection.DESCENDING => Builders<TEntity>.IndexKeys.Descending(property.Name),
-                        _ => Builders<TEntity>.IndexKeys.Ascending(property.Name),
-                    };
-
-                    var indexModel = new CreateIndexModel<TEntity>(
-                        indexKeysDefinition,
-                        new CreateIndexOptions()
-                        {
-                            Unique = indexAttribute.Unique
-                        });
-
-
-                    _collection.Indexes.CreateOne(indexModel);
-                }
-
-                var compoundIndexAttribute = attribute as CompoundIndexAttribute;
-                if (compoundIndexAttribute is not null)
-                {
-                    compoundIndexFields.Add(property.Name, compoundIndexAttribute.IndexName);
-                    compoundIndexDirections.Add(property.Name, (int)compoundIndexAttribute.Direction);
-                }
+                _collection.Indexes.DropOne(index);
             }
         }
 
-        var distinctCompoundIndexs = compoundIndexFields.Values.Distinct().ToList();
-
-        foreach (var index in distinctCompoundIndexs)
-        {
-            // TODO: Add Unique property to compound index somehow /nb
-            var indexProperties = compoundIndexFields.Where(o => o.Value == index).Select(o => o.Key);
-            var indexBson = new BsonDocument();
-            foreach (var name in indexProperties)
-            {
-                var direction = compoundIndexDirections[name];
-                var bsonElement = new BsonElement(name, direction);
-                indexBson.Add(bsonElement);
-            }
-
-            //TODO: Work out why this is obsolete and how to update it /nb
-            _collection.Indexes.CreateOneAsync(indexBson);
-        }
     }
 
     //TODO: Methods should return result type Ok or Failure etc with data from DB. Needs try catches too /nb

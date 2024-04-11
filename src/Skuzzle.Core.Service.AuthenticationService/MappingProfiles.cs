@@ -2,7 +2,7 @@
 using Skuzzle.Core.Service.AuthenticationService.Models;
 using Skuzzle.Core.Service.AuthenticationService.Storage.Entities;
 
-namespace Skuzzle.Core.Service.AuthenticationService.Storage;
+namespace Skuzzle.Core.Service.AuthenticationService;
 
 public class MappingProfiles : Profile
 {
