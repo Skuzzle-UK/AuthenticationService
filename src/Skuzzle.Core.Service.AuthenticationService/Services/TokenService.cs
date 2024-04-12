@@ -22,7 +22,7 @@ public class TokenService : ITokenService
 
     public string GetNewToken(User user)
     {
-        //TODO: Add a tonne of claims
+        //TODO: Add a tonne of claims /nb
         List<Claim> claims = new List<Claim>()
         {
             new Claim(ClaimTypes.Name, user.Username),

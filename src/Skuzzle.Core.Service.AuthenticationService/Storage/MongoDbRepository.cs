@@ -53,46 +53,99 @@ public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
 
     }
 
-    //TODO: Methods should return result type Ok or Failure etc with data from DB. Needs try catches too /nb
-    public async Task InsertAsync(TModel document, CancellationToken ct = default)
+    public async Task<Result> InsertAsync(TModel document, CancellationToken ct = default)
     {
-        var entity = _mapper.Map<TEntity>(document);
-        await _collection.InsertOneAsync(entity, null, ct);
+        try
+        {
+            var entity = _mapper.Map<TEntity>(document);
+            await _collection.InsertOneAsync(entity, null, ct);
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            return Result.Fail("MongoDb InsertAsync failed with error: {ErrorMessage}", ex.Message);
+        }
     }
 
-    public async Task<List<TModel>> FindAsync(CancellationToken ct = default)
+    public async Task<Result<List<TModel>>> FindAsync(CancellationToken ct = default)
     {
-        var results = await _collection.Find(_ => true).ToListAsync(ct);
-        return _mapper.Map<List<TModel>>(results);
+        try
+        {
+            var results = await _collection.Find(_ => true).ToListAsync(ct);
+            return Result.Ok(_mapper.Map<List<TModel>>(results));
+        }
+        catch(Exception ex)
+        {
+            return Result.Fail<List<TModel>>("MongoDb FindAsync failed with error: {ErrorMessage}", ex.Message);
+        }
     }
 
-    public async Task<TModel?> FindAsync(Guid guid, CancellationToken ct = default)
+    public async Task<Result<TModel>> FindAsync(Guid guid, CancellationToken ct = default)
     {
-        var result = await _collection.Find(x => x.Id == guid).FirstOrDefaultAsync(ct);
-        return _mapper.Map<TModel>(result);
-    }
-    public async Task<TModel?> FindAsync(Expression<Func<TModel, bool>> exp, CancellationToken ct = default)
-    {
-        var mappedExpression = _mapper.Map<Expression<Func<TEntity, bool>>>(exp);
-        var result = await _collection.Find(mappedExpression).FirstOrDefaultAsync(ct);
-        return _mapper.Map<TModel>(result);
-    }
-    public async Task<List<TModel>> FindManyAsync(Expression<Func<TModel, bool>> exp, CancellationToken ct = default)
-    {
-        var mappedExpression = _mapper.Map<Expression<Func<TEntity, bool>>>(exp);
-        var result = await _collection.Find(mappedExpression).ToListAsync(ct);
-        return _mapper.Map<List<TModel>>(result);
+        try
+        {
+            var result = await _collection.Find(x => x.Id == guid).FirstOrDefaultAsync(ct);
+            return Result.Ok(_mapper.Map<TModel>(result));
+        }
+        catch(Exception ex)
+        {
+            return Result.Fail<TModel>("MongoDb FindAsync failed with error: {ErrorMessage}", ex.Message);
+        }
     }
 
-    public async Task DeleteAsync(Guid Guid, CancellationToken ct = default)
+    public async Task<Result<TModel>> FindAsync(Expression<Func<TModel, bool>> exp, CancellationToken ct = default)
     {
-        await _collection.DeleteOneAsync(x => x.Id == Guid, ct);
+        try
+        {
+            var mappedExpression = _mapper.Map<Expression<Func<TEntity, bool>>>(exp);
+            var result = await _collection.Find(mappedExpression).FirstOrDefaultAsync(ct);
+            return Result.Ok(_mapper.Map<TModel>(result));
+        }
+        catch (Exception ex)
+        {
+            return Result.Fail<TModel>("MongoDb FindAsync failed with error: {ErrorMessage}", ex.Message);
+        }
     }
 
-    public async Task UpdateAsync(TModel document, CancellationToken ct = default)
+    public async Task<Result<List<TModel>>> FindManyAsync(Expression<Func<TModel, bool>> exp, CancellationToken ct = default)
     {
-        var entity = _mapper.Map<TEntity>(document);
-        await _collection.ReplaceOneAsync(x => x.Id == entity.Id, entity, cancellationToken: ct);
+        try
+        {
+            var mappedExpression = _mapper.Map<Expression<Func<TEntity, bool>>>(exp);
+            var result = await _collection.Find(mappedExpression).ToListAsync(ct);
+            return Result.Ok(_mapper.Map<List<TModel>>(result));
+        }
+        catch (Exception ex)
+        {
+            return Result.Fail<TModel>("MongoDb FindManyAsync failed with error: {ErrorMessage}", ex.Message);
+        }
+    }
+
+    public async Task<Result> DeleteAsync(Guid Guid, CancellationToken ct = default)
+    {
+        try
+        {
+            await _collection.DeleteOneAsync(x => x.Id == Guid, ct);
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            return Result.Fail<TModel>("MongoDb DeleteAsync failed with error: {ErrorMessage}", ex.Message);
+        }
+    }
+
+    public async Task<Result> UpdateAsync(TModel document, CancellationToken ct = default)
+    {
+        try
+        {
+            var entity = _mapper.Map<TEntity>(document);
+            await _collection.ReplaceOneAsync(x => x.Id == entity.Id, entity, cancellationToken: ct);
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            return Result.Fail<TModel>("MongoDb FindAsync failed with error: {ErrorMessage}", ex.Message);
+        }
     }
 
 }

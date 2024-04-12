@@ -5,7 +5,6 @@ using Skuzzle.Core.Service.AuthenticationService.Extensions;
 using Skuzzle.Core.Service.AuthenticationService.Models;
 using Skuzzle.Core.Service.AuthenticationService.Services;
 using Skuzzle.Core.Service.AuthenticationService.Storage;
-using System.Runtime.CompilerServices;
 
 namespace Skuzzle.Core.Service.AuthenticationService.Controllers;
 

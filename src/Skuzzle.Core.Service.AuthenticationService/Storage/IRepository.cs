@@ -1,20 +1,21 @@
-﻿using System.Linq.Expressions;
+﻿using Skuzzle.Core.Service.AuthenticationService.Models;
+using System.Linq.Expressions;
 
 namespace Skuzzle.Core.Service.AuthenticationService.Storage;
 
 public interface IRepository<TModel>
 {
-    Task InsertAsync(TModel document, CancellationToken ct = default);
+    Task<Result> InsertAsync(TModel document, CancellationToken ct = default);
 
-    Task<List<TModel>> FindAsync(CancellationToken ct = default);
+    Task<Result<List<TModel>>> FindAsync(CancellationToken ct = default);
 
-    Task<TModel?> FindAsync(Guid id, CancellationToken ct = default);
+    Task<Result<TModel>> FindAsync(Guid id, CancellationToken ct = default);
 
-    Task<TModel?> FindAsync(Expression<Func<TModel, bool>> exp, CancellationToken ct = default);
+    Task<Result<TModel>> FindAsync(Expression<Func<TModel, bool>> exp, CancellationToken ct = default);
 
-    Task<List<TModel>> FindManyAsync(Expression<Func<TModel, bool>> exp, CancellationToken ct = default);
+    Task<Result<List<TModel>>> FindManyAsync(Expression<Func<TModel, bool>> exp, CancellationToken ct = default);
 
-    Task DeleteAsync(Guid id, CancellationToken ct = default);
+    Task<Result> DeleteAsync(Guid id, CancellationToken ct = default);
 
-    Task UpdateAsync(TModel document, CancellationToken ct = default);
+    Task<Result> UpdateAsync(TModel document, CancellationToken ct = default);
 }
