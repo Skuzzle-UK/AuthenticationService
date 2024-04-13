@@ -5,6 +5,7 @@ using Skuzzle.Core.Service.AuthenticationService.Extensions;
 using Skuzzle.Core.Service.AuthenticationService.Models;
 using Skuzzle.Core.Service.AuthenticationService.Services;
 using Skuzzle.Core.Service.AuthenticationService.Storage;
+using System.Net;
 
 namespace Skuzzle.Core.Service.AuthenticationService.Controllers;
 
@@ -52,7 +53,11 @@ public class AuthenticationController : ControllerBase
             Country = request.Country
         };
 
-        await _userRepository.InsertAsync(user);
+        var result = await _userRepository.InsertAsync(user);
+        if (result.IsFailure)
+        {
+            return StatusCode((int)HttpStatusCode.InternalServerError, result.ErrorMessage);
+        }
 
         return Ok();
     }
@@ -60,18 +65,22 @@ public class AuthenticationController : ControllerBase
     [HttpPost("login")]
     public async Task<ActionResult<string>> Login(UserCredentialsDto request)
     {
-        var user = await _userRepository.FindAsync(o => o.Username == request.Username);
+        var result = await _userRepository.FindAsync(o => o.Username == request.Username);
+        if (result.IsFailure)
+        {
+            return StatusCode((int)HttpStatusCode.InternalServerError, result.ErrorMessage);
+        }
 
-        if (user is null || user.Username != request.Username)
+        if (result.Value is null || result.Value.Username != request.Username)
         {
             return BadRequest("Incorrect login details");
         }
 
-        if (!_passwordHashService.Verify(request, user))
+        if (!_passwordHashService.Verify(request, result.Value))
         {
             return BadRequest("Incorrect login details");
         }
 
-        return Ok(_tokenService.GetNewToken(user) ?? string.Empty);
+        return Ok(_tokenService.GetNewToken(result.Value) ?? string.Empty);
     }
 }

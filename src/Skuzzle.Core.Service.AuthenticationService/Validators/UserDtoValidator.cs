@@ -28,7 +28,12 @@ public class UserDtoValidator : AbstractValidator<UserDto>
         RuleFor(x => x.Username)
             .MustAsync(async (Username, cancellation) =>
             {
-                return (await _repository.FindAsync(o => o.Username == Username)) == null;
+                var result = await _repository.FindAsync(o => o.Username == Username);
+                if (result.IsSuccess)
+                {
+                    return result.Value == null;
+                }
+                return true;
             })
             .WithMessage("Username is already in use. Please try something different.");
 
@@ -43,7 +48,12 @@ public class UserDtoValidator : AbstractValidator<UserDto>
         RuleFor(x => x.Email)
             .MustAsync(async (Email, cancellation) =>
             {
-                return (await _repository.FindAsync(o => o.Email == Email)) == null;
+                var result = await _repository.FindAsync(o => o.Email == Email);
+                if (result.IsSuccess)
+                {
+                    return result.Value == null;
+                }
+                return true;
             })
             .WithMessage("A user with that email address is already registered");
 

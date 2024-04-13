@@ -13,17 +13,21 @@ public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
     where TModel : IModel
     where TEntity : IEntity
 {
+    private readonly ILogger<MongoDbRepository<TModel, TEntity>> _logger;
     private readonly MongoDbSettings _settings;
     private readonly IMapper _mapper;
     private readonly IMongoCollection<TEntity> _collection;
 
     public MongoDbRepository(
+        ILogger<MongoDbRepository<TModel, TEntity>> logger,
         IOptions<MongoDbSettings> settings,
         IMapper mapper)
     {
+        _logger = logger;
         _settings = settings.Value;
         _mapper = mapper;
 
+        // TODO: Look at moving this out to application startup as it should probably fail at start rather than when first used /nb
         var mongoClient = new MongoClient(_settings.ConnectionString);
         var mongoDatabase = mongoClient.GetDatabase(_settings.DatabaseName);
         _collection = mongoDatabase.GetCollection<TEntity>($"{typeof(TModel).Name}s");
@@ -50,7 +54,6 @@ public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
                 _collection.Indexes.DropOne(index);
             }
         }
-
     }
 
     public async Task<Result> InsertAsync(TModel document, CancellationToken ct = default)
@@ -63,7 +66,8 @@ public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
         }
         catch (Exception ex)
         {
-            return Result.Fail("MongoDb InsertAsync failed with error: {ErrorMessage}", ex.Message);
+            _logger.LogError(ex, "MongoDb InsertAsync failed with error: {ErrorMessage}", ex.Message);
+            return Result.Fail(ex, "MongoDb InsertAsync failed with error: {ErrorMessage}", ex.Message);
         }
     }
 
@@ -76,7 +80,8 @@ public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
         }
         catch(Exception ex)
         {
-            return Result.Fail<List<TModel>>("MongoDb FindAsync failed with error: {ErrorMessage}", ex.Message);
+            _logger.LogError(ex, "MongoDb FindAsync failed with error: {ErrorMessage}", ex.Message);
+            return Result.Fail<List<TModel>>(ex, "MongoDb FindAsync failed with error: {ErrorMessage}", ex.Message);
         }
     }
 
@@ -89,7 +94,8 @@ public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
         }
         catch(Exception ex)
         {
-            return Result.Fail<TModel>("MongoDb FindAsync failed with error: {ErrorMessage}", ex.Message);
+            _logger.LogError(ex, "MongoDb FindAsync failed with error: {ErrorMessage}", ex.Message);
+            return Result.Fail<TModel>(ex, "MongoDb FindAsync failed with error: {ErrorMessage}", ex.Message);
         }
     }
 
@@ -103,7 +109,8 @@ public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
         }
         catch (Exception ex)
         {
-            return Result.Fail<TModel>("MongoDb FindAsync failed with error: {ErrorMessage}", ex.Message);
+            _logger.LogError(ex, "MongoDb FindAsync failed with error: {ErrorMessage}", ex.Message);
+            return Result.Fail<TModel>(ex, "MongoDb FindAsync failed with error: {ErrorMessage}", ex.Message);
         }
     }
 
@@ -117,7 +124,8 @@ public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
         }
         catch (Exception ex)
         {
-            return Result.Fail<TModel>("MongoDb FindManyAsync failed with error: {ErrorMessage}", ex.Message);
+            _logger.LogError(ex, "MongoDb FindManyAsync failed with error: {ErrorMessage}", ex.Message);
+            return Result.Fail<List<TModel>>(ex, "MongoDb FindManyAsync failed with error: {ErrorMessage}", ex.Message);
         }
     }
 
@@ -130,7 +138,8 @@ public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
         }
         catch (Exception ex)
         {
-            return Result.Fail<TModel>("MongoDb DeleteAsync failed with error: {ErrorMessage}", ex.Message);
+            _logger.LogError(ex, "MongoDb DeleteAsync failed with error: {ErrorMessage}", ex.Message);
+            return Result.Fail<TModel>(ex, "MongoDb DeleteAsync failed with error: {ErrorMessage}", ex.Message);
         }
     }
 
@@ -144,7 +153,8 @@ public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
         }
         catch (Exception ex)
         {
-            return Result.Fail<TModel>("MongoDb FindAsync failed with error: {ErrorMessage}", ex.Message);
+            _logger.LogError(ex, "MongoDb FindAsync failed with error: {ErrorMessage}", ex.Message);
+            return Result.Fail<TModel>(ex, "MongoDb FindAsync failed with error: {ErrorMessage}", ex.Message);
         }
     }
 
