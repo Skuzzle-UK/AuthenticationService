@@ -1,7 +1,12 @@
-﻿namespace Skuzzle.Core.Service.AuthenticationService.Settings;
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace Skuzzle.Core.Service.AuthenticationService.Settings;
 
 public class MongoDbSettings
 {
-    public string ConnectionString { get; set; } = null!;
-    public string DatabaseName { get; set; } = null!;
+    [Required]
+    public required string ConnectionString { get; set; } = null!;
+
+    [Required]
+    public required string DatabaseName { get; set; } = null!;
 }

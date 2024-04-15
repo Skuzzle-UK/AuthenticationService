@@ -1,11 +1,15 @@
 ﻿using AutoMapper;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
+using SharpCompress.Common;
 using Skuzzle.Core.Service.AuthenticationService.Extensions;
 using Skuzzle.Core.Service.AuthenticationService.Models;
+using Skuzzle.Core.Service.AuthenticationService.Services;
 using Skuzzle.Core.Service.AuthenticationService.Settings;
+using Skuzzle.Core.Service.AuthenticationService.Storage.Attributes;
 using Skuzzle.Core.Service.AuthenticationService.Storage.Entities;
 using System.Linq.Expressions;
+using System.Reflection;
 
 namespace Skuzzle.Core.Service.AuthenticationService.Storage;
 
@@ -16,16 +20,20 @@ public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
     private readonly ILogger<MongoDbRepository<TModel, TEntity>> _logger;
     private readonly MongoDbSettings _settings;
     private readonly IMapper _mapper;
+    private readonly IEncryptionService _encryptionService;
     private readonly IMongoCollection<TEntity> _collection;
 
+    // TODO: Finish adding encryption capabilities /nb
     public MongoDbRepository(
         ILogger<MongoDbRepository<TModel, TEntity>> logger,
         IOptions<MongoDbSettings> settings,
-        IMapper mapper)
+        IMapper mapper,
+        IEncryptionService encryptionService)
     {
         _logger = logger;
         _settings = settings.Value;
         _mapper = mapper;
+        _encryptionService = encryptionService;
 
         // TODO: Look at moving this out to application startup as it should probably fail at start rather than when first used /nb
         var mongoClient = new MongoClient(_settings.ConnectionString);
@@ -61,6 +69,15 @@ public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
         try
         {
             var entity = _mapper.Map<TEntity>(document);
+
+            var properties = typeof(TEntity).GetProperties()
+                    .Where(p => p.GetCustomAttribute<EncryptAttribute>() != null);
+
+            foreach (var property in properties)
+            {
+                property.SetValue(entity, _encryptionService.Encrypt(property.GetValue(entity)));
+            }
+
             await _collection.InsertOneAsync(entity, null, ct);
             return Result.Ok();
         }
@@ -90,6 +107,15 @@ public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
         try
         {
             var result = await _collection.Find(x => x.Id == guid).FirstOrDefaultAsync(ct);
+
+            var properties = typeof(TEntity).GetProperties()
+                .Where(p => p.GetCustomAttribute<EncryptAttribute>() != null);
+
+            foreach (var property in properties)
+            {
+                property.SetValue(result, _encryptionService.Encrypt(property.GetValue(result)));
+            }
+
             return Result.Ok(_mapper.Map<TModel>(result));
         }
         catch(Exception ex)

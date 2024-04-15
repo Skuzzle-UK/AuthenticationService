@@ -10,9 +10,9 @@ using Skuzzle.Core.Service.AuthenticationService.Validators;
 
 namespace Skuzzle.Core.Service.AuthenticationService.Extensions;
 
-public static class HostExtensions
+internal static class HostExtensions
 {
-    public static IHostBuilder ConfigureService(this IHostBuilder host) =>
+    internal static IHostBuilder ConfigureService(this IHostBuilder host) =>
         host.ConfigureServices((hostContext, services) =>
         {
             services.AddServices();
@@ -23,20 +23,21 @@ public static class HostExtensions
             services.AddControllers();
         });
 
-    public static IServiceCollection AddServices(this IServiceCollection services) =>
+    internal static IServiceCollection AddServices(this IServiceCollection services) =>
         services
             .AddSingleton<IPasswordHashService, PasswordHashService>()
-            .AddSingleton<ITokenService, TokenService>();
+            .AddSingleton<ITokenService, TokenService>()
+            .AddSingleton<IEncryptionService, EncryptionService>();
 
-    public static IServiceCollection AddRepositories(this IServiceCollection services) =>
+    internal static IServiceCollection AddRepositories(this IServiceCollection services) =>
         services
             .AddSingleton<IRepository<User>, MongoDbRepository<User, UserEntity>>();
 
-    public static IServiceCollection AddValidators(this IServiceCollection services) =>
+    internal static IServiceCollection AddValidators(this IServiceCollection services) =>
         services
             .AddScoped<IValidator<UserDto>, UserDtoValidator>();
 
-    public static IServiceCollection AddValidatedSettings(this IServiceCollection services, HostBuilderContext hostContext)
+    internal static IServiceCollection AddValidatedSettings(this IServiceCollection services, HostBuilderContext hostContext)
     {
         services.AddOptions<JwtSettings>()
             .Bind(hostContext.Configuration.GetSection(nameof(JwtSettings)))
@@ -45,6 +46,11 @@ public static class HostExtensions
 
         services.AddOptions<MongoDbSettings>()
             .Bind(hostContext.Configuration.GetSection(nameof(MongoDbSettings)))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<EncryptionSettings>()
+            .Bind(hostContext.Configuration.GetSection(nameof(EncryptionSettings)))
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
