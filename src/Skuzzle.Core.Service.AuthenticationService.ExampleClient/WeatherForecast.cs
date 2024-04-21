@@ -1,4 +1,4 @@
-namespace Skuzzle.Core.Service.AuthenticationService.ExampleClient;
+namespace Skuzzle.Core.Service.AuthenticationService.ExampleConsumer;
 
 public class WeatherForecast
 {

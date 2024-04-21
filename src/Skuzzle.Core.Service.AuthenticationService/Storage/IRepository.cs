@@ -1,4 +1,4 @@
-﻿using Skuzzle.Core.Service.AuthenticationService.Models;
+﻿using Skuzzle.Core.Lib.ResultClass;
 using System.Linq.Expressions;
 
 namespace Skuzzle.Core.Service.AuthenticationService.Storage;

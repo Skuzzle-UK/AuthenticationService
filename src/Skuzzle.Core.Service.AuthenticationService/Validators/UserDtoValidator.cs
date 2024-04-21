@@ -23,7 +23,7 @@ public class UserDtoValidator : AbstractValidator<UserDto>
         
         RuleFor(x => x.Username)
             .MaximumLength(20)
-            .WithMessage("Username must be shorted than 20 characters");
+            .WithMessage("Username must be shorter than 20 characters");
         
         RuleFor(x => x.Username)
             .MustAsync(async (Username, cancellation) =>

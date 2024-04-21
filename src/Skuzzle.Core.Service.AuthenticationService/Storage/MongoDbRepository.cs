@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using SharpCompress.Common;
+using Skuzzle.Core.Lib.ResultClass;
 using Skuzzle.Core.Service.AuthenticationService.Extensions;
 using Skuzzle.Core.Service.AuthenticationService.Models;
 using Skuzzle.Core.Service.AuthenticationService.Services;

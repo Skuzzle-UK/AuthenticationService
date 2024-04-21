@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace Skuzzle.Core.Service.AuthenticationService.ExampleClient.Controllers;
+namespace Skuzzle.Core.Service.AuthenticationService.ExampleConsumer.Controllers;
 [ApiController]
 [Route("[controller]")]
 [Authorize(Roles = "Admin, Unconfirmed User")]

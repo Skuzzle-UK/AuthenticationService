@@ -31,7 +31,7 @@ public class AuthenticationController : ControllerBase
     }
 
     [HttpPost("register")]
-    public async Task<ActionResult<string>> Register(UserDto request)
+    public async Task<ActionResult<string>> RegisterAsync(UserDto request)
     {
         var validationResults = await _userValidator.ValidateAsync(request);
         if (!validationResults.IsValid)
@@ -63,7 +63,7 @@ public class AuthenticationController : ControllerBase
     }
 
     [HttpPost("login")]
-    public async Task<ActionResult<string>> Login(UserCredentialsDto request)
+    public async Task<ActionResult<string>> LoginAsync(UserCredentialsDto request)
     {
         var result = await _userRepository.FindAsync(o => o.Username == request.Username);
         if (result.IsFailure)

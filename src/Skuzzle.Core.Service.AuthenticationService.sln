@@ -15,7 +15,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SolutionItems", "SolutionIt
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Skuzzle.Core.Service.AuthenticationService.Tests", "Skuzzle.Core.Service.AuthenticationService.Tests\Skuzzle.Core.Service.AuthenticationService.Tests.csproj", "{B44651E8-162B-4204-885C-D39CF000D6EE}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Skuzzle.Core.Service.AuthenticationService.ExampleClient", "Skuzzle.Core.Service.AuthenticationService.ExampleClient\Skuzzle.Core.Service.AuthenticationService.ExampleClient.csproj", "{622D9E79-506B-4B23-81A9-25D5B3E15F40}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Skuzzle.Core.Service.AuthenticationService.ExampleConsumer", "Skuzzle.Core.Service.AuthenticationService.ExampleClient\Skuzzle.Core.Service.AuthenticationService.ExampleConsumer.csproj", "{622D9E79-506B-4B23-81A9-25D5B3E15F40}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
