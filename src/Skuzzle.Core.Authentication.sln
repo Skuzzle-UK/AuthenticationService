@@ -1,0 +1,69 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.9.34723.18
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Skuzzle.Core.Authentication.Service", "Skuzzle.Core.Authentication.Service\Skuzzle.Core.Authentication.Service.csproj", "{AC92189F-C9A9-498E-85CF-6F0DE3466D25}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SolutionItems", "SolutionItems", "{4ACFF4D1-19BE-457B-B086-34F079923807}"
+	ProjectSection(SolutionItems) = preProject
+		..\.gitattributes = ..\.gitattributes
+		..\.gitignore = ..\.gitignore
+		docker-compose.yaml = docker-compose.yaml
+		..\README.MD = ..\README.MD
+	EndProjectSection
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Skuzzle.Core.Authentication.Service.Tests", "Skuzzle.Core.Authentication.Service.Tests\Skuzzle.Core.Authentication.Service.Tests.csproj", "{B44651E8-162B-4204-885C-D39CF000D6EE}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Skuzzle.Core.Authentication.Service.ExampleConsumer", "Skuzzle.Core.Authentication.Service.ExampleClient\Skuzzle.Core.Authentication.Service.ExampleConsumer.csproj", "{622D9E79-506B-4B23-81A9-25D5B3E15F40}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Skuzzle.Core.Authentication.Client", "Skuzzle.Core.Authentication.Client\Skuzzle.Core.Authentication.Client.csproj", "{1DB5CC8E-56A2-41FC-A3E9-1E8445F55FFA}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Skuzzle.Core.Authentication.Client.ConsoleDemo", "Skuzzle.Core.Authentication.Client.ConsoleDemo\Skuzzle.Core.Authentication.Client.ConsoleDemo.csproj", "{9B1F4A8C-EE75-4F45-86B7-06E551BF5042}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Skuzzle.Core.Authentication.Client.Tests", "Skuzzle.Core.Authentication.Client.Tests\Skuzzle.Core.Authentication.Client.Tests.csproj", "{630D4478-42F3-4EFC-9852-4A49186CF39E}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Skuzzle.Core.Authentication.Lib", "Skuzzle.Core.Authentication.Lib\Skuzzle.Core.Authentication.Lib.csproj", "{D9DC56B4-B4A5-48EA-9394-615C456C3545}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AC92189F-C9A9-498E-85CF-6F0DE3466D25}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AC92189F-C9A9-498E-85CF-6F0DE3466D25}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AC92189F-C9A9-498E-85CF-6F0DE3466D25}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC92189F-C9A9-498E-85CF-6F0DE3466D25}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B44651E8-162B-4204-885C-D39CF000D6EE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B44651E8-162B-4204-885C-D39CF000D6EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B44651E8-162B-4204-885C-D39CF000D6EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B44651E8-162B-4204-885C-D39CF000D6EE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{622D9E79-506B-4B23-81A9-25D5B3E15F40}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{622D9E79-506B-4B23-81A9-25D5B3E15F40}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{622D9E79-506B-4B23-81A9-25D5B3E15F40}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{622D9E79-506B-4B23-81A9-25D5B3E15F40}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1DB5CC8E-56A2-41FC-A3E9-1E8445F55FFA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1DB5CC8E-56A2-41FC-A3E9-1E8445F55FFA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1DB5CC8E-56A2-41FC-A3E9-1E8445F55FFA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1DB5CC8E-56A2-41FC-A3E9-1E8445F55FFA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9B1F4A8C-EE75-4F45-86B7-06E551BF5042}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9B1F4A8C-EE75-4F45-86B7-06E551BF5042}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9B1F4A8C-EE75-4F45-86B7-06E551BF5042}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9B1F4A8C-EE75-4F45-86B7-06E551BF5042}.Release|Any CPU.Build.0 = Release|Any CPU
+		{630D4478-42F3-4EFC-9852-4A49186CF39E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{630D4478-42F3-4EFC-9852-4A49186CF39E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{630D4478-42F3-4EFC-9852-4A49186CF39E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{630D4478-42F3-4EFC-9852-4A49186CF39E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D9DC56B4-B4A5-48EA-9394-615C456C3545}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D9DC56B4-B4A5-48EA-9394-615C456C3545}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D9DC56B4-B4A5-48EA-9394-615C456C3545}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D9DC56B4-B4A5-48EA-9394-615C456C3545}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F7A0E46D-2FD9-4F21-B9EE-BA106CB99710}
+	EndGlobalSection
+EndGlobal

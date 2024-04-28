@@ -1,0 +1,23 @@
+
+@Skuzzle.Core.Authentication.Service_HostAddress = https://localhost:7008
+
+POST {{Skuzzle.Core.Authentication.Service_HostAddress}}/api/authentication/login
+Content-Type: application/json
+
+{
+  "username": "user",
+  "password": "password"
+}
+
+###
+
+POST {{Skuzzle.Core.Authentication.Service_HostAddress}}/api/authentication/register
+Content-Type: application/json
+
+{
+  "username": "user",
+  "password": "password",
+  "email": "test@email.notreal"
+}
+
+###
