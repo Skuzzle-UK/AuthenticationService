@@ -83,4 +83,11 @@ public class AuthenticationController : ControllerBase
 
         return Ok(_tokenService.GetNewToken(result.Value) ?? null);
     }
+
+    [HttpPost("refresh")]
+    public async Task<ActionResult<Token>> RefreshAsync(Token token)
+    {
+        // TODO: Complete this once TokenService.cs has completed method/nb
+        return Ok(token);
+    }
 }
