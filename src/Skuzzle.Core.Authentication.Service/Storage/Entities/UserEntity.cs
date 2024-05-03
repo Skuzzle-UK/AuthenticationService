@@ -42,8 +42,7 @@ public class UserEntity : IEntity
     [Encrypt]
     public string Country { get; set; } = string.Empty;
 
-    [Encrypt]
-    public string Roles { get; set; } = string.Empty;
+    public List<string> Roles { get; set; } = [];
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 

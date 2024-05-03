@@ -7,5 +7,5 @@ public interface IAuthenticationClient
 {
     Task<Result<Token>> TryGetExistingTokenAsync(Guid userId);
 
-    Task<Result<Token>> GetNewTokenAsync(UserCredentialsDto userCredentials);
+    Task<Result<Token>> GetNewTokenAsync(AuthenticationRequest request);
 }

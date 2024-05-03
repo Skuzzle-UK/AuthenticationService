@@ -15,10 +15,10 @@ public class PasswordHashService : IPasswordHashService
         return (hash, salt);
     }
 
-    public bool Verify(UserCredentialsDto userDto, User user)
+    public bool Verify(AuthenticationRequest request, User user)
     {
         using var hmac = new HMACSHA512(user.Salt);
-        var computedHash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(userDto.Password));
+        var computedHash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(request.Password));
         return computedHash.SequenceEqual(user.Hash);
     }
 }

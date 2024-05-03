@@ -42,7 +42,7 @@ public class AuthenticationClient : IAuthenticationClient
             .WaitAndRetryAsync(_settings.RetryCount.Value, r => TimeSpan.FromSeconds(_settings.RetryDelay.Value));
     }
 
-    // TODO: Add some kind of setting to allow for encrypted store credentials to be used /nb
+    // TODO: Add some kind of setting to allow for encrypted stored credentials to be used /nb
 
     public async Task<Result<Token>> TryGetExistingTokenAsync(Guid userId)
     {
@@ -78,9 +78,9 @@ public class AuthenticationClient : IAuthenticationClient
         return Result.Ok(token);
     }
 
-    public async Task<Result<Token>> GetNewTokenAsync(UserCredentialsDto userCredentials)
+    public async Task<Result<Token>> GetNewTokenAsync(AuthenticationRequest request)
     {
-        var result = await RequestNewTokenFromAuthenticationService(userCredentials);
+        var result = await RequestNewTokenFromAuthenticationService(request);
         if (result.IsFailure || result.Value is null)
         {
             return Result.Fail<Token>(result.ErrorMessage);
@@ -102,11 +102,11 @@ public class AuthenticationClient : IAuthenticationClient
         return Result.Ok(token);
     }
 
-    private async Task<Result<Token>> RequestNewTokenFromAuthenticationService(UserCredentialsDto userCredentials)
+    private async Task<Result<Token>> RequestNewTokenFromAuthenticationService(AuthenticationRequest request)
     {
         using var client = _httpClientFactory.CreateClient();
 
-        var jsonPayload = JsonSerializer.Serialize(userCredentials);
+        var jsonPayload = JsonSerializer.Serialize(request);
         var payload = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
         var response = await _retryPolicy.ExecuteAsync(() =>

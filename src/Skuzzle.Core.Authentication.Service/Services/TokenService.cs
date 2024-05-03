@@ -1,11 +1,13 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Skuzzle.Core.Authentication.Lib.Models;
 using Skuzzle.Core.Authentication.Service.Settings;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Text;
 
 namespace Skuzzle.Core.Authentication.Service.Services;
 
@@ -34,6 +36,7 @@ public class TokenService : ITokenService
         //TODO: Add a tonne of claims /nb
         List<Claim> claims = new List<Claim>()
         {
+            new Claim("UserId", user.Id.ToString()),
             new Claim(ClaimTypes.Name, user.Username),
             new Claim(ClaimTypes.Role, string.Join(",", user.Roles))
         };
@@ -63,10 +66,16 @@ public class TokenService : ITokenService
         return new Token(user.Id, AccessToken, expires, refreshToken, refreshExpires);
     }
 
-    public Token RefreshToken(string refreshToken)
+
+
+    public Token? RefreshToken(User user, string refreshToken)
     {
-        // TODO: Implement refresh token method /nb
-        throw new NotImplementedException();
+        if (!_refreshTokenCache.TryGetValue(user.Id, out string? cachedRefreshToken) || cachedRefreshToken != refreshToken)
+        {
+            return null;
+        }
+
+        return GetNewToken(user);
     }
 
     private string GenerateRefreshToken()
@@ -75,5 +84,24 @@ public class TokenService : ITokenService
         using var rng = RandomNumberGenerator.Create();
         rng.GetBytes(randomNumber);
         return Convert.ToBase64String(randomNumber);
+    }
+
+    public ClaimsPrincipal ValidateToken(string token, bool validateLifetime)
+    {
+        IdentityModelEventSource.ShowPII = true;
+
+        SecurityToken validatedToken;
+        TokenValidationParameters validationParameters = new TokenValidationParameters();
+
+        validationParameters.ValidateLifetime = validateLifetime;
+
+        validationParameters.ValidAudience = _audience;
+        validationParameters.ValidIssuer = _issuer;
+        validationParameters.IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(Encoding.UTF8.GetBytes(_securityKey));
+
+        ClaimsPrincipal principal = new JwtSecurityTokenHandler().ValidateToken(token, validationParameters, out validatedToken);
+
+
+        return principal;
     }
 }

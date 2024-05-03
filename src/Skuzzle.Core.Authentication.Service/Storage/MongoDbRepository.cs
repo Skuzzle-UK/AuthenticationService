@@ -93,6 +93,7 @@ public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
         try
         {
             var results = await _collection.Find(_ => true).ToListAsync(ct);
+
             return Result.Ok(_mapper.Map<List<TModel>>(results));
         }
         catch(Exception ex)
@@ -113,7 +114,7 @@ public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
 
             foreach (var property in properties)
             {
-                property.SetValue(result, _encryptionService.Encrypt(property.GetValue(result)));
+                property.SetValue(result, _encryptionService.Decrypt<string>(property.GetValue(result) as string));
             }
 
             return Result.Ok(_mapper.Map<TModel>(result));
@@ -131,6 +132,15 @@ public class MongoDbRepository<TModel, TEntity> : IRepository<TModel>
         {
             var mappedExpression = _mapper.Map<Expression<Func<TEntity, bool>>>(exp);
             var result = await _collection.Find(mappedExpression).FirstOrDefaultAsync(ct);
+            
+            var properties = typeof(TEntity).GetProperties()
+                .Where(p => p.GetCustomAttribute<EncryptAttribute>() != null);
+
+            foreach (var property in properties)
+            {
+                property.SetValue(result, _encryptionService.Decrypt<string>(property.GetValue(result) as string));
+            }
+            
             return Result.Ok(_mapper.Map<TModel>(result));
         }
         catch (Exception ex)

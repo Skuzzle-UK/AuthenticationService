@@ -1,6 +1,8 @@
 ﻿using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Tokens;
 using Skuzzle.Core.Authentication.Lib.Dtos;
+using Skuzzle.Core.Authentication.Lib.Enums;
 using Skuzzle.Core.Authentication.Lib.Models;
 using Skuzzle.Core.Authentication.Service.Extensions;
 using Skuzzle.Core.Authentication.Service.Services;
@@ -17,7 +19,7 @@ public class AuthenticationController : ControllerBase
     private readonly ITokenService _tokenService;
     private readonly IRepository<User> _userRepository;
     private readonly IValidator<UserDto> _userValidator;
-    
+
     public AuthenticationController(
         IPasswordHashService passwordHashService,
         ITokenService tokenService,
@@ -62,8 +64,66 @@ public class AuthenticationController : ControllerBase
         return Ok();
     }
 
-    [HttpPost("login")]
-    public async Task<ActionResult<Token>> LoginAsync(UserCredentialsDto request)
+    [HttpPost("token")]
+    public async Task<ActionResult<Token>> LoginAsync()
+    {
+        var request = Request.Form.ToAuthenticationRequest();
+
+        return request.GrantType switch
+        {
+            GrantType.password => await PasswordGrantType(request),
+            GrantType.refresh_token => await RefreshTokenGrantType(request),
+            _ => (ActionResult<Token>)Unauthorized(),
+        };
+    }
+
+    private async Task<ActionResult<Token>> RefreshTokenGrantType(AuthenticationRequest request)
+    {
+        var token = Request.Headers.Authorization;
+        if (token.IsNullOrEmpty())
+        {
+            return Unauthorized();
+        }
+
+        var jwt = token.FirstOrDefault()!.Replace("Bearer ", "");
+
+        var claim = _tokenService.ValidateToken(jwt, false).FindFirst("UserId");
+        if (claim is null)
+        {
+            return Unauthorized();
+        }
+
+        if (!Guid.TryParse(claim.Value, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var result = await _userRepository.FindAsync(o => o.Id == userId);
+        if (result.IsFailure)
+        {
+            return StatusCode((int)HttpStatusCode.InternalServerError, result.ErrorMessage);
+        }
+
+        if (result.Value is null)
+        {
+            return BadRequest("Invalid refresh token");
+        }
+
+        if(request.RefreshToken is null)
+        {
+            return Unauthorized();
+        }
+
+        var newToken = _tokenService.RefreshToken(result.Value, request.RefreshToken);
+        if (newToken is null)
+        {
+            return Unauthorized();
+        }
+
+        return Ok(newToken);
+    }
+
+    private async Task<ActionResult<Token>> PasswordGrantType(AuthenticationRequest request)
     {
         var result = await _userRepository.FindAsync(o => o.Username == request.Username);
         if (result.IsFailure)
@@ -71,23 +131,18 @@ public class AuthenticationController : ControllerBase
             return StatusCode((int)HttpStatusCode.InternalServerError, result.ErrorMessage);
         }
 
-        if (result.Value is null || result.Value.Username != request.Username)
+        if (result.Value is null || result.Value.Username != request.Username || request.Password is null)
         {
             return BadRequest("Incorrect login details");
         }
 
-        if (!_passwordHashService.Verify(request, result.Value))
+        var user = result.Value;
+
+        if (!_passwordHashService.Verify(request, user))
         {
             return BadRequest("Incorrect login details");
         }
 
         return Ok(_tokenService.GetNewToken(result.Value) ?? null);
-    }
-
-    [HttpPost("refresh")]
-    public async Task<ActionResult<Token>> RefreshAsync(Token token)
-    {
-        // TODO: Complete this once TokenService.cs has completed method/nb
-        return Ok(token);
     }
 }
