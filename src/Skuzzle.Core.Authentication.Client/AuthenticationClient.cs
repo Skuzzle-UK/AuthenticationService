@@ -1,13 +1,12 @@
-﻿using Skuzzle.Core.Authentication.Lib.Dtos;
-using Skuzzle.Core.Authentication.Lib.Models;
-using Skuzzle.Core.Lib.ResultClass;
-using System.Text.Json;
-using System.Text;
-using Microsoft.Extensions.Caching.Memory;
+﻿using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using Polly;
 using Polly.Retry;
 using Skuzzle.Core.Authentication.Client.Settings;
-using Microsoft.Extensions.Options;
+using Skuzzle.Core.Authentication.Lib.Models;
+using Skuzzle.Core.Lib.ResultClass;
+using System.Text;
+using System.Text.Json;
 
 namespace Skuzzle.Core.Authentication.Client;
 

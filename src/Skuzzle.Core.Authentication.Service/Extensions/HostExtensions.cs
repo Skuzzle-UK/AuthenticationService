@@ -5,15 +5,20 @@ using Skuzzle.Core.Authentication.Lib.Models;
 using Skuzzle.Core.Authentication.Service.Services;
 using Skuzzle.Core.Authentication.Service.Settings;
 using Skuzzle.Core.Authentication.Service.Storage;
+using Skuzzle.Core.Authentication.Service.Storage.Contexts;
 using Skuzzle.Core.Authentication.Service.Storage.Entities;
 using Skuzzle.Core.Authentication.Service.Validators;
+using Skuzzle.Core.Lib.MongoDb;
 
 namespace Skuzzle.Core.Authentication.Service.Extensions;
 
 internal static class HostExtensions
 {
-    internal static IHostBuilder ConfigureService(this IHostBuilder host) =>
-        host.ConfigureServices((hostContext, services) =>
+    internal static IHostBuilder ConfigureService(this IHostBuilder host)
+    {
+        host.ConfigureMongoDb<DbContext>();
+
+        return host.ConfigureServices((hostContext, services) =>
         {
             services.AddMemoryCache();
             services.AddServices();
@@ -23,16 +28,17 @@ internal static class HostExtensions
             services.AddAutoMapper(cfg => cfg.AddExpressionMapping(), typeof(MappingProfiles));
             services.AddControllers();
         });
+    }
 
     internal static IServiceCollection AddServices(this IServiceCollection services) =>
         services
-            .AddSingleton<IPasswordHashService, PasswordHashService>()
+            .AddScoped<IPasswordHashService, PasswordHashService>()
             .AddSingleton<ITokenService, TokenService>()
-            .AddSingleton<IEncryptionService, EncryptionService>();
+            .AddScoped<IEncryptionService, EncryptionService>();
 
     internal static IServiceCollection AddRepositories(this IServiceCollection services) =>
         services
-            .AddSingleton<IRepository<User>, MongoDbRepository<User, UserEntity>>();
+            .AddScoped<IRepository<User>, EncryptedRepository<User, UserEntity>>();
 
     internal static IServiceCollection AddValidators(this IServiceCollection services) =>
         services

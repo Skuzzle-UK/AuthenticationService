@@ -55,7 +55,7 @@ public class AuthenticationController : ControllerBase
             Country = request.Country
         };
 
-        var result = await _userRepository.InsertAsync(user);
+        var result = await _userRepository.CreateAsync(user);
         if (result.IsFailure)
         {
             return StatusCode((int)HttpStatusCode.InternalServerError, result.ErrorMessage);
@@ -98,7 +98,7 @@ public class AuthenticationController : ControllerBase
             return Unauthorized();
         }
 
-        var result = await _userRepository.FindAsync(o => o.Id == userId);
+        var result = await _userRepository.FindAsync(userId);
         if (result.IsFailure)
         {
             return StatusCode((int)HttpStatusCode.InternalServerError, result.ErrorMessage);
@@ -125,7 +125,7 @@ public class AuthenticationController : ControllerBase
 
     private async Task<ActionResult<Token>> PasswordGrantType(AuthenticationRequest request)
     {
-        var result = await _userRepository.FindAsync(o => o.Username == request.Username);
+        var result = await _userRepository.FirstOrDefaultAsync(o => o.Username == request.Username);
         if (result.IsFailure)
         {
             return StatusCode((int)HttpStatusCode.InternalServerError, result.ErrorMessage);

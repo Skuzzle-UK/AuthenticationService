@@ -16,6 +16,7 @@
     <PackageReference Include="MongoDB.Driver" Version="2.25.0" />
     <PackageReference Include="MongoDBMigrations" Version="2.2.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Skuzzle.DotNetCore.MongoDb" Version="1.0.0" />
     <PackageReference Include="Skuzzle.DotNetCore.ResultClass" Version="1.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
     <PackageReference Include="Swashbuckle.AspNetCore.Swagger" Version="6.5.0" />

@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Skuzzle.Core.Authentication.Service.Services;
 using System.Security.Cryptography;
 
 namespace Skuzzle.Core.Authentication.Service.Controllers;
@@ -8,31 +7,9 @@ namespace Skuzzle.Core.Authentication.Service.Controllers;
 [ApiController]
 public class EncryptionController : ControllerBase
 {
-    private readonly IEncryptionService _encrypterService;
 
-    public EncryptionController(IEncryptionService encrypterService)
+    public EncryptionController()
     {
-        _encrypterService = encrypterService;
-    }
-
-    [HttpGet]
-    public async Task<ActionResult<string>> Encrypt()
-    {
-        var testObject = new TestObject()
-        {
-            Number = 1,
-            Name = "test",
-            Value = "testing",
-            IsIt = true
-        };
-
-        return _encrypterService.Encrypt(testObject);
-    }
-
-    [HttpPost]
-    public async Task<ActionResult<TestObject?>> Decrypt(string encryptedData)
-    {
-        return _encrypterService.Decrypt<TestObject>(encryptedData);
     }
 
     [HttpGet("generate")]
@@ -49,12 +26,4 @@ public class EncryptionController : ControllerBase
         // Now you have a random key and IV
         return $"Random Key: {Convert.ToBase64String(key)} - Random IV: {Convert.ToBase64String(iv)}";
     }
-}
-
-public class TestObject
-{
-    public int Number { get; set; }
-    public string Name { get; set; }
-    public string Value { get; set; }
-    public bool IsIt { get; set; }
 }

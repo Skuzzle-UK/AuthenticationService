@@ -3,19 +3,23 @@ using System.Linq.Expressions;
 
 namespace Skuzzle.Core.Authentication.Service.Storage;
 
-public interface IRepository<TModel>
+public interface IRepository<TModel> where TModel : class
 {
-    Task<Result> InsertAsync(TModel document, CancellationToken ct = default);
+    Task<Result<IEnumerable<TModel>>> GetAllAsync(CancellationToken ct = default);
 
-    Task<Result<List<TModel>>> FindAsync(CancellationToken ct = default);
+    Task<Result<IEnumerable<TModel>>> GetAsync(Expression<Func<TModel, bool>> predicate, CancellationToken ct = default);
+
+    Task<Result<IEnumerable<Guid>>> GetIdsAsync(Expression<Func<TModel, bool>> predicate, CancellationToken ct = default);
 
     Task<Result<TModel>> FindAsync(Guid id, CancellationToken ct = default);
 
-    Task<Result<TModel>> FindAsync(Expression<Func<TModel, bool>> exp, CancellationToken ct = default);
+    Task<Result<TModel>> FirstOrDefaultAsync(Expression<Func<TModel, bool>> predicate, CancellationToken ct = default);
 
-    Task<Result<List<TModel>>> FindManyAsync(Expression<Func<TModel, bool>> exp, CancellationToken ct = default);
+    Task<Result> CreateAsync(TModel data, CancellationToken ct = default);
 
-    Task<Result> DeleteAsync(Guid id, CancellationToken ct = default);
+    Task<Result<TModel>> UpdateAsync(TModel data, CancellationToken ct = default);
 
-    Task<Result> UpdateAsync(TModel document, CancellationToken ct = default);
+    Task<Result<bool>> DeleteAsync(Guid id, CancellationToken ct = default);
+
+    Task<Result<bool>> CountAsync(CancellationToken ct = default);
 }

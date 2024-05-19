@@ -1,5 +1,4 @@
-﻿using Skuzzle.Core.Authentication.Lib.Dtos;
-using Skuzzle.Core.Authentication.Lib.Models;
+﻿using Skuzzle.Core.Authentication.Lib.Models;
 
 namespace Skuzzle.Core.Authentication.Service.Extensions;
 

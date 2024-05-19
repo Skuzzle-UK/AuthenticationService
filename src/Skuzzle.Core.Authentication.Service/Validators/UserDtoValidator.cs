@@ -28,7 +28,7 @@ public class UserDtoValidator : AbstractValidator<UserDto>
         RuleFor(x => x.Username)
             .MustAsync(async (Username, cancellation) =>
             {
-                var result = await _repository.FindAsync(o => o.Username == Username, cancellation);
+                var result = await _repository.FirstOrDefaultAsync(o => o.Username == Username, cancellation);
                 if (result.IsSuccess)
                 {
                     return result.Value == null;
@@ -48,7 +48,7 @@ public class UserDtoValidator : AbstractValidator<UserDto>
         RuleFor(x => x.Email)
             .MustAsync(async (Email, cancellation) =>
             {
-                var result = await _repository.FindAsync(o => o.Email == Email, cancellation);
+                var result = await _repository.FirstOrDefaultAsync(o => o.Email == Email, cancellation);
                 if (result.IsSuccess)
                 {
                     return result.Value == null;
