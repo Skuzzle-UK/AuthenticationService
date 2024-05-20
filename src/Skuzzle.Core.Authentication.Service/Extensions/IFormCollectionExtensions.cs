@@ -12,18 +12,29 @@ public static class IFormCollectionExtensions
     private const string PASSWORD = "password";
     private const string REFRESH_TOKEN = "refresh_token";
 
-    public static AuthenticationRequest ToAuthenticationRequest(this IFormCollection formCollection)
+    public static AuthenticationRequest? ToAuthenticationRequest(this IFormCollection formCollection)
     {
-        Enum.TryParse(formCollection[GRANT_TYPE].ToString(), out GrantType grantType);
-
-        return new AuthenticationRequest()
+        var canParse = Enum.TryParse(formCollection[GRANT_TYPE].ToString(), true, out GrantType grantType);
+        if (!canParse)
         {
-            ClientId = formCollection[CLIENT_ID].ToString(),
-            ClientSecret = formCollection[CLIENT_SECRET].ToString(),
-            GrantType = grantType,
-            Username = formCollection[USERNAME].ToString(),
-            Password = formCollection[PASSWORD].ToString(),
-            RefreshToken = formCollection[REFRESH_TOKEN].ToString()
-        };
+            return default;
+        }
+
+        try
+        {
+            return new AuthenticationRequest()
+            {
+                ClientId = formCollection[CLIENT_ID].ToString(),
+                ClientSecret = formCollection[CLIENT_SECRET].ToString(),
+                GrantType = grantType,
+                Username = formCollection[USERNAME].ToString(),
+                Password = formCollection[PASSWORD].ToString(),
+                RefreshToken = formCollection[REFRESH_TOKEN].ToString()
+            };
+        }
+        catch (Exception)
+        {
+            return default;
+        }
     }
 }

@@ -65,14 +65,18 @@ public class AuthenticationController : ControllerBase
     }
 
     [HttpPost("token")]
-    public async Task<ActionResult<Token>> LoginAsync()
+    public async Task<ActionResult<Token>> LoginAsync(IFormCollection formCollection)
     {
-        var request = Request.Form.ToAuthenticationRequest();
+        var request = formCollection.ToAuthenticationRequest();
+        if (request is null)
+        {
+            return BadRequest("Request form data does not match OAuth API standard.");
+        }
 
         return request.GrantType switch
         {
-            GrantType.password => await PasswordGrantType(request),
-            GrantType.refresh_token => await RefreshTokenGrantType(request),
+            GrantType.Password => await PasswordGrantType(request),
+            GrantType.Refresh_token => await RefreshTokenGrantType(request),
             _ => (ActionResult<Token>)Unauthorized(),
         };
     }
@@ -80,7 +84,7 @@ public class AuthenticationController : ControllerBase
     private async Task<ActionResult<Token>> RefreshTokenGrantType(AuthenticationRequest request)
     {
         var token = Request.Headers.Authorization;
-        if (token.IsNullOrEmpty())
+        if (token.IsNullOrEmptyOrWhiteSpace())
         {
             return Unauthorized();
         }
@@ -106,10 +110,10 @@ public class AuthenticationController : ControllerBase
 
         if (result.Value is null)
         {
-            return BadRequest("Invalid refresh token");
+            return Unauthorized();
         }
 
-        if(request.RefreshToken is null)
+        if(string.IsNullOrEmpty(request.RefreshToken))
         {
             return Unauthorized();
         }
@@ -133,14 +137,14 @@ public class AuthenticationController : ControllerBase
 
         if (result.Value is null || result.Value.Username != request.Username || request.Password is null)
         {
-            return BadRequest("Incorrect login details");
+            return Unauthorized("Incorrect login details");
         }
 
         var user = result.Value;
 
         if (!_passwordHashService.Verify(request, user))
         {
-            return BadRequest("Incorrect login details");
+            return Unauthorized("Incorrect login details");
         }
 
         return Ok(_tokenService.GetNewToken(result.Value) ?? null);

@@ -1,7 +1,8 @@
-using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Primitives;
 using Moq;
 using Skuzzle.Core.Authentication.Lib.Dtos;
 using Skuzzle.Core.Authentication.Lib.Models;
@@ -9,21 +10,27 @@ using Skuzzle.Core.Authentication.Service.Controllers;
 using Skuzzle.Core.Authentication.Service.Extensions;
 using Skuzzle.Core.Authentication.Service.Services;
 using Skuzzle.Core.Authentication.Service.Storage;
-using Skuzzle.Core.Lib.ResultClass;
-using System.Net;
+using System.Security.Claims;
 
 namespace Skuzzle.Core.Authentication.Service.Tests.Controllers;
 
-public class AuthenticationControllerTests
+public partial class AuthenticationControllerTests
 {
     private readonly Mock<IPasswordHashService> _passwordHashServiceMock = new();
     private readonly Mock<ITokenService> _tokenServiceMock = new();
     private readonly Mock<IRepository<User>> _userRepositoryMock = new();
     private readonly Mock<IValidator<UserDto>> _userValidatorMock = new();
-
-    private readonly AuthenticationController _sut;
+    private readonly Mock<HttpRequest> _httpRequestMock = new();
+    private readonly Mock<HttpContext> _httpContextMock = new();
 
     private readonly UserDto _validUserDto;
+    private readonly User _testUser;
+    private readonly FormCollection _passwordTypeFormCollection;
+    private readonly FormCollection _refreshTokenTypeFormCollection;
+    private readonly ClaimsIdentity _validClaimsIdentity;
+    private readonly ClaimsPrincipal _claimsPrincipal;
+
+    private AuthenticationController _sut;
 
     public AuthenticationControllerTests()
     {
@@ -34,91 +41,7 @@ public class AuthenticationControllerTests
             Password = "testin3$p255w0RD"
         };
 
-        _userValidatorMock
-            .Setup(o => o.ValidateAsync(It.IsAny<UserDto>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidationResult());
-
-        _sut = new AuthenticationController(
-            _passwordHashServiceMock.Object,
-            _tokenServiceMock.Object,
-            _userRepositoryMock.Object,
-            _userValidatorMock.Object);
-    }
-
-    #region RegisterAsync Tests
-    [Fact]
-    public async Task RegisterAsync_InvalidUserDto_BadRequestWithValidationResults()
-    {
-        // arrange
-        var invalidUserDto = new UserDto()
-        {
-            Username = "Test",
-            Email = "q21e",
-            Password = "test"
-        };
-
-        var emailValidationFailure = new ValidationFailure(
-            "Email",
-            "Email address must be a valid email address");
-
-        var passwordValidationFailure = new ValidationFailure(
-            "Password",
-            "Your password must contain at least one uppercase letter, one lowercase letter, one number and one special character and be at least 8 characters long");
-
-        var validationFailures = new List<ValidationFailure>()
-        {
-            emailValidationFailure,
-            passwordValidationFailure
-        };
-
-        _userValidatorMock
-            .Setup(o => o.ValidateAsync(invalidUserDto, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ValidationResult(validationFailures));
-
-        // act
-        var result = await _sut.RegisterAsync(invalidUserDto);
-
-        // assert
-        result.Should().BeOfType<ActionResult<string>>();
-
-        result.Result.Should().BeOfType<BadRequestObjectResult>();
-        var badRequestObjectResult = result.Result as BadRequestObjectResult;
-        
-        badRequestObjectResult!.Value.Should().BeOfType<ValidationResult>();
-        var validationResult = badRequestObjectResult.Value as ValidationResult;
-
-        validationResult!.Errors.Count.Should().Be(2);
-        validationResult!.Errors[0].PropertyName.Should().Be("Email");
-        validationResult!.Errors[0].ErrorMessage.Should().Be("Email address must be a valid email address");
-        validationResult!.Errors[1].PropertyName.Should().Be("Password");
-        validationResult!.Errors[1].ErrorMessage.Should().Be("Your password must contain at least one uppercase letter, one lowercase letter, one number and one special character and be at least 8 characters long");
-    }
-
-    [Fact]
-    public async Task RegisterAsync_CreateUserFails_ReturnsInternalServerError()
-    {
-        // arrange
-        _userRepositoryMock
-            .Setup(o => o.CreateAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Fail<User>("Exception message"));
-
-        // act
-        var result = await _sut.RegisterAsync(_validUserDto);
-
-        // assert
-        result.Should().BeOfType<ActionResult<string>>();
-
-        result.Result.Should().BeOfType<ObjectResult>();
-        var objectResult = result.Result as ObjectResult;
-
-        objectResult!.StatusCode.Should().Be((int)HttpStatusCode.InternalServerError);
-    }
-
-    [Fact]
-    public async Task RegisterAsync_RepoCreateUser_ExpectedUserInParameters()
-    {
-        // arrange
-        var expectedUser = new User()
+        _testUser = new User()
         {
             Username = _validUserDto.Username,
             Hash = default, // required value - not checked
@@ -130,42 +53,61 @@ public class AuthenticationControllerTests
             Phone = _validUserDto.Phone
         };
 
-        // act
-        var result = await _sut.RegisterAsync(_validUserDto);
+        _passwordTypeFormCollection = new FormCollection(
+            new Dictionary<string, StringValues>()
+            {
+                { "grant_type", "password" },
+                { "username", _validUserDto.Username },
+                { "password", _validUserDto.Password }
+            });
 
-        // assert
-        _userRepositoryMock.Verify(o => o.CreateAsync(
-            It.Is<User>(u =>
-                u.Username == expectedUser.Username &&
-                u.Email == expectedUser.Email &&
-                u.FirstName == expectedUser.FirstName &&
-                u.LastName == expectedUser.LastName &&
-                u.Phone == expectedUser.Phone &&
-                u.Country == expectedUser.Country &&
-                u.Roles[0] == expectedUser.Roles[0] &&
-                u.Roles.Count == expectedUser.Roles.Count),
-            It.IsAny<CancellationToken>()),
-            Times.Once);
+        _refreshTokenTypeFormCollection = new FormCollection(
+            new Dictionary<string, StringValues>()
+            {
+                { "grant_type", "refresh_token" },
+                { "username", _validUserDto.Username },
+                { "password", _validUserDto.Password },
+                { "refresh_token", "a refresh token" }
+            });
+
+        _userValidatorMock
+            .Setup(o => o.ValidateAsync(It.IsAny<UserDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult());
+
+        _httpRequestMock
+            .SetupGet(o => o.Headers)
+            .Returns(
+                new HeaderDictionary
+                {
+                    { "Authorization", "Bearer eyJhbGciO" }
+                });
+
+        _httpContextMock
+            .SetupGet(o => o.Request)
+            .Returns(_httpRequestMock.Object);
+
+        _validClaimsIdentity = new ClaimsIdentity(
+        new List<Claim>()
+        {
+            new Claim("UserId", Guid.NewGuid().ToString())
+        });
+
+        _claimsPrincipal = new ClaimsPrincipal(_validClaimsIdentity);
+
+        _tokenServiceMock
+            .Setup(o => o.ValidateToken(It.IsAny<string>(), It.IsAny<bool>()))
+            .Returns(_claimsPrincipal);
+
+        _sut = new AuthenticationController(
+            _passwordHashServiceMock.Object,
+            _tokenServiceMock.Object,
+            _userRepositoryMock.Object,
+            _userValidatorMock.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = _httpContextMock.Object
+            }
+        };
     }
-
-    [Fact]
-    public async Task RegisterAsync_RepoCreateUserSuccessful_ReturnsOk()
-    {
-        // arrange
-        _userRepositoryMock
-            .Setup(o => o.CreateAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Ok());
-
-        // act
-        var result = await _sut.RegisterAsync(_validUserDto);
-
-        // assert
-        result.Should().BeOfType<ActionResult<string>>();
-        result.Result.Should().BeOfType<OkResult>();
-    }
-    #endregion
-
-    #region LoginAsync Tests
-    // TODO: Create tests for LoginAsync /nb
-    #endregion
 }

@@ -62,7 +62,7 @@ public class EncryptedRepository<TModel, TEntity> : IRepository<TModel>
             var entity = await _context.FindAsync<TEntity>(id, ct);
             if (entity is null)
             {
-                return Result.Fail<TModel>("Document not found");
+                return Result.Ok<TModel>(default);
             }
 
             var model = _encryptionService.Decrypt<TModel>(entity.EncryptedData);
@@ -89,7 +89,7 @@ public class EncryptedRepository<TModel, TEntity> : IRepository<TModel>
             var entity = await _context.FirstOrDefaultAsync(mappedExpression, ct);
             if (entity is null)
             {
-                return Result.Fail<TModel>("Document not found");
+                return Result.Ok<TModel>(default);
             }
 
             var model = _encryptionService.Decrypt<TModel>(entity.EncryptedData);

@@ -2,6 +2,9 @@
 
 public enum GrantType
 {
-    password,
-    refresh_token
+    Implicit,
+    Authorization_code,
+    Client_credentials,
+    Password,
+    Refresh_token
 }
