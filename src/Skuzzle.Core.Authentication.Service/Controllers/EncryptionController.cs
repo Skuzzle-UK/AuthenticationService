@@ -7,13 +7,8 @@ namespace Skuzzle.Core.Authentication.Service.Controllers;
 [ApiController]
 public class EncryptionController : ControllerBase
 {
-
-    public EncryptionController()
-    {
-    }
-
     [HttpGet("generate")]
-    public async Task<ActionResult<string>> GenerateKeyAndIv()
+    public ActionResult<string> GenerateKeyAndIv()
     {
         // Generate a random key (256 bits = 32 bytes)
         byte[] key = new byte[32];
@@ -24,6 +19,6 @@ public class EncryptionController : ControllerBase
         RandomNumberGenerator.Fill(iv);
 
         // Now you have a random key and IV
-        return $"Random Key: {Convert.ToBase64String(key)} - Random IV: {Convert.ToBase64String(iv)}";
+        return Ok($"Random Key: {Convert.ToBase64String(key)} - Random IV: {Convert.ToBase64String(iv)}");
     }
 }

@@ -17,7 +17,7 @@ public static class IFormCollectionExtensions
         var canParse = Enum.TryParse(formCollection[GRANT_TYPE].ToString(), true, out GrantType grantType);
         if (!canParse)
         {
-            return default;
+            return null;
         }
 
         try
@@ -34,7 +34,7 @@ public static class IFormCollectionExtensions
         }
         catch (Exception)
         {
-            return default;
+            return null;
         }
     }
 }
