@@ -99,8 +99,8 @@ public partial class AuthenticationControllerTests
                 u.LastName == _testUser.LastName &&
                 u.Phone == _testUser.Phone &&
                 u.Country == _testUser.Country &&
-                u.Roles[0] == _testUser.Roles[0] &&
-                u.Roles.Count == _testUser.Roles.Count),
+                u.Roles[0] == "Unconfirmed User" &&
+                u.Roles.Count == 1),
             It.IsAny<CancellationToken>()),
             Times.Once);
     }

@@ -20,5 +20,5 @@ public class User : IModel
 
     public string Country { get; set; } = string.Empty;
 
-    public List<string> Roles { get; set; } = ["Unconfirmed User"];
+    public List<string> Roles { get; set; } = new();
 }

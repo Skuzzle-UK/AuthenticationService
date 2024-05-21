@@ -1,5 +1,6 @@
 ﻿namespace Skuzzle.Core.Authentication.Service.Tests.Services;
 
-internal class TokenServiceTests
+public class TokenServiceTests
 {
+    // TODO: complete this /nb
 }

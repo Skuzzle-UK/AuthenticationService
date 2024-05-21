@@ -17,19 +17,26 @@ public class EncryptionService : IEncryptionService
 
     public T? Decrypt<T>(string encryptedString)
     {
-        var cipherText = Convert.FromBase64String(encryptedString);
+        try
+        {
+            var cipherText = Convert.FromBase64String(encryptedString);
 
-        using var aes = Aes.Create();
-        aes.Key = _settings.Key;
-        aes.IV = _settings.InitialisationVector;
-        aes.Padding = PaddingMode.PKCS7;
+            using var aes = Aes.Create();
+            aes.Key = _settings.Key;
+            aes.IV = _settings.InitialisationVector;
+            aes.Padding = PaddingMode.PKCS7;
 
-        using var decryptor = aes.CreateDecryptor();
+            using var decryptor = aes.CreateDecryptor();
 
-        var decryptedBytes = decryptor.TransformFinalBlock(cipherText, 0, cipherText.Length);
-        var decryptedJson = Encoding.UTF8.GetString(decryptedBytes);
+            var decryptedBytes = decryptor.TransformFinalBlock(cipherText, 0, cipherText.Length);
+            var decryptedJson = Encoding.UTF8.GetString(decryptedBytes);
 
-        return JsonConvert.DeserializeObject<T>(decryptedJson);
+            return JsonConvert.DeserializeObject<T>(decryptedJson);
+        }
+        catch (Exception)
+        {
+            return default;
+        }
     }
 
     public string Encrypt<T>(T input)

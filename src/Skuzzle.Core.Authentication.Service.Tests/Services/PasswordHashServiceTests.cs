@@ -1,5 +1,6 @@
 ﻿namespace Skuzzle.Core.Authentication.Service.Tests.Services;
 
-internal class PasswordHashServiceTests
+public class PasswordHashServiceTests
 {
+    // TODO: complete this /nb
 }

@@ -1,6 +1,5 @@
 ﻿using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Tokens;
 using Skuzzle.Core.Authentication.Lib.Dtos;
 using Skuzzle.Core.Authentication.Lib.Enums;
 using Skuzzle.Core.Authentication.Lib.Models;
@@ -52,8 +51,11 @@ public class AuthenticationController : ControllerBase
             FirstName = request.FirstName,
             LastName = request.LastName,
             Phone = request.Phone,
-            Country = request.Country
+            Country = request.Country,
         };
+
+        // TODO: Look at putting roles into an enum /nb
+        user.Roles.Add("Unconfirmed User");
 
         var result = await _userRepository.CreateAsync(user);
         if (result.IsFailure)
