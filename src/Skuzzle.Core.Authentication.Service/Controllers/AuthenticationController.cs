@@ -144,7 +144,7 @@ public class AuthenticationController : ControllerBase
 
         var user = result.Value;
 
-        if (!_passwordHashService.Verify(request, user))
+        if (!_passwordHashService.Verify(request.Password, user.Hash, user.Salt))
         {
             return Unauthorized("Incorrect login details");
         }

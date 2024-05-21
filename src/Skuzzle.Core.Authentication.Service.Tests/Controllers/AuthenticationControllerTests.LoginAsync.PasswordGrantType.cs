@@ -98,7 +98,7 @@ public partial class AuthenticationControllerTests
             .ReturnsAsync(Result.Ok(_testUser));
 
         _passwordHashServiceMock
-            .Setup(o => o.Verify(It.IsAny<AuthenticationRequest>(), It.IsAny<User>()))
+            .Setup(o => o.Verify(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<byte[]>()))
             .Returns(false);
 
         // act
@@ -125,7 +125,7 @@ public partial class AuthenticationControllerTests
             .ReturnsAsync(Result.Ok(_testUser));
 
         _passwordHashServiceMock
-            .Setup(o => o.Verify(It.IsAny<AuthenticationRequest>(), It.IsAny<User>()))
+            .Setup(o => o.Verify(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<Byte[]>()))
             .Returns(true);
 
         _tokenServiceMock

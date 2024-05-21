@@ -5,5 +5,5 @@ namespace Skuzzle.Core.Authentication.Service.Extensions;
 public interface IPasswordHashService
 {
     (byte[] hash, byte[] salt) Create(string password);
-    bool Verify(AuthenticationRequest request, User user);
+    bool Verify(string password, byte[] hash, byte[] salt);
 }

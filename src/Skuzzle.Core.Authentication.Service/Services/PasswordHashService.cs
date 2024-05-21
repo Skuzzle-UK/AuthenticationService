@@ -1,5 +1,4 @@
-﻿using Skuzzle.Core.Authentication.Lib.Models;
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 
 namespace Skuzzle.Core.Authentication.Service.Extensions;
 
@@ -14,10 +13,10 @@ public class PasswordHashService : IPasswordHashService
         return (hash, salt);
     }
 
-    public bool Verify(AuthenticationRequest request, User user)
+    public bool Verify(string password, byte[] hash, byte[] salt)
     {
-        using var hmac = new HMACSHA512(user.Salt);
-        var computedHash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(request.Password!));
-        return computedHash.SequenceEqual(user.Hash);
+        using var hmac = new HMACSHA512(salt);
+        var computedHash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(password));
+        return computedHash.SequenceEqual(hash);
     }
 }
