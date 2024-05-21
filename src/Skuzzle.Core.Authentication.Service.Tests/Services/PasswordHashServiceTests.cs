@@ -7,14 +7,16 @@ public class PasswordHashServiceTests
 {
     private readonly PasswordHashService _sut = new();
 
-    [Fact]
-    public void Create_GivenAnyString_ReturnsHashAndSaltByteArrays()
+    [Theory]
+    [InlineData("")]
+    [InlineData("password")]
+    [InlineData("123947foinwf")]
+    public void Create_GivenAnyString_ReturnsHashAndSaltByteArrays(string input)
     {
         // arrange
-        var password = "SomePassword";
 
         // act
-        var result = _sut.Create(password);
+        var result = _sut.Create(input);
 
         // assert
         result.Should().BeOfType<ValueTuple<byte[], byte[]>>();
