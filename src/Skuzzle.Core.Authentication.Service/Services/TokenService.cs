@@ -4,6 +4,7 @@ using Microsoft.IdentityModel.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Skuzzle.Core.Authentication.Lib.Models;
 using Skuzzle.Core.Authentication.Service.Settings;
+using Skuzzle.Core.Lib.ResultClass;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -15,51 +16,45 @@ public class TokenService : ITokenService
 {
     private readonly IMemoryCache _refreshTokenCache;
 
-    private readonly string _securityKey;
-    private readonly string _issuer;
-    private readonly string _audience;
+    private readonly JwtSettings _jwtSettings;
 
     public TokenService(
         IMemoryCache refreshTokenCache,
         IOptions<JwtSettings> settings)
     {
         _refreshTokenCache = refreshTokenCache;
-
-
-        _securityKey = settings.Value.Key;
-        _issuer = settings.Value.Issuer;
-        _audience = settings.Value.Audience;
+        _jwtSettings = settings.Value;
     }
 
     public Token GetNewToken(User user)
     {
         //TODO: Add a tonne of claims /nb
-        List<Claim> claims = new List<Claim>()
+        var claims = new List<Claim>()
         {
             new Claim("UserId", user.Id.ToString()),
             new Claim(ClaimTypes.Name, user.Username),
             new Claim(ClaimTypes.Role, string.Join(",", user.Roles))
         };
 
-        var key = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(_securityKey));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Key));
 
         var cred = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
 
         var now = DateTimeOffset.UtcNow;
 
-        var expires = now.AddSeconds(300);
+        var expires = now.AddSeconds(_jwtSettings.TtlSeconds);
 
         var token = new JwtSecurityToken(
             claims: claims,
             expires: expires.UtcDateTime,
             signingCredentials: cred,
-            issuer: _issuer,
-            audience: _audience);
+            issuer: _jwtSettings.Issuer,
+            audience: _jwtSettings.Audience);
 
         var AccessToken = new JwtSecurityTokenHandler().WriteToken(token);
 
         var refreshToken = GenerateRefreshToken();
-        var refreshExpires = now.AddSeconds(1800);
+        var refreshExpires = now.AddSeconds(_jwtSettings.RefreshTtlSeconds);
 
         _refreshTokenCache.Set(user.Id, refreshToken, refreshExpires);
 
@@ -70,8 +65,15 @@ public class TokenService : ITokenService
 
     public Token? RefreshToken(User user, string refreshToken)
     {
-        if (!_refreshTokenCache.TryGetValue(user.Id, out string? cachedRefreshToken) || cachedRefreshToken != refreshToken)
+        if (!_refreshTokenCache.TryGetValue(user.Id, out string? cachedRefreshToken))
         {
+            return null;
+        }
+
+        // Remove refresh token from cache for user.Id as this could be malicious activity
+        if (cachedRefreshToken != refreshToken)
+        {
+            _refreshTokenCache.Remove(user.Id);
             return null;
         }
 
@@ -86,22 +88,24 @@ public class TokenService : ITokenService
         return Convert.ToBase64String(randomNumber);
     }
 
-    public ClaimsPrincipal ValidateToken(string token, bool validateLifetime)
+    public Result<ClaimsPrincipal> ValidateToken(string token, bool validateLifetime)
     {
-        IdentityModelEventSource.ShowPII = true;
+        try
+        {
+            IdentityModelEventSource.ShowPII = true;
+            var validationParameters = new TokenValidationParameters();
 
-        SecurityToken validatedToken;
-        TokenValidationParameters validationParameters = new TokenValidationParameters();
+            validationParameters.ValidateLifetime = validateLifetime;
 
-        validationParameters.ValidateLifetime = validateLifetime;
+            validationParameters.ValidAudience = _jwtSettings.Audience;
+            validationParameters.ValidIssuer = _jwtSettings.Issuer;
+            validationParameters.IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Key));
 
-        validationParameters.ValidAudience = _audience;
-        validationParameters.ValidIssuer = _issuer;
-        validationParameters.IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(Encoding.UTF8.GetBytes(_securityKey));
-
-        ClaimsPrincipal principal = new JwtSecurityTokenHandler().ValidateToken(token, validationParameters, out validatedToken);
-
-
-        return principal;
+            return Result.Ok(new JwtSecurityTokenHandler().ValidateToken(token, validationParameters, out _));
+        }
+        catch (Exception ex)
+        {
+            return Result.Fail<ClaimsPrincipal>(ex, ex.Message);
+        }
     }
 }

@@ -55,7 +55,7 @@ public partial class AuthenticationControllerTests
         // arrange
         _tokenServiceMock
             .Setup(o => o.ValidateToken(It.IsAny<string>(), It.IsAny<bool>()))
-            .Returns(new ClaimsPrincipal());
+            .Returns(Result.Ok(new ClaimsPrincipal()));
 
         // act
         var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection);
@@ -79,7 +79,7 @@ public partial class AuthenticationControllerTests
 
         _tokenServiceMock
             .Setup(o => o.ValidateToken(It.IsAny<string>(), It.IsAny<bool>()))
-            .Returns(invalidClaimsPrincipal);
+            .Returns(Result.Ok(invalidClaimsPrincipal));
 
         // act
         var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection);

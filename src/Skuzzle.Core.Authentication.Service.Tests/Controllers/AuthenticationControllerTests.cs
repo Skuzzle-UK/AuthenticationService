@@ -10,6 +10,7 @@ using Skuzzle.Core.Authentication.Service.Controllers;
 using Skuzzle.Core.Authentication.Service.Extensions;
 using Skuzzle.Core.Authentication.Service.Services;
 using Skuzzle.Core.Authentication.Service.Storage;
+using Skuzzle.Core.Lib.ResultClass;
 using System.Security.Claims;
 
 namespace Skuzzle.Core.Authentication.Service.Tests.Controllers;
@@ -96,7 +97,7 @@ public partial class AuthenticationControllerTests
 
         _tokenServiceMock
             .Setup(o => o.ValidateToken(It.IsAny<string>(), It.IsAny<bool>()))
-            .Returns(_claimsPrincipal);
+            .Returns(Result.Ok(_claimsPrincipal));
 
         _sut = new AuthenticationController(
             _passwordHashServiceMock.Object,

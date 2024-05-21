@@ -13,4 +13,10 @@ public class JwtSettings
 
     [Required]
     public required string Audience { get; set; }
+
+    [Required]
+    public required int TtlSeconds { get; set; }
+
+    [Required]
+    public required int RefreshTtlSeconds { get; set; }
 }

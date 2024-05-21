@@ -93,13 +93,14 @@ public class AuthenticationController : ControllerBase
 
         var jwt = token.FirstOrDefault()!.Replace("Bearer ", "");
 
-        var claim = _tokenService.ValidateToken(jwt, false).FindFirst("UserId");
-        if (claim is null)
+        var claimResult = _tokenService.ValidateToken(jwt, false);
+        if (claimResult.IsFailure || claimResult.Value is null)
         {
             return Unauthorized();
         }
 
-        if (!Guid.TryParse(claim.Value, out var userId))
+        var claim = claimResult.Value.FindFirst("UserId");
+        if (claim is null || !Guid.TryParse(claim.Value, out var userId))
         {
             return Unauthorized();
         }
@@ -110,12 +111,7 @@ public class AuthenticationController : ControllerBase
             return StatusCode((int)HttpStatusCode.InternalServerError, result.ErrorMessage);
         }
 
-        if (result.Value is null)
-        {
-            return Unauthorized();
-        }
-
-        if(string.IsNullOrEmpty(request.RefreshToken))
+        if (result.Value is null || string.IsNullOrEmpty(request.RefreshToken))
         {
             return Unauthorized();
         }
