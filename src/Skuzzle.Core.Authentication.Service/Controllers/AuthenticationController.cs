@@ -54,7 +54,7 @@ public class AuthenticationController : ControllerBase
             Country = request.Country,
         };
 
-        // TODO: Look at putting roles into an enum /nb
+        // TODO: Look at putting possible roles into a database collection /nb
         user.Roles.Add("Unconfirmed User");
 
         var result = await _userRepository.CreateAsync(user);
