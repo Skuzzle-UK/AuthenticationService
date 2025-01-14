@@ -361,3 +361,5 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/src/Skuzzle.Core.Authentication.Service/appsettings.Productions.json
+/src/Skuzzle.Core.Authentication.Service/appsettings.Development.json
