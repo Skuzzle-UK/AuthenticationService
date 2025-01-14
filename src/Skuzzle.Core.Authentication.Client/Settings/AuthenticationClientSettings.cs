@@ -5,9 +5,11 @@ namespace Skuzzle.Core.Authentication.Client.Settings;
 
 public class AuthenticationClientSettings
 {
-    public string AuthenticationServiceLoginUrl { get; set; }
+    public string LoginUrl { get; set; }
 
-    public string AuthenticationServiceRefreshUrl { get; set; }
+    public string RefreshUrl { get; set; }
+
+    public string RegisterUrl { get; set; }
 
     public int? RetryCount { get; set; }
 

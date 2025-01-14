@@ -4,7 +4,7 @@ public class User : IModel
 {
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    public string Username { get; set; } = string.Empty;
+    public required string Username { get; set; } = string.Empty;
 
     public required byte[] Hash { get; set; }
 

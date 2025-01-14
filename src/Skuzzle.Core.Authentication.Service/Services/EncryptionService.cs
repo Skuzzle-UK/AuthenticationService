@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
+using Skuzzle.Core.Authentication.Service.Services.Interfaces;
 using Skuzzle.Core.Authentication.Service.Settings;
 using System.Security.Cryptography;
 using System.Text;

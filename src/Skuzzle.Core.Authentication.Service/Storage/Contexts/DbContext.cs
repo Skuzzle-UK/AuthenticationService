@@ -5,9 +5,9 @@ using Skuzzle.Core.Lib.MongoDb.Context;
 
 namespace Skuzzle.Core.Authentication.Service.Storage.Contexts;
 
-public class DbContext : MongoDbContext
+public class ApplicationMongoDbContext : MongoDbContext
 {
-    public DbContext(IMongoDbConfiguration config)
+    public ApplicationMongoDbContext(IMongoDbConfiguration config)
         : base(config)
     {
     }
@@ -21,8 +21,14 @@ public class DbContext : MongoDbContext
         builder
             .Entity<UserEntity>()
             .HasKey(o => o.Id)
-            .HasIndex(o => o.Username)
-            .HasIndex(o => o.Email)
+            .HasIndex(o => o.Username, isUnique: true)
+            .HasIndex(o => o.Email, isUnique: true)
             .ToCollection("users");
+
+        builder
+            .Entity<RoleEntity>()
+            .HasKey(o => o.Id)
+            .HasIndex(o => o.Name, isUnique: true)
+            .ToCollection("Roles");
     }
 }

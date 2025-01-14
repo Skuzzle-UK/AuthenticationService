@@ -7,9 +7,7 @@ using Moq;
 using Skuzzle.Core.Authentication.Lib.Dtos;
 using Skuzzle.Core.Authentication.Lib.Models;
 using Skuzzle.Core.Authentication.Service.Controllers;
-using Skuzzle.Core.Authentication.Service.Extensions;
-using Skuzzle.Core.Authentication.Service.Services;
-using Skuzzle.Core.Authentication.Service.Storage;
+using Skuzzle.Core.Authentication.Service.Services.Interfaces;
 using Skuzzle.Core.Lib.ResultClass;
 using System.Security.Claims;
 
@@ -19,7 +17,7 @@ public partial class AuthenticationControllerTests
 {
     private readonly Mock<IPasswordHashService> _passwordHashServiceMock = new();
     private readonly Mock<ITokenService> _tokenServiceMock = new();
-    private readonly Mock<IRepository<User>> _userRepositoryMock = new();
+    private readonly Mock<IUserService> _userServiceMock = new();
     private readonly Mock<IValidator<UserDto>> _userValidatorMock = new();
     private readonly Mock<HttpRequest> _httpRequestMock = new();
     private readonly Mock<HttpContext> _httpContextMock = new();
@@ -102,7 +100,7 @@ public partial class AuthenticationControllerTests
         _sut = new AuthenticationController(
             _passwordHashServiceMock.Object,
             _tokenServiceMock.Object,
-            _userRepositoryMock.Object,
+            _userServiceMock.Object,
             _userValidatorMock.Object)
         {
             ControllerContext = new ControllerContext

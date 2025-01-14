@@ -1,6 +1,6 @@
 ﻿using Skuzzle.Core.Authentication.Lib.Models;
 
-namespace Skuzzle.Core.Authentication.Service.Extensions;
+namespace Skuzzle.Core.Authentication.Service.Services.Interfaces;
 
 public interface IPasswordHashService
 {

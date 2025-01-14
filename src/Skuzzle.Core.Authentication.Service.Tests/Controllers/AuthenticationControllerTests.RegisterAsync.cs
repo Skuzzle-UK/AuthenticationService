@@ -41,7 +41,7 @@ public partial class AuthenticationControllerTests
             .ReturnsAsync(new ValidationResult(validationFailures));
 
         // act
-        var result = await _sut.RegisterAsync(invalidUserDto);
+        var result = await _sut.RegisterAsync(invalidUserDto, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<string>>();
@@ -63,12 +63,12 @@ public partial class AuthenticationControllerTests
     public async Task RegisterAsync_CreateUserFails_ReturnsInternalServerError()
     {
         // arrange
-        _userRepositoryMock
+        _userServiceMock
             .Setup(o => o.CreateAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Fail<User>("Exception message"));
 
         // act
-        var result = await _sut.RegisterAsync(_validUserDto);
+        var result = await _sut.RegisterAsync(_validUserDto, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<string>>();
@@ -83,15 +83,15 @@ public partial class AuthenticationControllerTests
     public async Task RegisterAsync_RepoCreateUser_ExpectedUserInParameters()
     {
         // arrange
-        _userRepositoryMock
+        _userServiceMock
             .Setup(o => o.CreateAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Ok());
 
         // act
-        var result = await _sut.RegisterAsync(_validUserDto);
+        var result = await _sut.RegisterAsync(_validUserDto, CancellationToken.None);
 
         // assert
-        _userRepositoryMock.Verify(o => o.CreateAsync(
+        _userServiceMock.Verify(o => o.CreateAsync(
             It.Is<User>(u =>
                 u.Username == _testUser.Username &&
                 u.Email == _testUser.Email &&
@@ -109,12 +109,12 @@ public partial class AuthenticationControllerTests
     public async Task RegisterAsync_RepoCreateUserSuccessful_ReturnsOk()
     {
         // arrange
-        _userRepositoryMock
+        _userServiceMock
             .Setup(o => o.CreateAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Ok());
 
         // act
-        var result = await _sut.RegisterAsync(_validUserDto);
+        var result = await _sut.RegisterAsync(_validUserDto, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<string>>();

@@ -32,7 +32,7 @@ public partial class AuthenticationControllerTests
         _sut = new AuthenticationController(
             _passwordHashServiceMock.Object,
             _tokenServiceMock.Object,
-            _userRepositoryMock.Object,
+            _userServiceMock.Object,
             _userValidatorMock.Object)
         {
             ControllerContext = new ControllerContext
@@ -42,7 +42,7 @@ public partial class AuthenticationControllerTests
         };
 
         // act
-        var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection);
+        var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<Token>>();
@@ -58,7 +58,7 @@ public partial class AuthenticationControllerTests
             .Returns(Result.Ok(new ClaimsPrincipal()));
 
         // act
-        var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection);
+        var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<Token>>();
@@ -82,7 +82,7 @@ public partial class AuthenticationControllerTests
             .Returns(Result.Ok(invalidClaimsPrincipal));
 
         // act
-        var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection);
+        var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<Token>>();
@@ -93,12 +93,12 @@ public partial class AuthenticationControllerTests
     public async Task LoginAsync_RefreshTokenGrantTypeUserRepositoryFails_ReturnsInternalServerError()
     {
         // arrange
-        _userRepositoryMock
-            .Setup(o => o.FindAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        _userServiceMock
+            .Setup(o => o.GetById(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Fail<User>("Exception message"));
 
         // act
-        var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection);
+        var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<Token>>();
@@ -113,12 +113,12 @@ public partial class AuthenticationControllerTests
     public async Task LoginAsync_RefreshTokenGrantTypeUserDoesNotExist_ReturnsUnauthorised()
     {
         // arrange
-        _userRepositoryMock
-            .Setup(o => o.FindAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        _userServiceMock
+            .Setup(o => o.GetById(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Ok<User>(default));
 
         // act
-        var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection);
+        var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<Token>>();
@@ -137,12 +137,12 @@ public partial class AuthenticationControllerTests
                 { "password", _validUserDto.Password }
             });
 
-        _userRepositoryMock
-            .Setup(o => o.FindAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        _userServiceMock
+            .Setup(o => o.GetById(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Ok(_testUser));
 
         // act
-        var result = await _sut.LoginAsync(refreshTokenMissingFormCollection);
+        var result = await _sut.LoginAsync(refreshTokenMissingFormCollection, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<Token>>();
@@ -153,8 +153,8 @@ public partial class AuthenticationControllerTests
     public async Task LoginAsync_RefreshTokenGrantTypeTokenServiceReturnsNull_ReturnsUnauthorised()
     {
         // arrange
-        _userRepositoryMock
-            .Setup(o => o.FindAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        _userServiceMock
+            .Setup(o => o.GetById(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Ok(_testUser));
 
         Token? token = null;
@@ -164,7 +164,7 @@ public partial class AuthenticationControllerTests
             .Returns(token);
 
         // act
-        var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection);
+        var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<Token>>();
@@ -175,8 +175,8 @@ public partial class AuthenticationControllerTests
     public async Task LoginAsync_RefreshTokenGrantTypeFullyAuthorized_ReturnsToken()
     {
         // arrange
-        _userRepositoryMock
-            .Setup(o => o.FindAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        _userServiceMock
+            .Setup(o => o.GetById(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Ok(_testUser));
 
         var token = new Token(
@@ -191,7 +191,7 @@ public partial class AuthenticationControllerTests
             .Returns(token);
 
         // act
-        var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection);
+        var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<Token>>();

@@ -1,8 +1,10 @@
 ﻿using AutoMapper.Extensions.ExpressionMapping;
 using FluentValidation;
+using Microsoft.EntityFrameworkCore;
 using Skuzzle.Core.Authentication.Lib.Dtos;
 using Skuzzle.Core.Authentication.Lib.Models;
 using Skuzzle.Core.Authentication.Service.Services;
+using Skuzzle.Core.Authentication.Service.Services.Interfaces;
 using Skuzzle.Core.Authentication.Service.Settings;
 using Skuzzle.Core.Authentication.Service.Storage;
 using Skuzzle.Core.Authentication.Service.Storage.Contexts;
@@ -16,14 +18,23 @@ internal static class HostExtensions
 {
     internal static IHostBuilder ConfigureService(this IHostBuilder host)
     {
-        host.ConfigureMongoDb<DbContext>();
-
         return host.ConfigureServices((hostContext, services) =>
         {
+            var mongoSettingsSection = hostContext.Configuration.GetSection(nameof(MongoDbSettings));
+            if (mongoSettingsSection.Exists())
+            {
+                host.ConfigureMongoDb<ApplicationMongoDbContext>();
+            }
+            else // MySQL
+            {
+                services.AddDbContext<ApplicationDbContext>(options =>
+                    options.UseMySQL(hostContext.Configuration.GetConnectionString("DefaultConnection")!));
+            }
+
             services.AddMemoryCache();
             services.AddServices();
             services.AddValidators();
-            services.AddRepositories();
+            services.AddRepositories(hostContext);
             services.AddValidatedSettings(hostContext);
             services.AddAutoMapper(cfg => cfg.AddExpressionMapping(), typeof(MappingProfiles));
             services.AddControllers();
@@ -34,11 +45,28 @@ internal static class HostExtensions
         services
             .AddScoped<IPasswordHashService, PasswordHashService>()
             .AddSingleton<ITokenService, TokenService>()
+            .AddScoped<IUserService, UserService>()
+            .AddScoped<IRoleService, RoleService>()
             .AddScoped<IEncryptionService, EncryptionService>();
 
-    internal static IServiceCollection AddRepositories(this IServiceCollection services) =>
-        services
-            .AddScoped<IRepository<User>, EncryptedRepository<User, UserEntity>>();
+    internal static IServiceCollection AddRepositories(this IServiceCollection services, HostBuilderContext hostContext)
+    {
+        var mongoSettingsSection = hostContext.Configuration.GetSection(nameof(MongoDbSettings));
+        if (mongoSettingsSection.Exists())
+        {
+            services
+                .AddScoped<IRepository<User>, MongoEncryptedRepository<User, UserEntity>>()
+                .AddScoped<IRepository<Role>, MongoRepository<Role, RoleEntity>>();
+        }
+        else
+        {
+            services
+                .AddScoped<IRepository<User>, EncryptedRepository<User, UserEntity>>()
+                .AddScoped<IRepository<Role>, Repository<Role, RoleEntity>>();
+        }
+
+        return services;
+    }
 
     internal static IServiceCollection AddValidators(this IServiceCollection services) =>
         services
@@ -46,13 +74,17 @@ internal static class HostExtensions
 
     internal static IServiceCollection AddValidatedSettings(this IServiceCollection services, HostBuilderContext hostContext)
     {
+        var mongoSettingsSection = hostContext.Configuration.GetSection(nameof(MongoDbSettings));
+        if (mongoSettingsSection.Exists())
+        {
+            services.AddOptions<MongoDbSettings>()
+                .Bind(hostContext.Configuration.GetSection(nameof(MongoDbSettings)))
+                .ValidateDataAnnotations()
+                .ValidateOnStart();
+        }
+
         services.AddOptions<JwtSettings>()
             .Bind(hostContext.Configuration.GetSection(nameof(JwtSettings)))
-            .ValidateDataAnnotations()
-            .ValidateOnStart();
-
-        services.AddOptions<MongoDbSettings>()
-            .Bind(hostContext.Configuration.GetSection(nameof(MongoDbSettings)))
             .ValidateDataAnnotations()
             .ValidateOnStart();
 

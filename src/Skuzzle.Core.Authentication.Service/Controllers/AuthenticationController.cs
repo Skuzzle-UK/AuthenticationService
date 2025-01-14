@@ -4,8 +4,7 @@ using Skuzzle.Core.Authentication.Lib.Dtos;
 using Skuzzle.Core.Authentication.Lib.Enums;
 using Skuzzle.Core.Authentication.Lib.Models;
 using Skuzzle.Core.Authentication.Service.Extensions;
-using Skuzzle.Core.Authentication.Service.Services;
-using Skuzzle.Core.Authentication.Service.Storage;
+using Skuzzle.Core.Authentication.Service.Services.Interfaces;
 using System.Net;
 
 namespace Skuzzle.Core.Authentication.Service.Controllers;
@@ -16,23 +15,23 @@ public class AuthenticationController : ControllerBase
 {
     private readonly IPasswordHashService _passwordHashService;
     private readonly ITokenService _tokenService;
-    private readonly IRepository<User> _userRepository;
+    private readonly IUserService _userService;
     private readonly IValidator<UserDto> _userValidator;
 
     public AuthenticationController(
         IPasswordHashService passwordHashService,
         ITokenService tokenService,
-        IRepository<User> userRepository,
+        IUserService userService,
         IValidator<UserDto> userValidator)
     {
         _passwordHashService = passwordHashService;
         _tokenService = tokenService;
-        _userRepository = userRepository;
+        _userService = userService;
         _userValidator = userValidator;
     }
 
     [HttpPost("register")]
-    public async Task<ActionResult<string>> RegisterAsync(UserDto request)
+    public async Task<ActionResult<string>> RegisterAsync(UserDto request, CancellationToken ct)
     {
         var validationResults = await _userValidator.ValidateAsync(request);
         if (!validationResults.IsValid)
@@ -57,7 +56,8 @@ public class AuthenticationController : ControllerBase
         // TODO: Look at putting possible roles into a database collection /nb
         user.Roles.Add("Unconfirmed User");
 
-        var result = await _userRepository.CreateAsync(user);
+        // TODO: Handle User already exists /nb
+        var result = await _userService.CreateAsync(user, ct);
         if (result.IsFailure)
         {
             return StatusCode((int)HttpStatusCode.InternalServerError, result.ErrorMessage);
@@ -67,7 +67,7 @@ public class AuthenticationController : ControllerBase
     }
 
     [HttpPost("token")]
-    public async Task<ActionResult<Token>> LoginAsync(IFormCollection formCollection)
+    public async Task<ActionResult<Token>> LoginAsync([FromForm]IFormCollection formCollection, CancellationToken ct)
     {
         var request = formCollection.ToAuthenticationRequest();
         if (request is null)
@@ -77,13 +77,13 @@ public class AuthenticationController : ControllerBase
 
         return request.GrantType switch
         {
-            GrantType.Password => await PasswordGrantType(request),
-            GrantType.Refresh_token => await RefreshTokenGrantType(request),
+            GrantType.Password => await PasswordGrantType(request, ct),
+            GrantType.Refresh_token => await RefreshTokenGrantType(request, ct),
             _ => (ActionResult<Token>)Unauthorized(),
         };
     }
 
-    private async Task<ActionResult<Token>> RefreshTokenGrantType(AuthenticationRequest request)
+    private async Task<ActionResult<Token>> RefreshTokenGrantType(AuthenticationRequest request, CancellationToken ct)
     {
         var token = Request.Headers.Authorization;
         if (token.IsNullOrEmptyOrWhiteSpace())
@@ -105,7 +105,8 @@ public class AuthenticationController : ControllerBase
             return Unauthorized();
         }
 
-        var result = await _userRepository.FindAsync(userId);
+        // TODO: Can we handle not exists differently to internal server error /nb
+        var result = await _userService.GetById(userId, ct);
         if (result.IsFailure)
         {
             return StatusCode((int)HttpStatusCode.InternalServerError, result.ErrorMessage);
@@ -125,15 +126,21 @@ public class AuthenticationController : ControllerBase
         return Ok(newToken);
     }
 
-    private async Task<ActionResult<Token>> PasswordGrantType(AuthenticationRequest request)
+    private async Task<ActionResult<Token>> PasswordGrantType(AuthenticationRequest request, CancellationToken ct)
     {
-        var result = await _userRepository.FirstOrDefaultAsync(o => o.Username == request.Username);
+        if (string.IsNullOrEmpty(request.Username) || string.IsNullOrEmpty(request.Password))
+        {
+            return Unauthorized("Incorrect login details");
+        }
+
+        var result = await _userService.GetByUsername(request.Username, ct);
         if (result.IsFailure)
         {
             return StatusCode((int)HttpStatusCode.InternalServerError, result.ErrorMessage);
         }
 
-        if (result.Value is null || result.Value.Username != request.Username || request.Password is null)
+        // User does not exist
+        if (result.Value is null)
         {
             return Unauthorized("Incorrect login details");
         }

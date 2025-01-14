@@ -6,9 +6,10 @@ namespace Skuzzle.Core.Authentication.Client;
 
 public static class HostExtensions
 {
-    public static IServiceCollection AddServices(this IServiceCollection services, IConfiguration configuration) =>
+    public static IServiceCollection AddAuthenticationServices(this IServiceCollection services, IConfiguration configuration) =>
         services
             .AddHttpClient()
             .AddMemoryCache()
-            .Configure<AuthenticationClientSettings>(configuration.GetSection(nameof(AuthenticationClientSettings)));
+            .Configure<AuthenticationClientSettings>(configuration.GetSection(nameof(AuthenticationClientSettings)))
+            .AddScoped<IAuthenticationClient, AuthenticationClient>();
 }

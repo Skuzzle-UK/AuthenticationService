@@ -1,35 +1,31 @@
 ﻿using AutoMapper;
 using Microsoft.EntityFrameworkCore;
 using Skuzzle.Core.Authentication.Lib.Models;
-using Skuzzle.Core.Authentication.Service.Services.Interfaces;
 using Skuzzle.Core.Authentication.Service.Storage.Contexts;
 using Skuzzle.Core.Authentication.Service.Storage.Entities.Interfaces;
-using Skuzzle.Core.Lib.MongoDb.Context;
 using Skuzzle.Core.Lib.ResultClass;
 using System.Linq.Expressions;
 
 namespace Skuzzle.Core.Authentication.Service.Storage;
 
-public class EncryptedRepository<TModel, TEntity> : IRepository<TModel>
+public class Repository<TModel, TEntity> : IRepository<TModel>
     where TModel : class, IModel
-    where TEntity : class, IEncryptedEntity
+    where TEntity : class, IEntity
 {
-    private readonly ILogger<EncryptedRepository<TModel, TEntity>> _logger;
+    private readonly ILogger<Repository<TModel, TEntity>> _logger;
     private readonly ApplicationDbContext _context;
     private readonly DbSet<TEntity> _dbSet;
-    private readonly IEncryptionService _encryptionService;
     private readonly IMapper _mapper;
 
-    public EncryptedRepository(
-        ILogger<EncryptedRepository<TModel, TEntity>> logger,
+    public Repository(
+        ILogger<Repository<TModel, TEntity>> logger,
         ApplicationDbContext context,
-        IEncryptionService encryptionService,
         IMapper mapper)
     {
         _logger = logger;
         _context = context;
-        _encryptionService = encryptionService;
         _mapper = mapper;
+
         _dbSet = _context.Set<TEntity>();
     }
 
@@ -43,7 +39,6 @@ public class EncryptedRepository<TModel, TEntity> : IRepository<TModel>
         {
             var entity = _mapper.Map<TEntity>(data);
             entity.CreatedAt = DateTimeOffset.UtcNow;
-            entity.EncryptedData = _encryptionService.Encrypt(data);
 
             await _dbSet.AddAsync(entity);
             await _context.SaveChangesAsync();
@@ -70,7 +65,7 @@ public class EncryptedRepository<TModel, TEntity> : IRepository<TModel>
                 return Result.Ok<TModel>(default);
             }
 
-            var model = _encryptionService.Decrypt<TModel>(entity.EncryptedData);
+            var model = _mapper.Map<TModel>(entity);
             if (model is null)
             {
                 return Result.Fail<TModel>("Model is null");
@@ -97,7 +92,7 @@ public class EncryptedRepository<TModel, TEntity> : IRepository<TModel>
                 return Result.Ok<TModel>(default);
             }
 
-            var model = _encryptionService.Decrypt<TModel>(entity.EncryptedData);
+            var model = _mapper.Map<TModel>(entity);
             if (model is null)
             {
                 return Result.Ok<TModel>(default);

@@ -1,8 +1,6 @@
 ﻿using AutoMapper;
-using Microsoft.EntityFrameworkCore;
 using Skuzzle.Core.Authentication.Lib.Models;
 using Skuzzle.Core.Authentication.Service.Services.Interfaces;
-using Skuzzle.Core.Authentication.Service.Storage.Contexts;
 using Skuzzle.Core.Authentication.Service.Storage.Entities.Interfaces;
 using Skuzzle.Core.Lib.MongoDb.Context;
 using Skuzzle.Core.Lib.ResultClass;
@@ -10,19 +8,18 @@ using System.Linq.Expressions;
 
 namespace Skuzzle.Core.Authentication.Service.Storage;
 
-public class EncryptedRepository<TModel, TEntity> : IRepository<TModel>
+public class MongoEncryptedRepository<TModel, TEntity> : IRepository<TModel>
     where TModel : class, IModel
     where TEntity : class, IEncryptedEntity
 {
     private readonly ILogger<EncryptedRepository<TModel, TEntity>> _logger;
-    private readonly ApplicationDbContext _context;
-    private readonly DbSet<TEntity> _dbSet;
+    private readonly IMongoDbContext _context;
     private readonly IEncryptionService _encryptionService;
     private readonly IMapper _mapper;
 
-    public EncryptedRepository(
+    public MongoEncryptedRepository(
         ILogger<EncryptedRepository<TModel, TEntity>> logger,
-        ApplicationDbContext context,
+        IMongoDbContext context,
         IEncryptionService encryptionService,
         IMapper mapper)
     {
@@ -30,7 +27,6 @@ public class EncryptedRepository<TModel, TEntity> : IRepository<TModel>
         _context = context;
         _encryptionService = encryptionService;
         _mapper = mapper;
-        _dbSet = _context.Set<TEntity>();
     }
 
     public Task<Result<bool>> CountAsync(CancellationToken ct = default) =>
@@ -45,8 +41,7 @@ public class EncryptedRepository<TModel, TEntity> : IRepository<TModel>
             entity.CreatedAt = DateTimeOffset.UtcNow;
             entity.EncryptedData = _encryptionService.Encrypt(data);
 
-            await _dbSet.AddAsync(entity);
-            await _context.SaveChangesAsync();
+            await _context.InsertOneAsync(entity);
 
             return Result.Ok();
         }
@@ -64,7 +59,7 @@ public class EncryptedRepository<TModel, TEntity> : IRepository<TModel>
     {
         try
         {
-            var entity = await _dbSet.FindAsync(id, ct);
+            var entity = await _context.FindAsync<TEntity>(id, ct);
             if (entity is null)
             {
                 return Result.Ok<TModel>(default);
@@ -91,7 +86,7 @@ public class EncryptedRepository<TModel, TEntity> : IRepository<TModel>
         {
             var mappedExpression = _mapper.Map<Expression<Func<TEntity, bool>>>(predicate);
 
-            var entity = await _dbSet.FirstOrDefaultAsync(mappedExpression, ct);
+            var entity = await _context.FirstOrDefaultAsync(mappedExpression, ct);
             if (entity is null)
             {
                 return Result.Ok<TModel>(default);

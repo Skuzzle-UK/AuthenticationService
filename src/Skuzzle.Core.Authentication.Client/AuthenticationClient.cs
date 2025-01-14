@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Polly;
 using Polly.Retry;
 using Skuzzle.Core.Authentication.Client.Settings;
+using Skuzzle.Core.Authentication.Lib.Dtos;
 using Skuzzle.Core.Authentication.Lib.Models;
 using Skuzzle.Core.Lib.ResultClass;
 using System.Text;
@@ -28,8 +29,8 @@ public class AuthenticationClient : IAuthenticationClient
 
         _settings = new()
         {
-            AuthenticationServiceLoginUrl = settings.Value.AuthenticationServiceLoginUrl,
-            AuthenticationServiceRefreshUrl = settings.Value.AuthenticationServiceRefreshUrl,
+            LoginUrl = settings.Value.LoginUrl,
+            RefreshUrl = settings.Value.RefreshUrl,
             RetryCount = settings.Value.RetryCount is not null ? settings.Value.RetryCount : 3,
             RetryDelay = settings.Value.RetryDelay is not null ? settings.Value.RetryDelay : 10,
             DefaultRefreshExpiry = settings.Value.DefaultRefreshExpiry is not null ? settings.Value.DefaultRefreshExpiry : 3600
@@ -41,9 +42,28 @@ public class AuthenticationClient : IAuthenticationClient
             .WaitAndRetryAsync(_settings.RetryCount.Value, r => TimeSpan.FromSeconds(_settings.RetryDelay.Value));
     }
 
-    // TODO: Add some kind of setting to allow for encrypted stored credentials to be used /nb
+    public async Task<Result> RegisterUserAsync(UserDto user, CancellationToken ct = default)
+    {
+        using var client = _httpClientFactory.CreateClient();
 
-    public async Task<Result<Token>> TryGetExistingTokenAsync(Guid userId)
+        var jsonPayload = JsonSerializer.Serialize(user);
+        var payload = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+
+        var response = await _retryPolicy.ExecuteAsync(cancellationToken =>
+            client.PostAsync(_settings.RegisterUrl, payload, cancellationToken), ct);
+
+        return response.IsSuccessStatusCode
+            ? Result.Ok()
+            : Result.Fail(await response.Content.ReadAsStringAsync());
+    }
+
+    public async Task<Result<Token>> GetTokenAsync(Guid userId, CancellationToken ct = default) =>
+        await TryGetExistingTokenAsync(userId, ct);
+
+    public async Task<Result<Token>> GetTokenAsync(AuthenticationRequest authRequest, CancellationToken ct = default) =>
+        await GetNewTokenAsync(authRequest, ct);
+
+    private async Task<Result<Token>> TryGetExistingTokenAsync(Guid userId, CancellationToken ct)
     {
         if (!_tokensCache.TryGetValue(userId, out Token? token))
         {
@@ -65,7 +85,7 @@ public class AuthenticationClient : IAuthenticationClient
 
         if (token.ExpiresAt >= DateTimeOffset.UtcNow)
         {
-            var newTokenResult = await RefreshTokenFromAuthenticationService(token);
+            var newTokenResult = await RefreshTokenFromAuthenticationService(token, ct);
             if (newTokenResult.IsFailure || newTokenResult.Value is null)
             {
                 return Result.Fail<Token>(newTokenResult.ErrorMessage);
@@ -77,9 +97,9 @@ public class AuthenticationClient : IAuthenticationClient
         return Result.Ok(token);
     }
 
-    public async Task<Result<Token>> GetNewTokenAsync(AuthenticationRequest request)
+    private async Task<Result<Token>> GetNewTokenAsync(AuthenticationRequest request, CancellationToken ct)
     {
-        var result = await RequestNewTokenFromAuthenticationService(request);
+        var result = await RequestNewTokenFromAuthenticationService(request, ct);
         if (result.IsFailure || result.Value is null)
         {
             return Result.Fail<Token>(result.ErrorMessage);
@@ -101,15 +121,15 @@ public class AuthenticationClient : IAuthenticationClient
         return Result.Ok(token);
     }
 
-    private async Task<Result<Token>> RequestNewTokenFromAuthenticationService(AuthenticationRequest request)
+    private async Task<Result<Token>> RequestNewTokenFromAuthenticationService(AuthenticationRequest request, CancellationToken ct)
     {
         using var client = _httpClientFactory.CreateClient();
 
         var jsonPayload = JsonSerializer.Serialize(request);
         var payload = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
-        var response = await _retryPolicy.ExecuteAsync(() =>
-            client.PostAsync(_settings.AuthenticationServiceLoginUrl, payload));
+        var response = await _retryPolicy.ExecuteAsync(cancellationToken =>
+            client.PostAsync(_settings.LoginUrl, payload, cancellationToken), ct);
 
         var jsonResponse = await response.Content.ReadAsStringAsync();
 
@@ -123,15 +143,16 @@ public class AuthenticationClient : IAuthenticationClient
         return Result.Ok(token);
     }
 
-    private async Task<Result<Token>> RefreshTokenFromAuthenticationService(Token oldToken)
+    private async Task<Result<Token>> RefreshTokenFromAuthenticationService(Token oldToken, CancellationToken ct)
     {
         using var client = _httpClientFactory.CreateClient();
 
         var jsonPayload = JsonSerializer.Serialize(oldToken);
         var payload = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
-        var response = await _retryPolicy.ExecuteAsync(() =>
-            client.PostAsync(_settings.AuthenticationServiceRefreshUrl, payload));
+        var response = await _retryPolicy.ExecuteAsync(cancellationToken =>
+            client.PostAsync(_settings.RefreshUrl, payload, cancellationToken), ct);
+
 
         var jsonResponse = await response.Content.ReadAsStringAsync();
 

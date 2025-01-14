@@ -25,7 +25,7 @@ public partial class AuthenticationControllerTests
 
 
         // act
-        var result = await _sut.LoginAsync(formCollection);
+        var result = await _sut.LoginAsync(formCollection, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<Token>>();
@@ -47,7 +47,7 @@ public partial class AuthenticationControllerTests
 
 
         // act
-        var result = await _sut.LoginAsync(formCollection);
+        var result = await _sut.LoginAsync(formCollection, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<Token>>();
@@ -55,15 +55,15 @@ public partial class AuthenticationControllerTests
     }
 
     [Fact]
-    public async Task LoginAsync_PasswordGrantTypeUserRepoFails_ReturnsInternalServerError()
+    public async Task LoginAsync_PasswordGrantTypeUserServiceFails_ReturnsInternalServerError()
     {
         // arrange
-        _userRepositoryMock
-            .Setup(o => o.FirstOrDefaultAsync(It.IsAny<Expression<Func<User, bool>>>(), It.IsAny<CancellationToken>()))
+        _userServiceMock
+            .Setup(o => o.GetByUsername(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Fail<User>("Some error message"));
 
         // act
-        var result = await _sut.LoginAsync(_passwordTypeFormCollection);
+        var result = await _sut.LoginAsync(_passwordTypeFormCollection, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<Token>>();
@@ -77,12 +77,12 @@ public partial class AuthenticationControllerTests
     public async Task LoginAsync_PasswordGrantTypeUserNotFound_ReturnsUnauthorized()
     {
         // arrange
-        _userRepositoryMock
-            .Setup(o => o.FirstOrDefaultAsync(It.IsAny<Expression<Func<User, bool>>>(), It.IsAny<CancellationToken>()))
+        _userServiceMock
+            .Setup(o => o.GetByUsername(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Ok<User>(default));
 
         // act
-        var result = await _sut.LoginAsync(_passwordTypeFormCollection);
+        var result = await _sut.LoginAsync(_passwordTypeFormCollection, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<Token>>();
@@ -93,8 +93,8 @@ public partial class AuthenticationControllerTests
     public async Task LoginAsync_PasswordGrantTypePasswordIncorrect_ReturnsUnauthorized()
     {
         // arrange
-        _userRepositoryMock
-            .Setup(o => o.FirstOrDefaultAsync(It.IsAny<Expression<Func<User, bool>>>(), It.IsAny<CancellationToken>()))
+        _userServiceMock
+            .Setup(o => o.GetByUsername(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Ok(_testUser));
 
         _passwordHashServiceMock
@@ -102,7 +102,7 @@ public partial class AuthenticationControllerTests
             .Returns(false);
 
         // act
-        var result = await _sut.LoginAsync(_passwordTypeFormCollection);
+        var result = await _sut.LoginAsync(_passwordTypeFormCollection, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<Token>>();
@@ -120,8 +120,8 @@ public partial class AuthenticationControllerTests
             "RefreshToken",
             DateTimeOffset.UtcNow.AddMinutes(5));
 
-        _userRepositoryMock
-            .Setup(o => o.FirstOrDefaultAsync(It.IsAny<Expression<Func<User, bool>>>(), It.IsAny<CancellationToken>()))
+        _userServiceMock
+            .Setup(o => o.GetByUsername(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Ok(_testUser));
 
         _passwordHashServiceMock
@@ -133,7 +133,7 @@ public partial class AuthenticationControllerTests
             .Returns(token);
 
         // act
-        var result = await _sut.LoginAsync(_passwordTypeFormCollection);
+        var result = await _sut.LoginAsync(_passwordTypeFormCollection, CancellationToken.None);
 
         // assert
         result.Should().BeOfType<ActionResult<Token>>();

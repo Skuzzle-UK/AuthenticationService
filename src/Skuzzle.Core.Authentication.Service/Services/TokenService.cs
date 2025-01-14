@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Skuzzle.Core.Authentication.Lib.Models;
+using Skuzzle.Core.Authentication.Service.Services.Interfaces;
 using Skuzzle.Core.Authentication.Service.Settings;
 using Skuzzle.Core.Lib.ResultClass;
 using System.IdentityModel.Tokens.Jwt;

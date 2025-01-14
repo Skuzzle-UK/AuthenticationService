@@ -1,4 +1,5 @@
 ﻿using FluentValidation;
+using Microsoft.EntityFrameworkCore;
 using Skuzzle.Core.Authentication.Lib.Dtos;
 using Skuzzle.Core.Authentication.Lib.Models;
 using Skuzzle.Core.Authentication.Service.Storage;
@@ -26,9 +27,10 @@ public class UserDtoValidator : AbstractValidator<UserDto>
             .WithMessage("Username must be shorter than 20 characters");
         
         RuleFor(x => x.Username)
-            .MustAsync(async (Username, cancellation) =>
+            .MustAsync(async (username, ct) =>
             {
-                var result = await _repository.FirstOrDefaultAsync(o => o.Username == Username, cancellation);
+                var result = await _repository.FirstOrDefaultAsync(o => o.Username.ToLower() == username.ToLower(), ct);
+
                 if (result.IsSuccess)
                 {
                     return result.Value == null;
@@ -46,9 +48,9 @@ public class UserDtoValidator : AbstractValidator<UserDto>
             .WithMessage("Email address must be a valid email address");
 
         RuleFor(x => x.Email)
-            .MustAsync(async (Email, cancellation) =>
+            .MustAsync(async (email, ct) =>
             {
-                var result = await _repository.FirstOrDefaultAsync(o => o.Email == Email, cancellation);
+                var result = await _repository.FirstOrDefaultAsync(o => o.Email.ToLower() == email.ToLower(), ct);
                 if (result.IsSuccess)
                 {
                     return result.Value == null;

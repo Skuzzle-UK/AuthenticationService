@@ -1,4 +1,4 @@
-﻿namespace Skuzzle.Core.Authentication.Service.Services;
+﻿namespace Skuzzle.Core.Authentication.Service.Services.Interfaces;
 
 public interface IEncryptionService
 {

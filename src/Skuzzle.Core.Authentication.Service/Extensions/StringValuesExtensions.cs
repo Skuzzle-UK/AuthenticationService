@@ -7,6 +7,6 @@ public static class StringValuesExtensions
 {
     public static bool IsNullOrEmptyOrWhiteSpace(this StringValues value)
     {
-        return (value.IsNullOrEmpty() || string.IsNullOrEmpty(value) || string.IsNullOrWhiteSpace(value));
+        return string.IsNullOrWhiteSpace(value);
     }
 }

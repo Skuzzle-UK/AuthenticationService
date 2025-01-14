@@ -1,22 +1,31 @@
+# See https://aka.ms/customizecontainer to learn how to customize your debug container and how Visual Studio uses this Dockerfile to build your images for faster debugging.
+
+# This stage is used when running from VS in fast mode (Default for Debug configuration)
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
-USER app
+USER $APP_UID
 WORKDIR /app
 EXPOSE 8080
+EXPOSE 8081
 
+
+# This stage is used to build the service project
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["Skuzzle.Core.Service.Authentication.csproj", "./"]
-RUN dotnet restore "Skuzzle.Core.Service.Authentication.csproj"
+COPY ["Skuzzle.Core.Authentication.Service/Skuzzle.Core.Authentication.Service.csproj", "Skuzzle.Core.Authentication.Service/"]
+COPY ["Skuzzle.Core.Authentication.Lib/Skuzzle.Core.Authentication.Lib.csproj", "Skuzzle.Core.Authentication.Lib/"]
+RUN dotnet restore "./Skuzzle.Core.Authentication.Service/Skuzzle.Core.Authentication.Service.csproj"
 COPY . .
-WORKDIR "/src"
-RUN dotnet build "./Skuzzle.Core.Service.Authentication.csproj" -c $BUILD_CONFIGURATION -o /app/build
+WORKDIR "/src/Skuzzle.Core.Authentication.Service"
+RUN dotnet build "./Skuzzle.Core.Authentication.Service.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
+# This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./Skuzzle.Core.Service.Authentication.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "./Skuzzle.Core.Authentication.Service.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
+# This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "Skuzzle.Core.Service.Authentication.dll"]
+ENTRYPOINT ["dotnet", "Skuzzle.Core.Authentication.Service.dll"]

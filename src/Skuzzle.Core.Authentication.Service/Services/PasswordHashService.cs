@@ -1,4 +1,5 @@
 ﻿using System.Security.Cryptography;
+using Skuzzle.Core.Authentication.Service.Services.Interfaces;
 
 namespace Skuzzle.Core.Authentication.Service.Extensions;
 
