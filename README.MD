@@ -12,5 +12,5 @@ Example client included that consumes the generated token to allow access to con
 
 ## Prerequisites:
 
-- MongoDb and configuration added to appsettings.json
+- MongoDb or MySQL and configuration added to appsettings.json
 - Setup your own Encryption settings. You can use the provided endpoint https://localhost:7008/api/encryption/generate in the EncryptionController class to randomly generate your own key and initialisation vector
