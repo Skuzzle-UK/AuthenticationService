@@ -152,6 +152,6 @@ public class AuthenticationController : ControllerBase
             return Unauthorized("Incorrect login details");
         }
 
-        return Ok(_tokenService.GetNewToken(result.Value) ?? null);
+        return Ok(_tokenService.GetNewToken(result.Value));
     }
 }

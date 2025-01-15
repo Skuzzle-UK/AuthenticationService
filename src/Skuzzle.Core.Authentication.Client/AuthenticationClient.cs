@@ -6,6 +6,7 @@ using Skuzzle.Core.Authentication.Client.Settings;
 using Skuzzle.Core.Authentication.Lib.Dtos;
 using Skuzzle.Core.Authentication.Lib.Models;
 using Skuzzle.Core.Lib.ResultClass;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 
@@ -31,6 +32,7 @@ public class AuthenticationClient : IAuthenticationClient
         {
             LoginUrl = settings.Value.LoginUrl,
             RefreshUrl = settings.Value.RefreshUrl,
+            RegisterUrl = settings.Value.RegisterUrl,
             RetryCount = settings.Value.RetryCount is not null ? settings.Value.RetryCount : 3,
             RetryDelay = settings.Value.RetryDelay is not null ? settings.Value.RetryDelay : 10,
             DefaultRefreshExpiry = settings.Value.DefaultRefreshExpiry is not null ? settings.Value.DefaultRefreshExpiry : 3600
@@ -38,8 +40,18 @@ public class AuthenticationClient : IAuthenticationClient
 
         _retryPolicy = Policy
             .Handle<HttpRequestException>()
-            .OrResult<HttpResponseMessage>(r => !r.IsSuccessStatusCode)
+            .OrResult<HttpResponseMessage>(r => !r.IsSuccessStatusCode && !IsExcludedStatusCode(r.StatusCode))
             .WaitAndRetryAsync(_settings.RetryCount.Value, r => TimeSpan.FromSeconds(_settings.RetryDelay.Value));
+    }
+
+    private bool IsExcludedStatusCode(HttpStatusCode statusCode)
+    {
+        return statusCode == HttpStatusCode.BadRequest
+            || statusCode == HttpStatusCode.Unauthorized
+            || statusCode == HttpStatusCode.Forbidden
+            || statusCode == HttpStatusCode.NotFound
+            || statusCode == HttpStatusCode.Conflict
+            || statusCode == HttpStatusCode.UnprocessableEntity;
     }
 
     public async Task<Result> RegisterUserAsync(UserDto user, CancellationToken ct = default)
@@ -49,12 +61,21 @@ public class AuthenticationClient : IAuthenticationClient
         var jsonPayload = JsonSerializer.Serialize(user);
         var payload = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
-        var response = await _retryPolicy.ExecuteAsync(cancellationToken =>
-            client.PostAsync(_settings.RegisterUrl, payload, cancellationToken), ct);
+        var response = await _retryPolicy.ExecuteAsync(async cancellationToken =>
+        {
+            var result = await client.PostAsync(_settings.RegisterUrl, payload, cancellationToken);
+            if (IsExcludedStatusCode(result.StatusCode))
+            {
+                {
+                    return result;
+                }
+            }
+                return result.EnsureSuccessStatusCode();
+        }, ct);
 
         return response.IsSuccessStatusCode
             ? Result.Ok()
-            : Result.Fail(await response.Content.ReadAsStringAsync());
+            : Result.Fail(await response.Content.ReadAsStringAsync(ct));
     }
 
     public async Task<Result<Token>> GetTokenAsync(Guid userId, CancellationToken ct = default) =>
@@ -125,13 +146,38 @@ public class AuthenticationClient : IAuthenticationClient
     {
         using var client = _httpClientFactory.CreateClient();
 
-        var jsonPayload = JsonSerializer.Serialize(request);
-        var payload = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+        var formValues = new List<KeyValuePair<string, string>>
+        {
+            new KeyValuePair<string, string>("GRANT_TYPE", request.GrantType.ToString()),
+            new KeyValuePair<string, string>("USERNAME", request.Username ?? string.Empty),
+            new KeyValuePair<string, string>("PASSWORD", request.Password ?? string.Empty)
+        };
 
-        var response = await _retryPolicy.ExecuteAsync(cancellationToken =>
-            client.PostAsync(_settings.LoginUrl, payload, cancellationToken), ct);
+        var content = new FormUrlEncodedContent(formValues);
 
-        var jsonResponse = await response.Content.ReadAsStringAsync();
+        var response = await _retryPolicy.ExecuteAsync(async cancellationToken =>
+        {
+            var result = await client.PostAsync(_settings.LoginUrl, content, cancellationToken);
+            if (result.StatusCode == HttpStatusCode.BadRequest
+                || result.StatusCode == HttpStatusCode.Unauthorized
+                || result.StatusCode == HttpStatusCode.Forbidden
+                || result.StatusCode == HttpStatusCode.NotFound
+                || result.StatusCode == HttpStatusCode.Conflict
+                || result.StatusCode == HttpStatusCode.UnprocessableEntity)
+            {
+                {
+                    return result;
+                }
+            }
+            return result.EnsureSuccessStatusCode();
+        }, ct);
+
+        var jsonResponse = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return Result.Fail<Token>(jsonResponse);
+        }
 
         var token = JsonSerializer.Deserialize<Token>(jsonResponse);
 
@@ -150,17 +196,35 @@ public class AuthenticationClient : IAuthenticationClient
         var jsonPayload = JsonSerializer.Serialize(oldToken);
         var payload = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
-        var response = await _retryPolicy.ExecuteAsync(cancellationToken =>
-            client.PostAsync(_settings.RefreshUrl, payload, cancellationToken), ct);
+        var response = await _retryPolicy.ExecuteAsync(async cancellationToken =>
+        {
+            var result = await client.PostAsync(_settings.RefreshUrl, payload, cancellationToken);
+            if (result.StatusCode == HttpStatusCode.BadRequest
+                || result.StatusCode == HttpStatusCode.Unauthorized
+                || result.StatusCode == HttpStatusCode.Forbidden
+                || result.StatusCode == HttpStatusCode.NotFound
+                || result.StatusCode == HttpStatusCode.Conflict
+                || result.StatusCode == HttpStatusCode.UnprocessableEntity)
+            {
+                {
+                    return result;
+                }
+            }
+            return result.EnsureSuccessStatusCode();
+        }, ct);
 
+        var jsonResult = await response.Content.ReadAsStringAsync(ct);
 
-        var jsonResponse = await response.Content.ReadAsStringAsync();
+        if (!response.IsSuccessStatusCode)
+        {
+            return Result.Fail<Token>(jsonResult);
+        }
 
-        var newToken = JsonSerializer.Deserialize<Token>(jsonResponse);
+        var newToken = JsonSerializer.Deserialize<Token>(jsonResult);
 
         if (newToken is null)
         {
-            return Result.Fail<Token>(jsonResponse);
+            return Result.Fail<Token>(jsonResult);
         }
 
         return Result.Ok(newToken);

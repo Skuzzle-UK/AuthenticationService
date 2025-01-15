@@ -4,6 +4,11 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Title>Skuzzle Authentication Client</Title>
+    <PackageOutputPath>G:\Coding [FAST]\NugetSource</PackageOutputPath>
+    <IncludeSymbols>True</IncludeSymbols>
+    <Version>1.0.12</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,11 +16,8 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
     <PackageReference Include="Polly" Version="8.3.1" />
+    <PackageReference Include="Skuzzle.Core.Authentication.Lib" Version="1.0.4" />
     <PackageReference Include="Skuzzle.DotNetCore.ResultClass" Version="1.0.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\Skuzzle.Core.Authentication.Lib\Skuzzle.Core.Authentication.Lib.csproj" />
   </ItemGroup>
 
 </Project>

@@ -115,7 +115,7 @@ public partial class AuthenticationControllerTests
         // arrange
         _userServiceMock
             .Setup(o => o.GetById(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Ok<User>(default));
+            .ReturnsAsync(Result.Ok<User>(default!));
 
         // act
         var result = await _sut.LoginAsync(_refreshTokenTypeFormCollection, CancellationToken.None);

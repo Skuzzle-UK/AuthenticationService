@@ -23,8 +23,8 @@ public class UserDtoValidator : AbstractValidator<UserDto>
             .WithMessage("Username must be longer than 4 characters");
         
         RuleFor(x => x.Username)
-            .MaximumLength(20)
-            .WithMessage("Username must be shorter than 20 characters");
+            .MaximumLength(25)
+            .WithMessage("Username must be shorter than 25 characters");
         
         RuleFor(x => x.Username)
             .MustAsync(async (username, ct) =>
@@ -48,6 +48,10 @@ public class UserDtoValidator : AbstractValidator<UserDto>
             .WithMessage("Email address must be a valid email address");
 
         RuleFor(x => x.Email)
+            .MaximumLength(320)
+            .WithMessage("Email address must be less than 320 characters");
+
+        RuleFor(x => x.Email)
             .MustAsync(async (email, ct) =>
             {
                 var result = await _repository.FirstOrDefaultAsync(o => o.Email.ToLower() == email.ToLower(), ct);
@@ -60,19 +64,19 @@ public class UserDtoValidator : AbstractValidator<UserDto>
             .WithMessage("A user with that email address is already registered");
 
         RuleFor(x => x.FirstName)
-            .MaximumLength(30)
-            .WithMessage("FirstName must be shorter than 30 characters");
+            .MaximumLength(128)
+            .WithMessage("FirstName must be shorter than 128 characters");
 
         RuleFor(x => x.LastName)
-            .MaximumLength(30)
-            .WithMessage("LastName must be shorter than 30 characters");
+            .MaximumLength(128)
+            .WithMessage("LastName must be shorter than 128 characters");
 
         RuleFor(x => x.Phone)
             .Matches(@"^(?:(?:\+1\s*\d{10})|(?:\+44\s*\d{10})|(?:00\s*44\s*\d{10})|(?:\+3\d{1,2}\s*\d{5,10})|(?:00\d{11,15})|(?:\d{11}))?$")
             .WithMessage("This doesn't look like a valid phone number. Please try removing any spaces or non numerical characters");
 
         RuleFor(x => x.Country)
-            .MaximumLength(30)
-            .WithMessage("Country must be shorter than 30 characters");
+            .MaximumLength(128)
+            .WithMessage("Country must be shorter than 128 characters");
     }
 }

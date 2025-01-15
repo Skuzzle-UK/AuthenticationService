@@ -4,6 +4,11 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Title>Skuzzle Authentication Library</Title>
+    <PackageOutputPath>G:\Coding [FAST]\NugetSource</PackageOutputPath>
+    <Version>1.0.4</Version>
+    <IncludeSymbols>True</IncludeSymbols>
   </PropertyGroup>
 
 </Project>

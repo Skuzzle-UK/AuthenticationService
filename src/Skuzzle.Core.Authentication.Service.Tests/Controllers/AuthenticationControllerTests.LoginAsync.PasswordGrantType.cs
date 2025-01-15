@@ -79,7 +79,7 @@ public partial class AuthenticationControllerTests
         // arrange
         _userServiceMock
             .Setup(o => o.GetByUsername(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Ok<User>(default));
+            .ReturnsAsync(Result.Ok<User>(default!));
 
         // act
         var result = await _sut.LoginAsync(_passwordTypeFormCollection, CancellationToken.None);
