@@ -8,7 +8,7 @@
     <Title>Skuzzle Authentication Client</Title>
     <PackageOutputPath>G:\Coding [FAST]\NugetSource</PackageOutputPath>
     <IncludeSymbols>True</IncludeSymbols>
-    <Version>1.0.19</Version>
+    <Version>1.0.20</Version>
   </PropertyGroup>
 
   <ItemGroup>

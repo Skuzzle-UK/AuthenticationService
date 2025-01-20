@@ -169,94 +169,108 @@ public class AuthenticationClient : IAuthenticationClient
     {
         using var client = _httpClientFactory.CreateClient();
 
-        var formValues = new List<KeyValuePair<string, string>>
+        try
+        {
+            var formValues = new List<KeyValuePair<string, string>>
         {
             new KeyValuePair<string, string>("GRANT_TYPE", request.GrantType.ToString()),
             new KeyValuePair<string, string>("USERNAME", request.Username ?? string.Empty),
             new KeyValuePair<string, string>("PASSWORD", request.Password ?? string.Empty)
         };
 
-        var content = new FormUrlEncodedContent(formValues);
+            var content = new FormUrlEncodedContent(formValues);
 
-        var response = await _retryPolicy.ExecuteAsync(async cancellationToken =>
-        {
-            var result = await client.PostAsync(_settings.LoginUrl, content, cancellationToken);
-            if (result.StatusCode == HttpStatusCode.BadRequest
-                || result.StatusCode == HttpStatusCode.Unauthorized
-                || result.StatusCode == HttpStatusCode.Forbidden
-                || result.StatusCode == HttpStatusCode.NotFound
-                || result.StatusCode == HttpStatusCode.Conflict
-                || result.StatusCode == HttpStatusCode.UnprocessableEntity)
+            var response = await _retryPolicy.ExecuteAsync(async cancellationToken =>
             {
+                var result = await client.PostAsync(_settings.LoginUrl, content, cancellationToken);
+                if (result.StatusCode == HttpStatusCode.BadRequest
+                    || result.StatusCode == HttpStatusCode.Unauthorized
+                    || result.StatusCode == HttpStatusCode.Forbidden
+                    || result.StatusCode == HttpStatusCode.NotFound
+                    || result.StatusCode == HttpStatusCode.Conflict
+                    || result.StatusCode == HttpStatusCode.UnprocessableEntity)
                 {
-                    return result;
+                    {
+                        return result;
+                    }
                 }
+                return result.EnsureSuccessStatusCode();
+            }, ct);
+
+            var jsonResponse = await response.Content.ReadAsStringAsync(ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return Result.Fail<Token>(jsonResponse);
             }
-            return result.EnsureSuccessStatusCode();
-        }, ct);
 
-        var jsonResponse = await response.Content.ReadAsStringAsync(ct);
+            var token = JsonSerializer.Deserialize<Token>(jsonResponse);
 
-        if (!response.IsSuccessStatusCode)
-        {
-            return Result.Fail<Token>(jsonResponse);
+            if (token is null)
+            {
+                return Result.Fail<Token>(jsonResponse);
+            }
+
+            return Result.Ok(token);
         }
-
-        var token = JsonSerializer.Deserialize<Token>(jsonResponse);
-
-        if (token is null)
+        catch (Exception ex)
         {
-            return Result.Fail<Token>(jsonResponse);
+            return Result.Fail<Token>(ex, ex.Message);
         }
-
-        return Result.Ok(token);
     }
 
     private async Task<Result<Token>> RefreshTokenFromAuthenticationService(Token oldToken, CancellationToken ct)
     {
         using var client = _httpClientFactory.CreateClient();
 
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", oldToken.AccessToken);
+        try
+        {
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", oldToken.AccessToken);
 
-        var formValues = new List<KeyValuePair<string, string>>
+            var formValues = new List<KeyValuePair<string, string>>
         {
             new KeyValuePair<string, string>("GRANT_TYPE", GrantType.Refresh_token.ToString()),
             new KeyValuePair<string, string>("REFRESH_TOKEN", oldToken.RefreshToken ?? string.Empty)
         };
 
-        var content = new FormUrlEncodedContent(formValues);
+            var content = new FormUrlEncodedContent(formValues);
 
-        var response = await _retryPolicy.ExecuteAsync(async cancellationToken =>
-        {
-            var result = await client.PostAsync(_settings.RefreshUrl, content, cancellationToken);
-            if (result.StatusCode == HttpStatusCode.BadRequest
-                || result.StatusCode == HttpStatusCode.Unauthorized
-                || result.StatusCode == HttpStatusCode.Forbidden
-                || result.StatusCode == HttpStatusCode.NotFound
-                || result.StatusCode == HttpStatusCode.Conflict
-                || result.StatusCode == HttpStatusCode.UnprocessableEntity)
+            var response = await _retryPolicy.ExecuteAsync(async cancellationToken =>
             {
+                var result = await client.PostAsync(_settings.RefreshUrl, content, cancellationToken);
+                if (result.StatusCode == HttpStatusCode.BadRequest
+                    || result.StatusCode == HttpStatusCode.Unauthorized
+                    || result.StatusCode == HttpStatusCode.Forbidden
+                    || result.StatusCode == HttpStatusCode.NotFound
+                    || result.StatusCode == HttpStatusCode.Conflict
+                    || result.StatusCode == HttpStatusCode.UnprocessableEntity)
                 {
-                    return result;
+                    {
+                        return result;
+                    }
                 }
+                return result.EnsureSuccessStatusCode();
+            }, ct);
+
+            var jsonResult = await response.Content.ReadAsStringAsync(ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return Result.Fail<Token>(jsonResult);
             }
-            return result.EnsureSuccessStatusCode();
-        }, ct);
 
-        var jsonResult = await response.Content.ReadAsStringAsync(ct);
+            var newToken = JsonSerializer.Deserialize<Token>(jsonResult);
 
-        if (!response.IsSuccessStatusCode)
-        {
-            return Result.Fail<Token>(jsonResult);
+            if (newToken is null)
+            {
+                return Result.Fail<Token>(jsonResult);
+            }
+
+            return Result.Ok(newToken);
         }
-
-        var newToken = JsonSerializer.Deserialize<Token>(jsonResult);
-
-        if (newToken is null)
+        catch (Exception ex)
         {
-            return Result.Fail<Token>(jsonResult);
+            return Result.Fail<Token>(ex, ex.Message);
         }
-
-        return Result.Ok(newToken);
     }
 }
