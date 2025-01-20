@@ -11,5 +11,5 @@ public static class HostExtensions
             .AddHttpClient()
             .AddMemoryCache()
             .Configure<AuthenticationClientSettings>(configuration.GetSection(nameof(AuthenticationClientSettings)))
-            .AddScoped<IAuthenticationClient, AuthenticationClient>();
+            .AddSingleton<IAuthenticationClient, AuthenticationClient>();
 }

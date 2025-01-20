@@ -4,9 +4,11 @@ using Polly;
 using Polly.Retry;
 using Skuzzle.Core.Authentication.Client.Settings;
 using Skuzzle.Core.Authentication.Lib.Dtos;
+using Skuzzle.Core.Authentication.Lib.Enums;
 using Skuzzle.Core.Authentication.Lib.Models;
 using Skuzzle.Core.Lib.ResultClass;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 
@@ -84,6 +86,16 @@ public class AuthenticationClient : IAuthenticationClient
     public async Task<Result<Token>> GetTokenAsync(AuthenticationRequest authRequest, CancellationToken ct = default) =>
         await GetNewTokenAsync(authRequest, ct);
 
+    public async Task<Result> IsTokenValidAsync(Guid userId, CancellationToken ct = default) =>
+        await GetTokenAsync(userId, ct);
+
+    public Result InvalidateToken(Guid userId, CancellationToken ct = default)
+    {
+        // TODO: Probably needs something doing to contact the api and update user.. Should probably force user to new token if try to use current one /nb
+        _tokensCache.Remove(userId);
+        return Result.Ok();
+    }
+
     private async Task<Result<Token>> TryGetExistingTokenAsync(Guid userId, CancellationToken ct)
     {
         if (!_tokensCache.TryGetValue(userId, out Token? token))
@@ -98,13 +110,13 @@ public class AuthenticationClient : IAuthenticationClient
             return Result.Fail<Token>("No token found for user. Login required.");
         }
 
-        if (token.RefreshExpiresAt >= DateTimeOffset.UtcNow)
+        if (token.RefreshExpiresAt <= DateTimeOffset.UtcNow)
         {
             // Request username and password
             return Result.Fail<Token>("Refresh token expired. Login required.");
         }
 
-        if (token.ExpiresAt >= DateTimeOffset.UtcNow)
+        if (token.ExpiresAt <= DateTimeOffset.UtcNow)
         {
             var newTokenResult = await RefreshTokenFromAuthenticationService(token, ct);
             if (newTokenResult.IsFailure || newTokenResult.Value is null)
@@ -113,6 +125,17 @@ public class AuthenticationClient : IAuthenticationClient
             }
 
             token = newTokenResult.Value;
+
+            if (_tokensCache.TryGetValue(token.UserId, out Token? existingToken))
+            {
+                _tokensCache.Remove(token.UserId);
+            }
+
+            var expiresAt = token.RefreshExpiresAt is not null
+                ? token.RefreshExpiresAt
+                : DateTimeOffset.UtcNow.AddSeconds(_settings.DefaultRefreshExpiry!.Value);
+
+            _tokensCache.Set(userId, token, expiresAt.Value);
         }
 
         return Result.Ok(token);
@@ -193,12 +216,19 @@ public class AuthenticationClient : IAuthenticationClient
     {
         using var client = _httpClientFactory.CreateClient();
 
-        var jsonPayload = JsonSerializer.Serialize(oldToken);
-        var payload = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", oldToken.AccessToken);
+
+        var formValues = new List<KeyValuePair<string, string>>
+        {
+            new KeyValuePair<string, string>("GRANT_TYPE", GrantType.Refresh_token.ToString()),
+            new KeyValuePair<string, string>("REFRESH_TOKEN", oldToken.RefreshToken ?? string.Empty)
+        };
+
+        var content = new FormUrlEncodedContent(formValues);
 
         var response = await _retryPolicy.ExecuteAsync(async cancellationToken =>
         {
-            var result = await client.PostAsync(_settings.RefreshUrl, payload, cancellationToken);
+            var result = await client.PostAsync(_settings.RefreshUrl, content, cancellationToken);
             if (result.StatusCode == HttpStatusCode.BadRequest
                 || result.StatusCode == HttpStatusCode.Unauthorized
                 || result.StatusCode == HttpStatusCode.Forbidden
