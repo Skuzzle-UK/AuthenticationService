@@ -7,9 +7,9 @@ namespace AuthenticationService.Services;
 
 public class EmailService : IEmailService
 {
-    private readonly EmailServiceSettings _settings;
+    private readonly EmailServerSettings _settings;
 
-    public EmailService(IOptions<EmailServiceSettings> settings)
+    public EmailService(IOptions<EmailServerSettings> settings)
     {
         _settings = settings.Value;
     }

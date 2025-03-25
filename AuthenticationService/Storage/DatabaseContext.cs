@@ -1,9 +1,9 @@
 ﻿using AuthenticationService.Entities;
-using AuthenticationService.SeedConfiguration;
+using AuthenticationService.Storage.Seed;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
-namespace AuthenticationService;
+namespace AuthenticationService.Storage;
 
 public class DatabaseContext : IdentityDbContext<User, Role, string>
 {

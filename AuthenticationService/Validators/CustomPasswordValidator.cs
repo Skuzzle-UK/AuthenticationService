@@ -16,6 +16,16 @@ public class CustomPasswordValidator<TUser> : IPasswordValidator<TUser> where TU
             });
         }
 
+        var email = await manager.GetEmailAsync(user);
+        if (string.Equals(email, password, StringComparison.OrdinalIgnoreCase))
+        {
+            return IdentityResult.Failed(new IdentityError
+            {
+                Description = "Email and Password can not be the same.",
+                Code = "SameEmailPass"
+            });
+        }
+
         return IdentityResult.Success;
     }
 }

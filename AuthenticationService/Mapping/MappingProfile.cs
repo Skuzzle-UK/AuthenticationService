@@ -1,13 +1,13 @@
-﻿using AuthenticationService.Dtos;
+﻿using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Entities;
 using AutoMapper;
 
-namespace AuthenticationService;
+namespace AuthenticationService.Mapping;
 
 public class MappingProfile : Profile
 {
     public MappingProfile()
     {
-        CreateMap<UserRegistrationDto, User>();
+        CreateMap<RegistrationDto, User>();
     }
 }

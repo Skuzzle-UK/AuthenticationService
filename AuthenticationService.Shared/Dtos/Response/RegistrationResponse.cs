@@ -1,6 +1,6 @@
-﻿namespace AuthenticationService.Dtos.Response;
+﻿namespace AuthenticationService.Shared.Dtos.Response;
 
-public class UserRegistrationResponse
+public class RegistrationResponse
 {
     public bool IsSuccessful { get; set; }
     public IEnumerable<string>? Errors { get; set; }

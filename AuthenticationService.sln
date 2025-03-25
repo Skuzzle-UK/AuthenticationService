@@ -1,9 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.12.35527.113 d17.12
+VisualStudioVersion = 17.12.35527.113
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthenticationService", "AuthenticationService\AuthenticationService.csproj", "{F8513A9A-6468-49F6-9472-DEFBF4B69383}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthenticationService.Shared", "AuthenticationService.Shared\AuthenticationService.Shared.csproj", "{82BA9A9C-EA9B-4E84-8182-8B9159B088BF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,10 @@ Global
 		{F8513A9A-6468-49F6-9472-DEFBF4B69383}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F8513A9A-6468-49F6-9472-DEFBF4B69383}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F8513A9A-6468-49F6-9472-DEFBF4B69383}.Release|Any CPU.Build.0 = Release|Any CPU
+		{82BA9A9C-EA9B-4E84-8182-8B9159B088BF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{82BA9A9C-EA9B-4E84-8182-8B9159B088BF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{82BA9A9C-EA9B-4E84-8182-8B9159B088BF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{82BA9A9C-EA9B-4E84-8182-8B9159B088BF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
