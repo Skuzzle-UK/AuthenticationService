@@ -1,5 +1,6 @@
 ﻿using AuthenticationService.Entities;
 using AuthenticationService.Settings;
+using AuthenticationService.Shared.Models;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -17,13 +18,16 @@ public class JWTService : ITokenService
         _jwtSettings = jwtSettings.Value;
     }
 
-    public string CreateToken(User user, IList<string> roles)
+    public Token CreateToken(User user, IList<string> roles)
     {
         var signingCredentials = GetSigningCredentials();
         var claims = GetClaims(user, roles);
         var tokenOptions = GenerateTokenOptions(signingCredentials, claims);
 
-        return new JwtSecurityTokenHandler().WriteToken(tokenOptions);
+        return new Token(
+            "Bearer",
+            new JwtSecurityTokenHandler().WriteToken(tokenOptions),
+            tokenOptions.ValidTo);
     }
 
     private SigningCredentials GetSigningCredentials()

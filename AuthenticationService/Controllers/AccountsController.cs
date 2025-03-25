@@ -1,16 +1,17 @@
-﻿using AuthenticationService.Shared.Dtos;
-using AuthenticationService.Shared.Dtos.Response;
-using AuthenticationService.Entities;
-using AuthenticationService.Shared.Enums;
+﻿using AuthenticationService.Entities;
 using AuthenticationService.Services;
+using AuthenticationService.Shared.Dtos;
+using AuthenticationService.Shared.Dtos.Response;
+using AuthenticationService.Shared.Enums;
+using AuthenticationService.Storage;
 using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using QRCoder;
-using System.Text.Encodings.Web;
-using Microsoft.AspNetCore.Authorization;
 using System.IdentityModel.Tokens.Jwt;
+using System.Text.Encodings.Web;
 
 namespace AuthenticationService.Controllers;
 
@@ -23,19 +24,22 @@ public class AccountsController : ControllerBase
     private readonly ITokenService _tokenService;
     private readonly IMapper _mapper;
     private readonly UrlEncoder _urlEncoder;
+    private readonly DatabaseContext _dbContext;
 
     public AccountsController(
         UserManager<User> userManager,
         IEmailService emailService,
         ITokenService tokenService,
         IMapper mapper,
-        UrlEncoder urlEncoder)
+        UrlEncoder urlEncoder,
+        DatabaseContext dbContext)
     {
         _userManager = userManager;
         _emailService = emailService;
         _tokenService = tokenService;
         _mapper = mapper;
         _urlEncoder = urlEncoder;
+        _dbContext = dbContext;
     }
 
     // TODO: Endpoint to resend email confirmation request /nb
@@ -50,43 +54,59 @@ public class AccountsController : ControllerBase
             return BadRequest();
         }
 
-        var user = _mapper.Map<User>(request);
-        var result = await _userManager.CreateAsync(user, request.Password!);
-        if (!result.Succeeded)
-        {
-            var errors = result.Errors.Select(e => e.Description);
+        using var transaction = await _dbContext.Database.BeginTransactionAsync();
 
-            return BadRequest(new RegistrationResponse { Errors = errors });
+        try
+        {
+            var user = _mapper.Map<User>(request);
+            var result = await _userManager.CreateAsync(user, request.Password!);
+            if (!result.Succeeded)
+            {
+                var errors = result.Errors.Select(e => e.Description);
+
+                return BadRequest(new RegistrationResponse { Errors = errors });
+            }
+
+            if (request.Preferred2FAProvider is not null)
+            {
+                user.Preferred2FAProvider = request.Preferred2FAProvider.Value;
+                await _userManager.UpdateAsync(user);
+            }
+
+            await _userManager.AddToRoleAsync(user, "User");
+
+            var host = $"{Request.Scheme}://{Request.Host}";
+            var controllerPath = $"/api/{ControllerContext.ActionDescriptor.ControllerName.ToLower()}";
+            var confirmEmailPath = $"{host}{controllerPath}/confirm/email";
+
+            var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+            var confirmEmailParams = new Dictionary<string, string>
+            {
+                { "token", token },
+                { "email", user.Email! },
+                { "callbackUri", request.EmailConfirmationCallbackUri ?? string.Empty }
+            };
+
+            var confirmEmailUri = QueryHelpers.AddQueryString(confirmEmailPath, confirmEmailParams!);
+
+            await _emailService.SendEmailAsync(
+                user.Email!,
+                "Email Confirmation",
+                $"To confirm your email address please click the following link: {confirmEmailUri}");
+
+            await transaction.CommitAsync();
+
+            return Created();
         }
-
-        if (request.Preferred2FAProvider is not null)
+        catch (Exception ex)
         {
-            user.Preferred2FAProvider = request.Preferred2FAProvider.Value;
-            await _userManager.UpdateAsync(user);
+            await transaction.RollbackAsync();
+            return StatusCode(500, ex.Message);
         }
-
-        var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-
-        var callbackParams = new Dictionary<string, string>
-        {
-            { "token", token },
-            { "email", user.Email! }
-        };
-
-        var callbackUri = QueryHelpers.AddQueryString(request.CallbackUri!, callbackParams!);
-
-        await _emailService.SendEmailAsync(
-            user.Email!,
-            "Email Confirmation",
-            $"To confirm your email address please click the following link: {callbackUri}");
-
-        await _userManager.AddToRoleAsync(user, "Visitor");
-
-        return Created();
     }
 
     [HttpGet("confirm/email")]
-    public async Task<IActionResult> ConfirmEmailAsync([FromQuery] string email, [FromQuery] string token)
+    public async Task<IActionResult> ConfirmEmailAsync([FromQuery] string email, [FromQuery] string token, [FromQuery] string? callbackUri)
     {
         var user = await _userManager.FindByEmailAsync(email);
         if (user is null)
@@ -100,7 +120,9 @@ public class AccountsController : ControllerBase
             return BadRequest("Invalid email confirmation request");
         }
 
-        return Ok();
+        return string.IsNullOrWhiteSpace(callbackUri)
+            ? Ok("Your email is now confirmed")
+            : Redirect(callbackUri);
     }
 
     [HttpPost("authenticate")]
@@ -193,7 +215,7 @@ public class AccountsController : ControllerBase
             return BadRequest("Invalid Request");
         }
 
-        if(!user.WaitingForTwoFactorAuthentication)
+        if (!user.WaitingForTwoFactorAuthentication)
         {
             return BadRequest("Invalid Request");
         }

@@ -29,7 +29,7 @@ public class RegistrationDto
     [Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
     public string? ConfirmPassword { get; set; }
 
-    public string? CallbackUri { get; set; }
+    public string? EmailConfirmationCallbackUri { get; set; }
 
     public MfaProviders? Preferred2FAProvider { get; set; }
 }
