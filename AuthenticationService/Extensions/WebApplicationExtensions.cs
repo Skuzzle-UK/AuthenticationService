@@ -1,10 +1,6 @@
-﻿using AuthenticationService.Entities;
-using AuthenticationService.Settings;
-using AuthenticationService.Storage;
+﻿using AuthenticationService.Storage;
 using AuthenticationService.Storage.Seed;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 namespace AuthenticationService.Extensions;
 
