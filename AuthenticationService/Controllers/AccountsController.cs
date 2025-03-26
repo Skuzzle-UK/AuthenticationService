@@ -133,7 +133,7 @@ public class AccountsController : ControllerBase
             return BadRequest(new ApiResponse().AddError("Invalid request"));
         }
 
-        await SendConfirmEmailAsync(user, request.callbackUri);
+        await SendConfirmEmailAsync(user, request.CallbackUri);
 
         return Ok(new ApiResponse());
     }
@@ -237,7 +237,7 @@ public class AccountsController : ControllerBase
             return Unauthorized(new AuthenticationResponse().AddError("Your account is locked due to too many failed login attempts."));
         }
 
-        if (!await _userManager.VerifyTwoFactorTokenAsync(user, request.MfaProvider!, request.Token!))
+        if (!await _userManager.VerifyTwoFactorTokenAsync(user, request.MfaProvider.ToString()!, request.Token!))
         {
             return await RecordLoginFailedAttempt(user);
         }
@@ -274,6 +274,13 @@ public class AccountsController : ControllerBase
             return BadRequest(new AuthenticationResponse().AddError("Invalid Request"));
         }
 
+        var key = await _userManager.GetAuthenticatorKeyAsync(user);
+        if (string.IsNullOrEmpty(key))
+        {
+            await _userManager.ResetAuthenticatorKeyAsync(user);
+            key = await _userManager.GetAuthenticatorKeyAsync(user);
+        }
+
         var providers = await _userManager.GetValidTwoFactorProvidersAsync(user);
         if (!providers.Contains(request.Preferred2FAProvider.ToString()!))
         {
@@ -286,13 +293,6 @@ public class AccountsController : ControllerBase
         {
             user.Preferred2FAProvider = request.Preferred2FAProvider.Value;
             await _userManager.UpdateAsync(user);
-        }
-
-        var key = await _userManager.GetAuthenticatorKeyAsync(user);
-        if(string.IsNullOrEmpty(key))
-        {
-            await _userManager.ResetAuthenticatorKeyAsync(user);
-            key = await _userManager.GetAuthenticatorKeyAsync(user);
         }
 
         var response = new EnableMfaResponse();

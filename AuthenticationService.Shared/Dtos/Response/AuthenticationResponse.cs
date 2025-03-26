@@ -7,7 +7,7 @@ public class AuthenticationResponse : ApiResponse
 {
     public Token? Token { get; set; }
     public bool? MfaRequired { get; set; }
-    public string? MfaProvider { get; set; }
+    public MfaProviders? MfaProvider { get; set; }
 
     /// <summary>
     /// Returns new AuthenticationResponse with token.
@@ -32,7 +32,7 @@ public class AuthenticationResponse : ApiResponse
         return new AuthenticationResponse()
         {
             MfaRequired = true,
-            MfaProvider = mfaProvider.ToString()
+            MfaProvider = mfaProvider
         };
     }
 }

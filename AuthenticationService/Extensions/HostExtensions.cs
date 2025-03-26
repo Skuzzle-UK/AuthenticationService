@@ -8,21 +8,28 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace AuthenticationService.Extensions;
 
 public static class HostExtensions
 {
     public static IHostBuilder ConfigureHost(this IHostBuilder host, IConfiguration config) =>
-       host.ConfigureServices((context, services) =>
-       {
-           services.AddValidatedSettings(context);
-           services.AddAutoMapper(typeof(Program));
-           services.AddDatabase(context);
-           services.AddSecurity(context);
-           services.AddServices();
-           services.AddControllers();
-       });
+        host.ConfigureServices((context, services) =>
+        {
+            services.AddValidatedSettings(context);
+            services.AddAutoMapper(typeof(Program));
+            services.AddDatabase(context);
+            services.AddSecurity(context);
+            services.AddServices();
+            services.AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+                    options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+                });
+        });
 
     public static IServiceCollection AddValidatedSettings(this IServiceCollection services, HostBuilderContext context)
     {

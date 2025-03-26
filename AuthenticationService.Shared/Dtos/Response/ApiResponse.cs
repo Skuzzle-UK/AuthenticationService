@@ -17,7 +17,7 @@ public class ApiResponse
         {
             Errors = new List<string>();
         }
-        Errors.Append(error);
+        Errors = Errors.Append(error);
 
         IsSuccessful = false;
 
@@ -34,7 +34,8 @@ public class ApiResponse
         {
             Errors = new List<string>();
         }
-        Errors.Concat(errors);
+
+        Errors = Errors.Concat(errors);
 
         IsSuccessful = false;
 
