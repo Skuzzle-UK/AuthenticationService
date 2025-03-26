@@ -131,7 +131,7 @@ public class AccountsController : ControllerBase
             return BadRequest(new ApiResponse().AddError("Invalid request"));
         }
 
-        await SendConfirmEmailAsync(user, request.EmailConfirmationCallbackUri);
+        await SendConfirmEmailAsync(user, request.callbackUri);
 
         return Ok(new ApiResponse());
     }
