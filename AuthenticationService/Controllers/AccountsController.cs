@@ -39,7 +39,6 @@ public class AccountsController : ControllerBase
         _dbContext = dbContext;
     }
 
-    // TODO: Endpoint to resend email confirmation request /nb
     // TODO: Forgot/Reset password methods /nb
     // TODO: Ensure reset method has setlockoutenddate and set to null
 
@@ -77,24 +76,7 @@ public class AccountsController : ControllerBase
 
             await _userManager.AddToRoleAsync(user, "User");
 
-            var host = $"{Request.Scheme}://{Request.Host}";
-            var controllerPath = $"/api/{ControllerContext.ActionDescriptor.ControllerName.ToLower()}";
-            var confirmEmailPath = $"{host}{controllerPath}/confirm/email";
-
-            var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            var confirmEmailParams = new Dictionary<string, string>
-            {
-                { "token", token },
-                { "email", user.Email! },
-                { "callbackUri", request.EmailConfirmationCallbackUri ?? string.Empty }
-            };
-
-            var confirmEmailUri = QueryHelpers.AddQueryString(confirmEmailPath, confirmEmailParams!);
-
-            await _emailService.SendEmailAsync(
-                user.Email!,
-                "Email Confirmation",
-                $"To confirm your email address please click the following link: {confirmEmailUri}");
+            await SendConfirmEmailAsync(user, request.EmailConfirmationCallbackUri));
 
             await transaction.CommitAsync();
 
@@ -135,6 +117,25 @@ public class AccountsController : ControllerBase
             : Redirect(callbackUri);
     }
 
+    [HttpPost("confirm/email")]
+    public async Task<IActionResult> ResendConfirmEmailAsync([FromBody] ResendEmailConfirmationDto request)
+    {
+        var user = await _userManager.FindByEmailAsync(request.Email!);
+        if (user is null)
+        {
+            return BadRequest(new ApiResponse().AddError("Invalid request"));
+        }
+
+        if (await _userManager.IsEmailConfirmedAsync(user))
+        {
+            return BadRequest(new ApiResponse().AddError("Invalid request"));
+        }
+
+        await SendConfirmEmailAsync(user, request.EmailConfirmationCallbackUri);
+
+        return Ok(new ApiResponse());
+    }
+
     /// <summary>
     /// Endpoint for users to authenticate. This is the login endpoint which returns a token if not using 2FA or triggers a 2FA process.
     /// </summary>
@@ -161,20 +162,7 @@ public class AccountsController : ControllerBase
 
         if (!await _userManager.CheckPasswordAsync(user, request.Password!))
         {
-            await _userManager.AccessFailedAsync(user);
-            if (await _userManager.IsLockedOutAsync(user))
-            {
-                var content = $"Your account is locked out to too many failed login attempts.";
-
-                await _emailService.SendEmailAsync(
-                    user.Email!,
-                    "Locked account information",
-                    "Your account is locked due to too many failed login attempts.");
-
-                return Unauthorized(new AuthenticationResponse().AddError(content));
-            }
-
-            return Unauthorized(new AuthenticationResponse().AddError("Invalid authentication"));
+            return await IncorrectLoginAsync(user);
         }
 
         if (await _userManager.GetTwoFactorEnabledAsync(user))
@@ -249,23 +237,7 @@ public class AccountsController : ControllerBase
 
         if (!await _userManager.VerifyTwoFactorTokenAsync(user, request.MfaProvider!, request.Token!))
         {
-            await _userManager.AccessFailedAsync(user);
-            if (await _userManager.IsLockedOutAsync(user))
-            {
-                var content = $"Your account is locked due to too many failed login attempts.";
-
-                await _emailService.SendEmailAsync(
-                    user.Email!,
-                    "Locked account information",
-                    content);
-
-                user.WaitingForTwoFactorAuthentication = false;
-                await _userManager.UpdateAsync(user);
-
-                return Unauthorized(new AuthenticationResponse().AddError(content));
-            }
-
-            return Unauthorized(new AuthenticationResponse().AddError("MFA authentication failed."));
+            return await IncorrectLoginAsync(user);
         }
 
         var roles = await _userManager.GetRolesAsync(user);
@@ -339,5 +311,49 @@ public class AccountsController : ControllerBase
         }
 
         return Ok(response);
+    }
+
+    private async Task SendConfirmEmailAsync(User user, string? callbackUri)
+    {
+        var host = $"{Request.Scheme}://{Request.Host}";
+        var controllerPath = $"/api/{ControllerContext.ActionDescriptor.ControllerName.ToLower()}";
+        var confirmEmailPath = $"{host}{controllerPath}/confirm/email";
+
+        var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+
+        var confirmEmailParams = new Dictionary<string, string>
+        {
+            { "token", token },
+            { "email", user.Email! },
+            { "callbackUri", callbackUri ?? string.Empty }
+        };
+
+        var confirmEmailUri = QueryHelpers.AddQueryString(confirmEmailPath, confirmEmailParams!);
+
+        await _emailService.SendEmailAsync(
+            user.Email!,
+            "Email Confirmation",
+            $"To confirm your email address please click the following link: {confirmEmailUri}");
+    }
+
+    private async Task<IActionResult> IncorrectLoginAsync(User user)
+    {
+        await _userManager.AccessFailedAsync(user);
+        if (await _userManager.IsLockedOutAsync(user))
+        {
+            var content = $"Your account is locked due to too many failed login attempts.";
+
+            await _emailService.SendEmailAsync(
+                user.Email!,
+                "Locked account information",
+                content);
+
+            user.WaitingForTwoFactorAuthentication = false;
+            await _userManager.UpdateAsync(user);
+
+            return Unauthorized(new AuthenticationResponse().AddError(content));
+        }
+
+        return Unauthorized(new AuthenticationResponse().AddError("Authentication failed."));
     }
 }
