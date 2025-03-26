@@ -18,4 +18,8 @@ public class User : IdentityUser
     public bool WaitingForTwoFactorAuthentication { get; set; }
 
     public MfaProviders Preferred2FAProvider { get; set; }
+
+    public string? RefreshToken { get; set; }
+
+    public DateTime? RefreshTokenExipiresAt { get; set; }
 }
