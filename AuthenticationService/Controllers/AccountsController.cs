@@ -1,4 +1,5 @@
 ﻿using AuthenticationService.Entities;
+using AuthenticationService.Helpers;
 using AuthenticationService.Services;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
@@ -9,10 +10,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
-using QRCoder;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text.Encodings.Web;
 
 namespace AuthenticationService.Controllers;
 
@@ -24,7 +23,6 @@ public class AccountsController : ControllerBase
     private readonly IEmailService _emailService;
     private readonly ITokenService _tokenService;
     private readonly IMapper _mapper;
-    private readonly UrlEncoder _urlEncoder;
     private readonly DatabaseContext _dbContext;
 
     public AccountsController(
@@ -32,14 +30,12 @@ public class AccountsController : ControllerBase
         IEmailService emailService,
         ITokenService tokenService,
         IMapper mapper,
-        UrlEncoder urlEncoder,
         DatabaseContext dbContext)
     {
         _userManager = userManager;
         _emailService = emailService;
         _tokenService = tokenService;
         _mapper = mapper;
-        _urlEncoder = urlEncoder;
         _dbContext = dbContext;
     }
 
@@ -47,6 +43,11 @@ public class AccountsController : ControllerBase
     // TODO: Forgot/Reset password methods /nb
     // TODO: Ensure reset method has setlockoutenddate and set to null
 
+    /// <summary>
+    /// Registration endpoint for new users. Step 1 of the registration process.
+    /// </summary>
+    /// <param name="request">Should be of type RegistrationDto</param>
+    /// <returns>Created response if all has gone well</returns>
     [HttpPost("register")]
     public async Task<IActionResult> RegisterUserAsync([FromBody] RegistrationDto request)
     {
@@ -55,17 +56,17 @@ public class AccountsController : ControllerBase
             return BadRequest();
         }
 
+        var user = _mapper.Map<User>(request);
+
         using var transaction = await _dbContext.Database.BeginTransactionAsync();
 
         try
         {
-            var user = _mapper.Map<User>(request);
             var result = await _userManager.CreateAsync(user, request.Password!);
             if (!result.Succeeded)
             {
                 var errors = result.Errors.Select(e => e.Description);
-
-                return BadRequest(new RegistrationResponse { Errors = errors });
+                return BadRequest(new ApiResponse().AddErrors(errors));
             }
 
             if (request.Preferred2FAProvider is not null)
@@ -106,43 +107,56 @@ public class AccountsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Endpoint for users to confirm their email address. Step 2 of the registration process.
+    /// Usually reached from email link sent in step 1.
+    /// </summary>
+    /// <param name="email">Requires valid email address</param>
+    /// <param name="token">Token generated and sent to email in step 1</param>
+    /// <param name="callbackUri">URI which user is redirected to after confirmation. Usually a page on the UI saying email confirmed and offering login</param>
+    /// <returns>ApiResponse or redirects to callbackUri</returns>
     [HttpGet("confirm/email")]
     public async Task<IActionResult> ConfirmEmailAsync([FromQuery] string email, [FromQuery] string token, [FromQuery] string? callbackUri)
     {
         var user = await _userManager.FindByEmailAsync(email);
         if (user is null)
         {
-            return BadRequest("Invalid email confirmation request");
+            return BadRequest(new ApiResponse().AddError("Invalid email confirmation request"));
         }
 
         var confirmationResult = await _userManager.ConfirmEmailAsync(user, token);
         if (!confirmationResult.Succeeded)
         {
-            return BadRequest("Invalid email confirmation request");
+            return BadRequest(new ApiResponse().AddError("Invalid email confirmation request"));
         }
 
         return string.IsNullOrWhiteSpace(callbackUri)
-            ? Ok("Your email is now confirmed")
+            ? Ok(new ApiResponse())
             : Redirect(callbackUri);
     }
 
+    /// <summary>
+    /// Endpoint for users to authenticate. This is the login endpoint which returns a token if not using 2FA or triggers a 2FA process.
+    /// </summary>
+    /// <param name="request">AuthenticationDto type</param>
+    /// <returns>AuthenticationResult with token if not using 2FA or 2FA method used if using 2FA</returns>
     [HttpPost("authenticate")]
     public async Task<IActionResult> AuthenticateAsync([FromBody] AuthenticationDto request)
     {
         var user = await _userManager.FindByEmailAsync(request.Email!);
         if (user is null)
         {
-            return BadRequest("Invalid Request");
+            return BadRequest(new AuthenticationResponse().AddError("Invalid request"));
         }
 
         if (!await _userManager.IsEmailConfirmedAsync(user))
         {
-            return Unauthorized(new AuthenticationResponse { ErrorMessage = "Email is not confirmed" });
+            return Unauthorized(new AuthenticationResponse().AddError("Email is not confirmed"));
         }
 
         if (await _userManager.IsLockedOutAsync(user))
         {
-            return Unauthorized(new AuthenticationResponse { ErrorMessage = "The account is locked due to to many failed login attempts" });
+            return Unauthorized(new AuthenticationResponse().AddError("Your account is locked due to too many failed login attempts"));
         }
 
         if (!await _userManager.CheckPasswordAsync(user, request.Password!))
@@ -150,16 +164,17 @@ public class AccountsController : ControllerBase
             await _userManager.AccessFailedAsync(user);
             if (await _userManager.IsLockedOutAsync(user))
             {
-                var content = $"Your account is locked out due to to many failed login attempts.";
+                var content = $"Your account is locked out to too many failed login attempts.";
 
                 await _emailService.SendEmailAsync(
                     user.Email!,
                     "Locked account information",
-                    "Your account is locked out due to to many failed login attempts.");
+                    "Your account is locked due to too many failed login attempts.");
 
-                return Unauthorized(new AuthenticationResponse { ErrorMessage = content });
+                return Unauthorized(new AuthenticationResponse().AddError(content));
             }
-            return Unauthorized(new AuthenticationResponse { ErrorMessage = "Invalid Authentication" });
+
+            return Unauthorized(new AuthenticationResponse().AddError("Invalid authentication"));
         }
 
         if (await _userManager.GetTwoFactorEnabledAsync(user))
@@ -172,7 +187,7 @@ public class AccountsController : ControllerBase
             var providers = await _userManager.GetValidTwoFactorProvidersAsync(user);
             if (!providers.Contains(request.MfaProvider.ToString()!))
             {
-                return Unauthorized(new AuthenticationResponse { ErrorMessage = "Invalid MFA Provider" });
+                return Unauthorized(new AuthenticationResponse().AddError("Invalid MFA Provider"));
             }
 
             switch (request.MfaProvider)
@@ -196,7 +211,7 @@ public class AccountsController : ControllerBase
             user.WaitingForTwoFactorAuthentication = true;
             await _userManager.UpdateAsync(user);
 
-            return Ok(new AuthenticationResponse { MfaRequired = true, MfaProvider = request.MfaProvider.ToString() });
+            return Ok(AuthenticationResponse.WithMfaRequired(request.MfaProvider));
         }
 
         var roles = await _userManager.GetRolesAsync(user);
@@ -204,26 +219,32 @@ public class AccountsController : ControllerBase
 
         await _userManager.ResetAccessFailedCountAsync(user);
 
-        return Ok(new AuthenticationResponse { IsSuccessful = true, Token = token });
+        return Ok(AuthenticationResponse.WithToken(token));
     }
 
+    /// <summary>
+    /// Endpoint for users to authenticate using 2FA. This is the endpoint that should be called after the user has received the 2FA token.
+    /// This is step 2 of the login process which follows the AuthenticateAsync method if 2FA is enabled for the user.
+    /// </summary>
+    /// <param name="request">MfaAuthenticationDto</param>
+    /// <returns>AuthenticationResponse with valid token if successful</returns>
     [HttpPost("authenticate/mfa")]
     public async Task<IActionResult> MfaAuthenticateAsync([FromBody] MfaAuthenticationDto request)
     {
         var user = await _userManager.FindByEmailAsync(request.Email!);
         if (user is null)
         {
-            return BadRequest("Invalid Request");
+            return BadRequest(new AuthenticationResponse().AddError("Invalid Request"));
         }
 
         if (!user.WaitingForTwoFactorAuthentication)
         {
-            return BadRequest("Invalid Request");
+            return BadRequest(new AuthenticationResponse().AddError("Invalid Request"));
         }
 
         if (await _userManager.IsLockedOutAsync(user))
         {
-            return Unauthorized(new AuthenticationResponse { ErrorMessage = "The account is locked due to to many failed login attempts" });
+            return Unauthorized(new AuthenticationResponse().AddError("Your account is locked due to too many failed login attempts."));
         }
 
         if (!await _userManager.VerifyTwoFactorTokenAsync(user, request.MfaProvider!, request.Token!))
@@ -231,7 +252,7 @@ public class AccountsController : ControllerBase
             await _userManager.AccessFailedAsync(user);
             if (await _userManager.IsLockedOutAsync(user))
             {
-                var content = $"Your account is locked out due to to many failed login attempts.";
+                var content = $"Your account is locked due to too many failed login attempts.";
 
                 await _emailService.SendEmailAsync(
                     user.Email!,
@@ -241,10 +262,10 @@ public class AccountsController : ControllerBase
                 user.WaitingForTwoFactorAuthentication = false;
                 await _userManager.UpdateAsync(user);
 
-                return Unauthorized(new AuthenticationResponse { ErrorMessage = content });
+                return Unauthorized(new AuthenticationResponse().AddError(content));
             }
 
-            return Unauthorized(new AuthenticationResponse { ErrorMessage = "MFA authentication failed." });
+            return Unauthorized(new AuthenticationResponse().AddError("MFA authentication failed."));
         }
 
         var roles = await _userManager.GetRolesAsync(user);
@@ -255,9 +276,15 @@ public class AccountsController : ControllerBase
         user.WaitingForTwoFactorAuthentication = false;
         await _userManager.UpdateAsync(user);
 
-        return Ok(new AuthenticationResponse { IsSuccessful = true, Token = token });
+        return Ok(AuthenticationResponse.WithToken(token));
     }
 
+    /// <summary>
+    /// Enpoint to enable 2FA for a user. This endpoint should be called after the user has logged in and is setting up 2FA for the first time.
+    /// Requires a valid auth token to reach this endpoint which should be gained from the AuthenticateAsync endpoint.
+    /// </summary>
+    /// <param name="request">EnableMfaRequest</param>
+    /// <returns>EnableMfaResponse which contains a valid QrCode if requesting to use authenticator app</returns>
     [HttpGet("enablemfa")]
     [Authorize]
     public async Task<IActionResult> EnableMfaAsync(EnableMfaRequest request)
@@ -270,13 +297,13 @@ public class AccountsController : ControllerBase
         var user = await _userManager.FindByNameAsync(userNameClaim!.Value);
         if(user is null)
         {
-            return BadRequest(new EnableMfaResponse { ErrorMessage = "Invalid Request" });
+            return BadRequest(new AuthenticationResponse().AddError("Invalid Request"));
         }
 
         var providers = await _userManager.GetValidTwoFactorProvidersAsync(user);
         if (!providers.Contains(request.Preferred2FAProvider.ToString()!))
         {
-            return Unauthorized(new EnableMfaResponse { ErrorMessage = "Invalid MFA Provider" });
+            return Unauthorized(new AuthenticationResponse().AddError("Invalid MFA Provider"));
         }
 
         await _userManager.SetTwoFactorEnabledAsync(user, true);
@@ -294,47 +321,23 @@ public class AccountsController : ControllerBase
             key = await _userManager.GetAuthenticatorKeyAsync(user);
         }
 
-        EnableMfaResponse? response = null;
+        var response = new EnableMfaResponse();
 
         switch (user.Preferred2FAProvider)
         {
             case MfaProviders.Email:
-                response = new()
-                { 
-                    IsSuccessful = true,
-                    Provider = MfaProviders.Email
-                };
+                response = new EnableMfaResponse(MfaProviders.Email);
                 break;
             case MfaProviders.Phone:
-                response = new()
-                {
-                    IsSuccessful = true,
-                    Provider = MfaProviders.Phone
-                };
+                response = new EnableMfaResponse(MfaProviders.Phone);
                 break;
             case MfaProviders.Authenticator:
-                var uri = GenerateQRCodeUri(user.Email!, key!);
-                {
-                    using var qrGenerator = new QRCodeGenerator();
-                    using var qrCodeData = qrGenerator.CreateQrCode(uri, QRCodeGenerator.ECCLevel.Q);
-                    using var qrCode = new PngByteQRCode(qrCodeData);
-                    response = new()
-                    {
-                        IsSuccessful = true,
-                        QrCode = qrCode.GetGraphic(20),
-                        Provider = MfaProviders.Authenticator
-                    };
-                }
+                response = new EnableMfaResponse(
+                    MfaProviders.Authenticator,
+                    QrCodeHelpers.NewPng(user.Email!, key!));
                 break;
         }
 
         return Ok(response);
-    }
-
-    private string GenerateQRCodeUri(string email, string key)
-    {
-        var keyEncoded = _urlEncoder.Encode(key);
-        var emailEncoded = _urlEncoder.Encode(email);
-        return $"otpauth://totp/AuthenticationService:{emailEncoded}?secret={keyEncoded}&issuer=AuthenticationService&digits=6";
     }
 }
