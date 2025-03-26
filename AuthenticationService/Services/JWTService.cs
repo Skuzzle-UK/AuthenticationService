@@ -19,6 +19,8 @@ public class JWTService : ITokenService
         _jwtSettings = jwtSettings.Value;
     }
 
+    // TODO: Finish this to return refresh token etc and create endpoints to get token with refresh instead of username and password /nb
+
     public Token CreateToken(User user, IList<string> roles)
     {
         var signingCredentials = GetSigningCredentials();

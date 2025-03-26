@@ -329,6 +329,7 @@ public class AccountsController : ControllerBase
             return BadRequest(new ApiResponse().AddError("Invalid request"));
         }
 
+        // TODO: Create a simple reset page and use that as default if one isn't provided by the client /nb
         var token = await _userManager.GeneratePasswordResetTokenAsync(user);
         var resetPasswordUri = GenerateResetPasswordUri(user.Email!, token, request.CallbackUri!);
 
