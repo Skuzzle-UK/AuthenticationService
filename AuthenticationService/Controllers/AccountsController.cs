@@ -39,9 +39,6 @@ public class AccountsController : ControllerBase
         _dbContext = dbContext;
     }
 
-    // TODO: Forgot/Reset password methods /nb
-    // TODO: Ensure reset method has setlockoutenddate and set to null
-
     /// <summary>
     /// Registration endpoint for new users. Step 1 of the registration process.
     /// </summary>
@@ -76,7 +73,7 @@ public class AccountsController : ControllerBase
 
             await _userManager.AddToRoleAsync(user, "User");
 
-            await SendConfirmEmailAsync(user, request.EmailConfirmationCallbackUri));
+            await SendConfirmEmailAsync(user, request.EmailConfirmationCallbackUri);
 
             await transaction.CommitAsync();
 
@@ -117,6 +114,11 @@ public class AccountsController : ControllerBase
             : Redirect(callbackUri);
     }
 
+    /// <summary>
+    /// Resends the email confirmation email.
+    /// </summary>
+    /// <param name="request">ResendConfirmEmailAsync</param>
+    /// <returns>ApiResponse</returns>
     [HttpPost("confirm/email")]
     public async Task<IActionResult> ResendConfirmEmailAsync([FromBody] ResendEmailConfirmationDto request)
     {
@@ -162,7 +164,7 @@ public class AccountsController : ControllerBase
 
         if (!await _userManager.CheckPasswordAsync(user, request.Password!))
         {
-            return await IncorrectLoginAsync(user);
+            return await RecordLoginFailedAttempt(user);
         }
 
         if (await _userManager.GetTwoFactorEnabledAsync(user))
@@ -237,7 +239,7 @@ public class AccountsController : ControllerBase
 
         if (!await _userManager.VerifyTwoFactorTokenAsync(user, request.MfaProvider!, request.Token!))
         {
-            return await IncorrectLoginAsync(user);
+            return await RecordLoginFailedAttempt(user);
         }
 
         var roles = await _userManager.GetRolesAsync(user);
@@ -313,6 +315,83 @@ public class AccountsController : ControllerBase
         return Ok(response);
     }
 
+    /// <summary>
+    /// Endpoint to initiate the forgot password process. Generates a password reset token and sends an email with the reset link.
+    /// </summary>
+    /// <param name="request">ForgotPasswordDto type</param>
+    /// <returns>ApiResponse indicating the result of the operation</returns>
+    [HttpPost("forgotpassword")]
+    public async Task<IActionResult> ForgotPasswordAsync([FromBody] ForgotPasswordDto request)
+    {
+        var user = await _userManager.FindByEmailAsync(request.Email!);
+        if (user is null || !await _userManager.IsEmailConfirmedAsync(user))
+        {
+            return BadRequest(new ApiResponse().AddError("Invalid request"));
+        }
+
+        var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+        var resetPasswordUri = GenerateResetPasswordUri(user.Email!, token, request.CallbackUri!);
+
+        await _emailService.SendEmailAsync(
+            user.Email!,
+            "Password Reset",
+            $"To reset your password, please click the following link: {resetPasswordUri}");
+
+        return Ok(new ApiResponse());
+    }
+
+    /// <summary>
+    /// Endpoint to reset the user's password using the provided token.
+    /// </summary>
+    /// <param name="request">ResetPasswordDto type</param>
+    /// <returns>ApiResponse indicating the result of the operation</returns>
+    [HttpPost("resetpassword")]
+    public async Task<IActionResult> ResetPasswordAsync([FromBody] ResetPasswordDto request)
+    {
+        var user = await _userManager.FindByEmailAsync(request.Email!);
+        if (user is null || !await _userManager.IsEmailConfirmedAsync(user))
+        {
+            return BadRequest(new ApiResponse().AddError("Invalid request"));
+        }
+
+        var resetResult = await _userManager.ResetPasswordAsync(user, request.Token!, request.NewPassword!);
+        if (!resetResult.Succeeded)
+        {
+            var errors = resetResult.Errors.Select(e => e.Description);
+            return BadRequest(new ApiResponse().AddErrors(errors));
+        }
+
+        await InvalidateAllUserTokens(user);
+
+        user.LockoutEnd = null;
+        await _userManager.UpdateAsync(user);
+
+        await _userManager.ResetAccessFailedCountAsync(user);
+
+        return string.IsNullOrWhiteSpace(request.CallbackUri)
+            ? Ok(new ApiResponse())
+            : Redirect(request.CallbackUri);
+    }
+
+    private async Task InvalidateAllUserTokens(User user)
+    {
+        await _userManager.UpdateSecurityStampAsync(user);
+        //user.RefreshToken = null;
+        //user.RefreshTokenExpiryTime = DateTime.MinValue;
+        await _userManager.UpdateAsync(user);
+    }
+
+    private string GenerateResetPasswordUri(string email, string token, string callbackUri)
+    {
+        var resetPasswordParams = new Dictionary<string, string>
+        {
+            { "token", token },
+            { "email", email }
+        };
+
+        return QueryHelpers.AddQueryString(callbackUri, resetPasswordParams!);
+    }
+
     private async Task SendConfirmEmailAsync(User user, string? callbackUri)
     {
         var host = $"{Request.Scheme}://{Request.Host}";
@@ -336,7 +415,7 @@ public class AccountsController : ControllerBase
             $"To confirm your email address please click the following link: {confirmEmailUri}");
     }
 
-    private async Task<IActionResult> IncorrectLoginAsync(User user)
+    private async Task<IActionResult> RecordLoginFailedAttempt(User user)
     {
         await _userManager.AccessFailedAsync(user);
         if (await _userManager.IsLockedOutAsync(user))
