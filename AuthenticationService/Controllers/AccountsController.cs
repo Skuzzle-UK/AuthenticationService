@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using QRCoder;
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text.Encodings.Web;
 
 namespace AuthenticationService.Controllers;
@@ -264,12 +265,18 @@ public class AccountsController : ControllerBase
         var token = Request.Headers.Authorization.ToString().Replace("Bearer ", "");
         var handler = new JwtSecurityTokenHandler();
         var jwtToken = handler.ReadJwtToken(token);
-        var userNameClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name");
+        var userNameClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Name);
 
         var user = await _userManager.FindByNameAsync(userNameClaim!.Value);
         if(user is null)
         {
-            return BadRequest("Invalid Request");
+            return BadRequest(new EnableMfaResponse { ErrorMessage = "Invalid Request" });
+        }
+
+        var providers = await _userManager.GetValidTwoFactorProvidersAsync(user);
+        if (!providers.Contains(request.Preferred2FAProvider.ToString()!))
+        {
+            return Unauthorized(new EnableMfaResponse { ErrorMessage = "Invalid MFA Provider" });
         }
 
         await _userManager.SetTwoFactorEnabledAsync(user, true);
@@ -287,13 +294,23 @@ public class AccountsController : ControllerBase
             key = await _userManager.GetAuthenticatorKeyAsync(user);
         }
 
-        dynamic? response = null;
+        EnableMfaResponse? response = null;
 
         switch (user.Preferred2FAProvider)
         {
             case MfaProviders.Email:
+                response = new()
+                { 
+                    IsSuccessful = true,
+                    Provider = MfaProviders.Email
+                };
                 break;
             case MfaProviders.Phone:
+                response = new()
+                {
+                    IsSuccessful = true,
+                    Provider = MfaProviders.Phone
+                };
                 break;
             case MfaProviders.Authenticator:
                 var uri = GenerateQRCodeUri(user.Email!, key!);
@@ -301,7 +318,12 @@ public class AccountsController : ControllerBase
                     using var qrGenerator = new QRCodeGenerator();
                     using var qrCodeData = qrGenerator.CreateQrCode(uri, QRCodeGenerator.ECCLevel.Q);
                     using var qrCode = new PngByteQRCode(qrCodeData);
-                    response = qrCode.GetGraphic(20);
+                    response = new()
+                    {
+                        IsSuccessful = true,
+                        QrCode = qrCode.GetGraphic(20),
+                        Provider = MfaProviders.Authenticator
+                    };
                 }
                 break;
         }
