@@ -377,8 +377,8 @@ public class AccountsController : ControllerBase
     private async Task InvalidateAllUserTokens(User user)
     {
         await _userManager.UpdateSecurityStampAsync(user);
-        //user.RefreshToken = null;
-        //user.RefreshTokenExpiryTime = DateTime.MinValue;
+        user.RefreshToken = null;
+        user.RefreshTokenExpiresAt = DateTime.MinValue;
         await _userManager.UpdateAsync(user);
     }
 

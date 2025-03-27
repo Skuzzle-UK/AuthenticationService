@@ -17,6 +17,7 @@ public class ApiResponse
         {
             Errors = new List<string>();
         }
+
         Errors = Errors.Append(error);
 
         IsSuccessful = false;
