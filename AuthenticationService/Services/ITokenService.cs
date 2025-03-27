@@ -5,5 +5,5 @@ namespace AuthenticationService.Services;
 
 public interface ITokenService
 {
-    Token CreateToken(User user, IList<string> roles);
+    Task<Token> CreateTokenAsync(User user, IList<string> roles);
 }

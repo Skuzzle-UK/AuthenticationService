@@ -15,5 +15,8 @@ public class JWTSettings
     public string ValidAudience { get; set; }
 
     [Required]
-    public int ExpiryInMinutes { get; set; }
+    public double ExpiryInMinutes { get; set; }
+
+    [Required]
+    public double RefreshTokenExpiryInDays { get; set; }
 }

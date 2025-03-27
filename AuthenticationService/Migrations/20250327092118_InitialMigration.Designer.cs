@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AuthenticationService.Migrations
 {
     [DbContext(typeof(DatabaseContext))]
-    [Migration("20250326153720_ExpandUserWithRefreshToken")]
-    partial class ExpandUserWithRefreshToken
+    [Migration("20250327092118_InitialMigration")]
+    partial class InitialMigration
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -127,7 +127,7 @@ namespace AuthenticationService.Migrations
                     b.Property<string>("RefreshToken")
                         .HasColumnType("longtext");
 
-                    b.Property<DateTime?>("RefreshTokenExipiresAt")
+                    b.Property<DateTime?>("RefreshTokenExpiresAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("SecurityStamp")

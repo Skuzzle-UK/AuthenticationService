@@ -205,7 +205,7 @@ public class AccountsController : ControllerBase
         }
 
         var roles = await _userManager.GetRolesAsync(user);
-        var token = _tokenService.CreateToken(user, roles);
+        var token = await _tokenService.CreateTokenAsync(user, roles);
 
         await _userManager.ResetAccessFailedCountAsync(user);
 
@@ -243,7 +243,7 @@ public class AccountsController : ControllerBase
         }
 
         var roles = await _userManager.GetRolesAsync(user);
-        var token = _tokenService.CreateToken(user, roles);
+        var token = await _tokenService.CreateTokenAsync(user, roles);
 
         await _userManager.ResetAccessFailedCountAsync(user);
 

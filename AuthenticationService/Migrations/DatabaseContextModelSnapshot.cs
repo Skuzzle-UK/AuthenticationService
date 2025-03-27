@@ -124,7 +124,7 @@ namespace AuthenticationService.Migrations
                     b.Property<string>("RefreshToken")
                         .HasColumnType("longtext");
 
-                    b.Property<DateTime?>("RefreshTokenExipiresAt")
+                    b.Property<DateTime?>("RefreshTokenExpiresAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("SecurityStamp")

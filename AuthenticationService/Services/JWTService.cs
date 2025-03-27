@@ -1,6 +1,7 @@
 ﻿using AuthenticationService.Entities;
 using AuthenticationService.Settings;
 using AuthenticationService.Shared.Models;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -13,24 +14,32 @@ namespace AuthenticationService.Services;
 public class JWTService : ITokenService
 {
     private readonly JWTSettings _jwtSettings;
+    private readonly UserManager<User> _userManager;
 
-    public JWTService(IOptions<JWTSettings> jwtSettings)
+    public JWTService(
+        IOptions<JWTSettings> jwtSettings,
+        UserManager<User> userManager)
     {
         _jwtSettings = jwtSettings.Value;
+        _userManager = userManager;
     }
 
-    // TODO: Finish this to return refresh token etc and create endpoints to get token with refresh instead of username and password /nb
-
-    public Token CreateToken(User user, IList<string> roles)
+    public async Task<Token> CreateTokenAsync(User user, IList<string> roles)
     {
         var signingCredentials = GetSigningCredentials();
         var claims = GetClaims(user, roles);
         var tokenOptions = GenerateTokenOptions(signingCredentials, claims);
+        user.RefreshToken = GenerateRefreshToken();
+        user.RefreshTokenExpiresAt = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenExpiryInDays);
+
+        await _userManager.UpdateAsync(user);
 
         return new Token(
             "Bearer",
             new JwtSecurityTokenHandler().WriteToken(tokenOptions),
-            tokenOptions.ValidTo);
+            tokenOptions.ValidTo,
+            user.RefreshToken,
+            user.RefreshTokenExpiresAt);
     }
 
     private string GenerateRefreshToken()
@@ -71,7 +80,7 @@ public class JWTService : ITokenService
             issuer: _jwtSettings.ValidIssuer,
             audience: _jwtSettings.ValidAudience,
             claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(Convert.ToDouble(_jwtSettings.ExpiryInMinutes)),
+            expires: DateTime.UtcNow.AddMinutes(_jwtSettings.ExpiryInMinutes),
             signingCredentials: signingCredentials);
 
         return tokenOptions;

@@ -21,5 +21,5 @@ public class User : IdentityUser
 
     public string? RefreshToken { get; set; }
 
-    public DateTime? RefreshTokenExipiresAt { get; set; }
+    public DateTime? RefreshTokenExpiresAt { get; set; }
 }

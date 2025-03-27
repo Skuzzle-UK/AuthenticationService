@@ -53,7 +53,7 @@ public static class HostExtensions
 
     public static IServiceCollection AddServices(this IServiceCollection services) =>
         services
-            .AddSingleton<ITokenService, JWTService>()
+            .AddScoped<ITokenService, JWTService>()
             .AddSingleton<IEmailService, EmailService>();
 
     public static IServiceCollection AddDatabase(this IServiceCollection services, HostBuilderContext context) =>

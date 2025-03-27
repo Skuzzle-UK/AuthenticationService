@@ -29,7 +29,7 @@ public class Token
         RefreshToken = refreshToken;
     }
 
-    public Token(string type, string value, DateTime? expires, string refreshToken, DateTime refreshTokenExpiresAt)
+    public Token(string type, string value, DateTime? expires, string refreshToken, DateTime? refreshTokenExpiresAt)
     {
         Type = type;
         Value = value;

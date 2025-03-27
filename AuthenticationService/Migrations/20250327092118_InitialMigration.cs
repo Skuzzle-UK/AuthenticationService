@@ -43,6 +43,8 @@ namespace AuthenticationService.Migrations
                     Country = table.Column<string>(type: "varchar(60)", maxLength: 60, nullable: true),
                     WaitingForTwoFactorAuthentication = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     Preferred2FAProvider = table.Column<int>(type: "int", nullable: false),
+                    RefreshToken = table.Column<string>(type: "longtext", nullable: true),
+                    RefreshTokenExpiresAt = table.Column<DateTime>(type: "datetime(6)", nullable: true),
                     UserName = table.Column<string>(type: "varchar(256)", maxLength: 256, nullable: true),
                     NormalizedUserName = table.Column<string>(type: "varchar(256)", maxLength: 256, nullable: true),
                     Email = table.Column<string>(type: "varchar(256)", maxLength: 256, nullable: true),
