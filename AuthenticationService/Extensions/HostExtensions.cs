@@ -10,6 +10,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 
 namespace AuthenticationService.Extensions;
 
@@ -29,6 +30,21 @@ public static class HostExtensions
                     options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
                     options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
                 });
+            services.AddRateLimiter(opt =>
+            {
+                opt.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+                {
+                    return RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: "GlobalPolicy",
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        Window = TimeSpan.FromSeconds(10),
+                        PermitLimit = 4,
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 2
+                    });
+                });
+            });
         });
 
     public static IServiceCollection AddValidatedSettings(this IServiceCollection services, HostBuilderContext context)
