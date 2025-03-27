@@ -42,6 +42,25 @@ public class JWTService : ITokenService
             user.RefreshTokenExpiresAt);
     }
 
+    public async Task<bool> ValidateExpiredToken(string token)
+    {
+        var tokenHandler = new JwtSecurityTokenHandler();
+        
+        var parameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateIssuerSigningKey = true,
+            ValidateLifetime = false,
+            ValidIssuer = _jwtSettings.ValidIssuer,
+            ValidAudience = _jwtSettings.ValidAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.SecurityKey))
+        };
+
+        var validationResult = await tokenHandler.ValidateTokenAsync(token, parameters);
+        return validationResult.IsValid;
+    }
+
     private string GenerateRefreshToken()
     {
         var randomNumber = new byte[32];

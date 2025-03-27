@@ -4,14 +4,17 @@ using AuthenticationService.Services;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
 using AuthenticationService.Shared.Enums;
+using AuthenticationService.Shared.Models;
 using AuthenticationService.Storage;
 using AutoMapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Text;
 
 namespace AuthenticationService.Controllers;
 
@@ -313,6 +316,48 @@ public class AccountsController : ControllerBase
         }
 
         return Ok(response);
+    }
+
+    /// <summary>
+    /// Refresh token endpoint. Requires bearer token in header as it checks the token claims
+    /// </summary>
+    /// <param name="request">RefreshTokenDto</param>
+    /// <returns>AuthenticationResponse with valid token if successful</returns>
+    [HttpPost("authenticate/refresh")]
+    public async Task<IActionResult> RefreshTokenAsync([FromBody] RefreshTokenDto request)
+    {
+        var token = Request.Headers.Authorization.ToString().Replace("Bearer ", "");
+
+        if (!await _tokenService.ValidateExpiredToken(token))
+        {
+            return BadRequest(new AuthenticationResponse().AddError("Invalid Request"));
+        }
+
+        var handler = new JwtSecurityTokenHandler();
+        var jwtToken = handler.ReadJwtToken(token);
+        var userNameClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Name);
+
+        var user = await _userManager.FindByNameAsync(userNameClaim!.Value);
+
+        if (user is null)
+        {
+            return BadRequest(new AuthenticationResponse().AddError("Invalid Request"));
+        }
+
+        if (user.RefreshToken != request.RefreshToken)
+        {
+            return BadRequest(new AuthenticationResponse().AddError("Invalid Request"));
+        }
+
+        if (user.RefreshTokenExpiresAt < DateTime.UtcNow)
+        {
+            return BadRequest(new AuthenticationResponse().AddError("Refresh token has expired"));
+        }
+
+        var roles = await _userManager.GetRolesAsync(user);
+        var newToken = await _tokenService.CreateTokenAsync(user, roles);
+
+        return Ok(AuthenticationResponse.WithToken(newToken));
     }
 
     /// <summary>
