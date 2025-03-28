@@ -1,15 +1,20 @@
-﻿
+﻿using AuthenticationService.Settings;
 using AuthenticationService.Storage;
+using Microsoft.Extensions.Options;
 
 namespace AuthenticationService.Services.Hosted;
 
 public class RevokedTokenCleanupService : BackgroundService
 {
     private readonly IServiceScopeFactory _serviceScopeFactory;
+    private readonly RevokedTokenSettings _settings;
 
-    public RevokedTokenCleanupService(IServiceScopeFactory serviceScopeFactory)
+    public RevokedTokenCleanupService(
+        IServiceScopeFactory serviceScopeFactory,
+        IOptions<RevokedTokenSettings> settings)
     {
         _serviceScopeFactory = serviceScopeFactory;
+        _settings = settings.Value;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -19,13 +24,12 @@ public class RevokedTokenCleanupService : BackgroundService
             using var scope = _serviceScopeFactory.CreateScope();
             {
                 var context = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
-                // TODO: Needs configuration values for the cleanup interval and the retention period /nb
-                context.AccessRecords.RemoveRange(context.AccessRecords.Where(x => x.AccessAt.AddYears(5) < DateTime.UtcNow));
+                context.AccessRecords.RemoveRange(context.AccessRecords.Where(x => x.AccessAt.AddDays(_settings.AccessRecordsTTLInDays) < DateTime.UtcNow));
                 context.RevokedTokens.RemoveRange(context.RevokedTokens.Where(x => x.ExpiresAt < DateTime.UtcNow));
 
                 await context.SaveChangesAsync(stoppingToken);
             }
-            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+            await Task.Delay(TimeSpan.FromMinutes(_settings.CleanupIntervalInMinutes), stoppingToken);
         }
     }
 }

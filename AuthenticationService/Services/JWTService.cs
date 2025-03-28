@@ -148,19 +148,17 @@ public class JWTService : ITokenService
     private string GetJtiFromToken(string token)
     {
         var tokenHandler = new JwtSecurityTokenHandler();
-        var jwtToken = tokenHandler.ReadToken(token) as JwtSecurityToken;
 
+        var jwtToken = tokenHandler.ReadToken(token) as JwtSecurityToken;
         if (jwtToken == null)
         {
-            throw new ArgumentException("Invalid token");
+            throw new UnauthorizedAccessException("Invalid token");
         }
 
         var jti = jwtToken.Claims.FirstOrDefault(claim => claim.Type == JwtRegisteredClaimNames.Jti)?.Value;
-
         if (jti == null)
         {
-            // TODO: Check if throw is the desired behavior /nb
-            throw new ArgumentException("Token does not contain a jti claim");
+            throw new UnauthorizedAccessException("Token does not contain a jti claim");
         }
 
         return jti;

@@ -12,6 +12,8 @@ public class User : IdentityUser
     [MaxLength(50)]
     public string? LastName { get; set; }
 
+    public DateTime DateOfBirth { get; set; }
+
     [MaxLength(60)]
     public string? Country { get; set; }
 

@@ -62,6 +62,11 @@ public static class HostExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<RevokedTokenSettings>()
+            .Bind(context.Configuration.GetSection(nameof(RevokedTokenSettings)))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         services.AddOptions<EmailServerSettings>()
             .Bind(context.Configuration.GetSection(nameof(EmailServerSettings)))
             .ValidateDataAnnotations()
