@@ -11,12 +11,22 @@ public static class WebApplicationExtensions
     {
         app.RunMigrations();
         app.RuntimeDbSeed();
+        
+        if (!app.Environment.IsDevelopment())
+        {
+            app.UseExceptionHandler("/Error");
+            app.UseHsts();
+        }
+        
         app.UseHttpsRedirection();
+        app.UseStaticFiles();
         app.UseMiddleware<RevokedTokenMiddleware>();
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseRateLimiter();
         app.MapControllers();
+        app.MapRazorPages();
+
         return app;
     }
 

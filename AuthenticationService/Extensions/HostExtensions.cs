@@ -26,6 +26,7 @@ public static class HostExtensions
             services.AddSecurity(context);
             services.AddServices();
             services.AddHostedServices();
+            services.AddRazorPages();
             services.AddControllers()
                 .AddJsonOptions(options =>
                 {
