@@ -4,17 +4,12 @@ using AuthenticationService.Services;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
 using AuthenticationService.Shared.Enums;
-using AuthenticationService.Shared.Models;
 using AuthenticationService.Storage;
 using AutoMapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 
 namespace AuthenticationService.Controllers;
 
@@ -267,11 +262,8 @@ public class AccountsController : ControllerBase
     public async Task<IActionResult> EnableMfaAsync(EnableMfaRequest request)
     {
         var token = Request.Headers.Authorization.ToString().Replace("Bearer ", "");
-        var handler = new JwtSecurityTokenHandler();
-        var jwtToken = handler.ReadJwtToken(token);
-        var userNameClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Name);
-
-        var user = await _userManager.FindByNameAsync(userNameClaim!.Value);
+        
+        var user = await _userManager.FindByNameAsync(_tokenService.GetUserName(token));
         if(user is null)
         {
             return BadRequest(new AuthenticationResponse().AddError("Invalid Request"));
@@ -327,18 +319,12 @@ public class AccountsController : ControllerBase
     public async Task<IActionResult> RefreshTokenAsync([FromBody] RefreshTokenDto request)
     {
         var token = Request.Headers.Authorization.ToString().Replace("Bearer ", "");
-
-        if (!await _tokenService.ValidateExpiredToken(token))
+        if (!await _tokenService.ValidateExpiredTokenAsync(token))
         {
             return BadRequest(new AuthenticationResponse().AddError("Invalid Request"));
         }
 
-        var handler = new JwtSecurityTokenHandler();
-        var jwtToken = handler.ReadJwtToken(token);
-        var userNameClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Name);
-
-        var user = await _userManager.FindByNameAsync(userNameClaim!.Value);
-
+        var user = await _userManager.FindByNameAsync(_tokenService.GetUserName(token));
         if (user is null)
         {
             return BadRequest(new AuthenticationResponse().AddError("Invalid Request"));
@@ -387,12 +373,12 @@ public class AccountsController : ControllerBase
     }
 
     /// <summary>
-    /// Endpoint to reset the user's password using the provided token.
+    /// Endpoint to reset the user's password using the provided token when forgotten.
     /// </summary>
-    /// <param name="request">ResetPasswordDto type</param>
+    /// <param name="request">ResetForgottenPasswordDto type</param>
     /// <returns>ApiResponse indicating the result of the operation</returns>
-    [HttpPost("resetpassword")]
-    public async Task<IActionResult> ResetPasswordAsync([FromBody] ResetPasswordDto request)
+    [HttpPost("forgottenpassword/reset")]
+    public async Task<IActionResult> ResetForgottenPasswordAsync([FromBody] ResetForgottenPasswordDto request)
     {
         var user = await _userManager.FindByEmailAsync(request.Email!);
         if (user is null || !await _userManager.IsEmailConfirmedAsync(user))
@@ -407,7 +393,9 @@ public class AccountsController : ControllerBase
             return BadRequest(new ApiResponse().AddErrors(errors));
         }
 
-        await InvalidateAllUserTokens(user);
+        await InvalidateUserTokens(user);
+
+        // TODO: Send an email to say this has happened /nb
 
         user.LockoutEnd = null;
         await _userManager.UpdateAsync(user);
@@ -419,12 +407,73 @@ public class AccountsController : ControllerBase
             : Redirect(request.CallbackUri);
     }
 
-    private async Task InvalidateAllUserTokens(User user)
+    /// <summary>
+    /// Endpoint to change the user's password.
+    /// </summary>
+    /// <param name="request">ChangePasswordDto type</param>
+    /// <returns>ApiResponse indicating the result of the operation</returns>
+    [HttpPost("changepassword")]
+    [Authorize]
+    public async Task<IActionResult> ChangePasswordAsync([FromBody] ChangePasswordDto request)
+    {
+        var user = await _userManager.FindByEmailAsync(request.Email!);
+        if (user is null || !await _userManager.IsEmailConfirmedAsync(user))
+        {
+            return BadRequest(new ApiResponse().AddError("Invalid request"));
+        }
+
+        var resetResult = await _userManager.ChangePasswordAsync(user, request.OldPassword!, request.NewPassword!);
+        if (!resetResult.Succeeded)
+        {
+            var errors = resetResult.Errors.Select(e => e.Description);
+            return BadRequest(new ApiResponse().AddErrors(errors));
+        }
+
+        var token = Request.Headers.Authorization.ToString().Replace("Bearer ", "");
+        await InvalidateUserTokens(user, token);
+
+        // TODO: Send an email to say this has happened /nb
+
+        user.LockoutEnd = null;
+        await _userManager.UpdateAsync(user);
+
+        await _userManager.ResetAccessFailedCountAsync(user);
+
+        return string.IsNullOrWhiteSpace(request.CallbackUri)
+            ? Ok(new ApiResponse())
+            : Redirect(request.CallbackUri);
+    }
+
+    /// <summary>
+    /// Endpoint to log the user out. Invalidates the user's tokens and logs them out.
+    /// </summary>
+    /// <returns>ApiResponse</returns>
+    [HttpGet("logout")]
+    public async Task<IActionResult> LogoutAsync()
+    {
+        var token = Request.Headers["Authorization"].ToString().Replace("Bearer ", string.Empty);
+
+        var user = await _userManager.FindByNameAsync(_tokenService.GetUserName(token));
+        if (user is null)
+        {
+            return BadRequest(new ApiResponse().AddError("Invalid Request"));
+        }
+
+        await InvalidateUserTokens(user, token);
+        return Ok(new ApiResponse());
+    }
+
+    private async Task InvalidateUserTokens(User user, string? token = null)
     {
         await _userManager.UpdateSecurityStampAsync(user);
         user.RefreshToken = null;
         user.RefreshTokenExpiresAt = DateTime.MinValue;
         await _userManager.UpdateAsync(user);
+        
+        if (!string.IsNullOrEmpty(token))
+        {
+            await _tokenService.RevokeTokenAsync(token, Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty);
+        }
     }
 
     private string GenerateResetPasswordUri(string email, string token, string callbackUri)

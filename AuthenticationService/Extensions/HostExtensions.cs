@@ -1,5 +1,6 @@
 ﻿using AuthenticationService.Entities;
 using AuthenticationService.Services;
+using AuthenticationService.Services.Hosted;
 using AuthenticationService.Settings;
 using AuthenticationService.Storage;
 using AuthenticationService.Validators;
@@ -24,6 +25,7 @@ public static class HostExtensions
             services.AddDatabase(context);
             services.AddSecurity(context);
             services.AddServices();
+            services.AddHostedServices();
             services.AddControllers()
                 .AddJsonOptions(options =>
                 {
@@ -32,6 +34,7 @@ public static class HostExtensions
                 });
             services.AddRateLimiter(opt =>
             {
+                // TODO: Look at whether this could be a problem if many users originate from the same IP address /nb
                 opt.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
                 {
                     return RateLimitPartition.GetFixedWindowLimiter(
@@ -71,6 +74,10 @@ public static class HostExtensions
         services
             .AddScoped<ITokenService, JWTService>()
             .AddSingleton<IEmailService, EmailService>();
+
+    public static IServiceCollection AddHostedServices(this IServiceCollection services) =>
+        services
+            .AddHostedService<RevokedTokenCleanupService>();
 
     public static IServiceCollection AddDatabase(this IServiceCollection services, HostBuilderContext context) =>
         services

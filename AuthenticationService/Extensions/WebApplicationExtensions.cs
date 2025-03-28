@@ -1,4 +1,5 @@
-﻿using AuthenticationService.Storage;
+﻿using AuthenticationService.Middleware;
+using AuthenticationService.Storage;
 using AuthenticationService.Storage.Seed;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,6 +12,7 @@ public static class WebApplicationExtensions
         app.RunMigrations();
         app.RuntimeDbSeed();
         app.UseHttpsRedirection();
+        app.UseMiddleware<RevokedTokenMiddleware>();
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseRateLimiter();

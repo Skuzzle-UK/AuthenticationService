@@ -2,13 +2,13 @@
 
 namespace AuthenticationService.Shared.Dtos;
 
-public class ResetPasswordDto
+public class ChangePasswordDto
 {
     [Required(ErrorMessage = "Email is required.")]
     public string? Email { get; set; }
 
-    [Required(ErrorMessage = "Token is required.")]
-    public string? Token { get; set; }
+    [Required(ErrorMessage = "Old password is required.")]
+    public string? OldPassword { get; set; }
 
     [Required(ErrorMessage = "New password is required.")]
     public string? NewPassword { get; set; }

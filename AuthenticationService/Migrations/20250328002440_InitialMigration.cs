@@ -18,6 +18,24 @@ namespace AuthenticationService.Migrations
                 .Annotation("MySQL:Charset", "utf8mb4");
 
             migrationBuilder.CreateTable(
+                name: "AccessRecords",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("MySQL:ValueGenerationStrategy", MySQLValueGenerationStrategy.IdentityColumn),
+                    TokenJti = table.Column<string>(type: "varchar(255)", nullable: false),
+                    UserId = table.Column<string>(type: "longtext", nullable: false),
+                    IpAddress = table.Column<string>(type: "longtext", nullable: false),
+                    AccessAt = table.Column<DateTime>(type: "datetime(6)", nullable: false),
+                    Revoked = table.Column<bool>(type: "tinyint(1)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AccessRecords", x => x.Id);
+                })
+                .Annotation("MySQL:Charset", "utf8mb4");
+
+            migrationBuilder.CreateTable(
                 name: "AspNetRoles",
                 columns: table => new
                 {
@@ -63,6 +81,20 @@ namespace AuthenticationService.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_AspNetUsers", x => x.Id);
+                })
+                .Annotation("MySQL:Charset", "utf8mb4");
+
+            migrationBuilder.CreateTable(
+                name: "RevokedTokens",
+                columns: table => new
+                {
+                    TokenJti = table.Column<string>(type: "varchar(255)", nullable: false),
+                    UserId = table.Column<string>(type: "longtext", nullable: false),
+                    ExpiresAt = table.Column<DateTime>(type: "datetime(6)", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_RevokedTokens", x => x.TokenJti);
                 })
                 .Annotation("MySQL:Charset", "utf8mb4");
 
@@ -187,6 +219,11 @@ namespace AuthenticationService.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "IX_AccessRecords_TokenJti",
+                table: "AccessRecords",
+                column: "TokenJti");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_AspNetRoleClaims_RoleId",
                 table: "AspNetRoleClaims",
                 column: "RoleId");
@@ -228,6 +265,9 @@ namespace AuthenticationService.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
+                name: "AccessRecords");
+
+            migrationBuilder.DropTable(
                 name: "AspNetRoleClaims");
 
             migrationBuilder.DropTable(
@@ -241,6 +281,9 @@ namespace AuthenticationService.Migrations
 
             migrationBuilder.DropTable(
                 name: "AspNetUserTokens");
+
+            migrationBuilder.DropTable(
+                name: "RevokedTokens");
 
             migrationBuilder.DropTable(
                 name: "AspNetRoles");

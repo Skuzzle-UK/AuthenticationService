@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AuthenticationService.Migrations
 {
     [DbContext(typeof(DatabaseContext))]
-    [Migration("20250327092118_InitialMigration")]
+    [Migration("20250328002440_InitialMigration")]
     partial class InitialMigration
     {
         /// <inheritdoc />
@@ -21,6 +21,54 @@ namespace AuthenticationService.Migrations
             modelBuilder
                 .HasAnnotation("ProductVersion", "8.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
+
+            modelBuilder.Entity("AuthenticationService.Entities.AccessRecord", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("AccessAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("IpAddress")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<bool>("Revoked")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("TokenJti")
+                        .IsRequired()
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenJti");
+
+                    b.ToTable("AccessRecords");
+                });
+
+            modelBuilder.Entity("AuthenticationService.Entities.RevokedToken", b =>
+                {
+                    b.Property<string>("TokenJti")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.HasKey("TokenJti");
+
+                    b.ToTable("RevokedTokens");
+                });
 
             modelBuilder.Entity("AuthenticationService.Entities.Role", b =>
                 {
