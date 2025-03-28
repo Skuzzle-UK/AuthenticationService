@@ -377,7 +377,7 @@ public class AccountsController : ControllerBase
     /// </summary>
     /// <param name="request">ResetForgottenPasswordDto type</param>
     /// <returns>ApiResponse indicating the result of the operation</returns>
-    [HttpPost("forgottenpassword/reset")]
+    [HttpPost("forgotpassword/reset")]
     public async Task<IActionResult> ResetForgottenPasswordAsync([FromBody] ResetForgottenPasswordDto request)
     {
         var user = await _userManager.FindByEmailAsync(request.Email!);
