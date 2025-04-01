@@ -4,7 +4,7 @@ namespace AuthenticationService.Shared.Dtos;
 
 public class ResetForgottenPasswordDto
 {
-    [Required(ErrorMessage = "Email is required.")]
+    [Required(ErrorMessage = "Email is required."), EmailAddress]
     public string? Email { get; set; }
 
     [Required(ErrorMessage = "Token is required.")]
