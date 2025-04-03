@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
+using System.Text;
 
 namespace AuthenticationService.Controllers;
 
@@ -361,9 +362,15 @@ public class AccountsController : ControllerBase
             return BadRequest(new ApiResponse().AddError("Invalid request"));
         }
 
-        // TODO: Create a simple reset page and use that as default if one isn't provided by the client /nb
         var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-        var resetPasswordUri = AccountHelpers.GenerateResetPasswordUri(user.Email!, token, request.CallbackUri!);
+        var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+
+        if (string.IsNullOrWhiteSpace(request.CallbackUri))
+        {
+            request.CallbackUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/ResetPassword";
+        }
+
+        var resetPasswordUri = AccountHelpers.GenerateResetPasswordUri(user.Email!, encodedToken, request.CallbackUri!);
 
         await _emailService.SendEmailAsync(
             user.Email!,
@@ -387,7 +394,9 @@ public class AccountsController : ControllerBase
             return BadRequest(new ApiResponse().AddError("Invalid request"));
         }
 
-        var resetResult = await _userManager.ResetPasswordAsync(user, request.Token!, request.NewPassword!);
+        var decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(request.Token!));
+
+        var resetResult = await _userManager.ResetPasswordAsync(user, decodedToken, request.NewPassword!);
         if (!resetResult.Succeeded)
         {
             var errors = resetResult.Errors.Select(e => e.Description);
@@ -396,14 +405,20 @@ public class AccountsController : ControllerBase
 
         await InvalidateUserTokens(user);
 
-        // TODO: Create a simple lockout page and use that as default if one isn't provided by the client /nb
         var lockoutToken = await _userManager.GenerateUserTokenAsync(user, MfaProviders.Email.ToString(), "Lockout");
-        var resetPasswordUri = AccountHelpers.GenerateLockoutUri(user.Email!, lockoutToken, request.CallbackUri!);
+
+        if (string.IsNullOrWhiteSpace(request.CallbackUri))
+        {
+            request.CallbackUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/ActionComplete";
+        }
+
+        // TODO: Lockout should be a different page /nb
+        var lockAccountUri = AccountHelpers.GenerateLockoutUri(user.Email!, lockoutToken, $"{Request.Scheme}://{Request.Host}{Request.PathBase}/LockAccount");
 
         await _emailService.SendEmailAsync(
             user.Email!,
             "Password Reset",
-            $"Your password was reset at {DateTime.UtcNow} UTC. If you didn't make this request please click the following link to lock your account and contact a system administrator. {resetPasswordUri}");
+            $"Your password was reset at {DateTime.UtcNow} UTC. If you didn't make this request please click the following link to lock your account and contact a system administrator. {lockAccountUri}");
 
         user.LockoutEnd = null;
         await _userManager.UpdateAsync(user);
@@ -443,6 +458,8 @@ public class AccountsController : ControllerBase
         // TODO: Create a simple lockout page and use that as default if one isn't provided by the client /nb
         var lockoutToken = await _userManager.GenerateUserTokenAsync(user, MfaProviders.Email.ToString(), "Lockout");
         var resetPasswordUri = AccountHelpers.GenerateLockoutUri(user.Email!, lockoutToken, request.CallbackUri!);
+
+        // TODO: Not correct link to lock /nb
 
         await _emailService.SendEmailAsync(
             user.Email!,
@@ -485,7 +502,7 @@ public class AccountsController : ControllerBase
     /// <param name="request">LockAccountDto</param>
     /// <returns>ApiResponse</returns>
     [HttpPost("lock")]
-    public async Task<IActionResult> LockAccountAsync([FromQuery] string token, [FromBody] LockAccountDto request)
+    public async Task<IActionResult> LockAccountAsync(LockAccountDto request)
     {
         var user = await _userManager.FindByEmailAsync(request.Email!);
         if (user is null)
@@ -493,25 +510,17 @@ public class AccountsController : ControllerBase
             return BadRequest(new ApiResponse().AddError("Invalid request"));
         }
 
-        if (!await _userManager.VerifyUserTokenAsync(user, MfaProviders.Email.ToString(), "Lockout", token))
+        if (!await _userManager.VerifyUserTokenAsync(user, MfaProviders.Email.ToString(), "Lockout", request.Token!))
         {
             return BadRequest(new ApiResponse().AddError("Invalid request"));
         }
 
-        if (!string.Equals(user.UserName, request.UserName, StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(user.Email, request.Email, StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(user.FirstName, request.FirstName, StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(user.LastName, request.LastName, StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(user.Country, request.Country, StringComparison.OrdinalIgnoreCase)
-            || user.DateOfBirth != request.DateOfBirth)
-        {
-            return BadRequest(new ApiResponse().AddError("User provided details are not correct"));
-        }
-
         await InvalidateUserTokens(user);
 
-        await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.MaxValue);
-        return Ok(new ApiResponse());
+        await _userManager.SetLockoutEnabledAsync(user, true);
+
+        await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
+        return Redirect($"{Request.Scheme}://{Request.Host}{Request.PathBase}/ActionComplete");
     }
 
     private async Task InvalidateUserTokens(User user, string? token = null)

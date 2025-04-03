@@ -4,4 +4,55 @@
     ViewData["Title"] = "Lock Account";
 }
 
+<script>
+    function LockoutAccount() {
+        var token = '@Model.Token';
+        var email = '@Model.Email';
+
+        var request = {
+            Email: email,
+            Token: token,
+        };
+
+        fetch('api/accounts/lock', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(request)
+        })
+        .then(response => {
+            if (response.redirected){
+                window.location.href = response.url;
+            } else {
+                return response.json();
+            }
+        })
+        .then(data => {
+            if (data.success) {
+                alert('Account locked');
+            } else {
+                let errorMessages = '';
+                if (Array.isArray(data.errors)) {
+                    errorMessages = data.errors.join(' ');
+                } else {
+                    for (const key in data.errors) {
+                        if (Array.isArray(data.errors[key])) {
+                            errorMessages += data.errors[key].join(' ') + '\n';
+                        } else {
+                            errorMessages += data.errors[key] + '\n';
+                        }
+                    }
+                }
+                alert('Account lock failed:\n' + errorMessages);
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    }
+
+    window.onload = function() {
+        LockoutAccount();
+    };
+</script>
+
 <h2>@ViewData["Title"]</h2>
