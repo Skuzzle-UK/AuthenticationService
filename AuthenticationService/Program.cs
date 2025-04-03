@@ -16,6 +16,7 @@ public class Program
         builder.Host.ConfigureHost(builder.Configuration);
 
         var app = builder.Build();
+
         app.ConfigureApplication();
         app.Run();
     }

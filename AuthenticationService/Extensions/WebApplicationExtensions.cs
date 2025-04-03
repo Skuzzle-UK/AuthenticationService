@@ -9,6 +9,12 @@ public static class WebApplicationExtensions
 {
     public static WebApplication ConfigureApplication(this WebApplication app)
     {
+        app.UseSwagger();
+        app.UseSwaggerUI(opt =>
+        {
+            opt.SwaggerEndpoint("/swagger/v1/swagger.json", "My API V1");
+        });
+
         app.RunMigrations();
         app.RuntimeDbSeed();
         
@@ -20,13 +26,19 @@ public static class WebApplicationExtensions
         
         app.UseHttpsRedirection();
         app.UseStaticFiles();
-        app.UseMiddleware<RevokedTokenMiddleware>();
+        app.UseApplicationMiddleware();
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseRateLimiter();
         app.MapControllers();
         app.MapRazorPages();
 
+        return app;
+    }
+
+    public static WebApplication UseApplicationMiddleware(this WebApplication app)
+    {
+        app.UseMiddleware<RevokedTokenMiddleware>();
         return app;
     }
 

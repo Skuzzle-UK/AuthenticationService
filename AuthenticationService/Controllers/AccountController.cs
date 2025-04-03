@@ -218,7 +218,6 @@ public class AccountController : ControllerBase
     /// <summary>
     /// Enables user to follow email link to lock out an account if password was changed without user consent
     /// </summary>
-    /// <param name="token">Must have been generated in a previous step</param>
     /// <param name="request">LockAccountDto</param>
     /// <returns>ApiResponse</returns>
     [HttpPost("lock")]

@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -27,28 +29,9 @@ public static class HostExtensions
             services.AddServices();
             services.AddHostedServices();
             services.AddRazorPages();
-            services.AddControllers()
-                .AddJsonOptions(options =>
-                {
-                    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
-                    options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-                });
-            services.AddRateLimiter(opt =>
-            {
-                // TODO: Look at whether this could be a problem if many users originate from the same IP address /nb
-                opt.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-                {
-                    return RateLimitPartition.GetFixedWindowLimiter(
-                    partitionKey: "GlobalPolicy",
-                    factory: _ => new FixedWindowRateLimiterOptions
-                    {
-                        Window = TimeSpan.FromSeconds(10),
-                        PermitLimit = 4,
-                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                        QueueLimit = 2
-                    });
-                });
-            });
+            services.AddApiControllers();
+            services.AddSwagger();
+            services.AddRateLimiting();
         });
 
     public static IServiceCollection AddValidatedSettings(this IServiceCollection services, HostBuilderContext context)
@@ -132,4 +115,46 @@ public static class HostExtensions
 
         return services;
     }
+
+    public static IServiceCollection AddApiControllers(this IServiceCollection services)
+    {
+        services
+            .AddControllers()
+            .AddJsonOptions(opt =>
+            {
+                opt.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+                opt.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+            });
+
+        return services;
+    }
+
+    public static IServiceCollection AddSwagger(this IServiceCollection services) =>
+        services
+            .AddEndpointsApiExplorer()
+            .AddSwaggerGen(opt =>
+            {
+                opt.SwaggerDoc("v1", new OpenApiInfo { Title = "My API", Version = "v1" });
+                var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+                var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+                opt.IncludeXmlComments(xmlPath);
+            });
+
+    public static IServiceCollection AddRateLimiting(this IServiceCollection services) =>
+        services.AddRateLimiter(opt =>
+        {
+            // TODO: Look at whether this could be a problem if many users originate from the same IP address /nb
+            opt.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+            {
+                return RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: "GlobalPolicy",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    Window = TimeSpan.FromSeconds(10),
+                    PermitLimit = 4,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 2
+                });
+            });
+        });
 }
