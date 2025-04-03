@@ -74,7 +74,7 @@ public class JWTService : ITokenService
         {
             TokenJti = jti,
             ExpiresAt = GetExpiryDateTime(token),
-            UserId = GetUserId(token)
+            UserId = await GetUserId(token)
         };
 
         var accessRecord = new AccessRecord()
@@ -129,7 +129,7 @@ public class JWTService : ITokenService
         return userNameClaim?.Value ?? string.Empty;
     }
 
-    private string GetUserId(string token)
+    private async Task<string> GetUserId(string token)
     {
         var handler = new JwtSecurityTokenHandler();
         var jwtToken = handler.ReadJwtToken(token);
@@ -140,7 +140,7 @@ public class JWTService : ITokenService
             return string.Empty;
         }
 
-        var user = _userManager.FindByNameAsync(userIdClaim.Value).Result;
+        var user = await _userManager.FindByNameAsync(userIdClaim.Value);
 
         return user?.Id ?? string.Empty;
     }

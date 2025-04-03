@@ -79,6 +79,7 @@ public static class HostExtensions
     public static IServiceCollection AddServices(this IServiceCollection services) =>
         services
             .AddScoped<ITokenService, JWTService>()
+            .AddScoped<IUserService, UserService>()
             .AddSingleton<IEmailService, EmailService>();
 
     public static IServiceCollection AddHostedServices(this IServiceCollection services) =>
