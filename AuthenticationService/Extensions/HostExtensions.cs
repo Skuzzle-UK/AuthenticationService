@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Reflection;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -141,20 +142,21 @@ public static class HostExtensions
             });
 
     public static IServiceCollection AddRateLimiting(this IServiceCollection services) =>
-        services.AddRateLimiter(opt =>
-        {
-            // TODO: Look at whether this could be a problem if many users originate from the same IP address /nb
-            opt.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+            services.AddRateLimiter(opt =>
             {
-                return RateLimitPartition.GetFixedWindowLimiter(
-                partitionKey: "GlobalPolicy",
-                factory: _ => new FixedWindowRateLimiterOptions
+                opt.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
                 {
-                    Window = TimeSpan.FromSeconds(10),
-                    PermitLimit = 4,
-                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    QueueLimit = 2
+                    // Will check token for name first and then IP address, finally fallback to "anonymous" to decide if same user.
+                    var userId = context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+                    return RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: userId,
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        Window = TimeSpan.FromSeconds(10),
+                        PermitLimit = 4,
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 2
+                    });
                 });
             });
-        });
 }

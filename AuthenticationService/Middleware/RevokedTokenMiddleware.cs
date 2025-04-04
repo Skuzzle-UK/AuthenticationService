@@ -23,7 +23,6 @@ public class RevokedTokenMiddleware
             var token = context.Request.Headers["Authorization"].ToString().Replace("Bearer ", string.Empty);
             if (!string.IsNullOrEmpty(token) && await tokenService.IsRevokedAsync(token))
             {
-                // TODO: Look at whether this could be a problem if many users originate from the same IP address /nb
                 var ipaddress = context.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
                 await tokenService.AddAccessAttemptAsync(token, ipaddress);
 

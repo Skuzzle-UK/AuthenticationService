@@ -110,10 +110,10 @@ public class AccountController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(request.CallbackUri))
         {
-            request.CallbackUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/ResetPassword";
+            request.CallbackUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
         }
 
-        var resetPasswordUri = AccountHelpers.GenerateResetPasswordUri(user.Email!, encodedToken, request.CallbackUri!);
+        var resetPasswordUri = AccountHelpers.GenerateResetPasswordUri(user.Email!, encodedToken, $"{request.CallbackUri}/ResetPassword");
 
         await _emailService.SendEmailAsync(
             user.Email!,
@@ -152,10 +152,10 @@ public class AccountController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(request.CallbackUri))
         {
-            request.CallbackUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/ActionComplete";
+            request.CallbackUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
         }
 
-        var lockAccountUri = AccountHelpers.GenerateLockoutUri(user.Email!, lockoutToken, $"{Request.Scheme}://{Request.Host}{Request.PathBase}/LockAccount");
+        var lockAccountUri = AccountHelpers.GenerateLockoutUri(user.Email!, lockoutToken, $"{request.CallbackUri}/LockAccount");
 
         await _emailService.SendEmailAsync(
             user.Email!,
@@ -166,10 +166,10 @@ public class AccountController : ControllerBase
         await _userService.UpdateAsync(user);
 
         await _userService.ResetAccessFailedCountAsync(user);
-
+        // TODO: Dont need to add the ActionComplete if callback is provided /nb
         return string.IsNullOrWhiteSpace(request.CallbackUri)
             ? Ok(new ApiResponse())
-            : Redirect(request.CallbackUri);
+            : Redirect($"{request.CallbackUri}/ActionComplete");
     }
 
     /// <summary>
@@ -198,7 +198,13 @@ public class AccountController : ControllerBase
         await _userService.InvalidateUserTokensAsync(user, Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty, token);
 
         var lockoutToken = await _userService.GenerateUserTokenAsync(user, MfaProviders.Email.ToString(), "Lockout");
-        var lockAccountUri = AccountHelpers.GenerateLockoutUri(user.Email!, lockoutToken, $"{Request.Scheme}://{Request.Host}{Request.PathBase}/LockAccount");
+
+        if (string.IsNullOrWhiteSpace(request.CallbackUri))
+        {
+            request.CallbackUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
+        }
+
+        var lockAccountUri = AccountHelpers.GenerateLockoutUri(user.Email!, lockoutToken, $"{request.CallbackUri}/LockAccount");
 
         await _emailService.SendEmailAsync(
             user.Email!,
@@ -209,10 +215,10 @@ public class AccountController : ControllerBase
         await _userService.UpdateAsync(user);
 
         await _userService.ResetAccessFailedCountAsync(user);
-
+        // TODO: Dont need to add the ActionComplete if callback is provided /nb
         return string.IsNullOrWhiteSpace(request.CallbackUri)
             ? Ok(new ApiResponse())
-            : Redirect(request.CallbackUri);
+            : Redirect($"{request.CallbackUri}/ActionComplete");
     }
 
     /// <summary>
@@ -239,14 +245,20 @@ public class AccountController : ControllerBase
         await _userService.SetLockoutEnabledAsync(user, true);
         await _userService.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
 
+        if (string.IsNullOrWhiteSpace(request.CallbackUri))
+        {
+            request.CallbackUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
+        }
+
         // TODO: Retrieve account link to be made here /nb
-        var retrieveAccountLink = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/RetrieveAccount";
+        var retrieveAccountLink = $"{request.CallbackUri}/RetrieveAccount";
 
         await _emailService.SendEmailAsync(
             user.Email!,
             "Account Locked",
             $"Your account was locked at {DateTime.UtcNow} UTC. If you didn't make this request please contact a system administrator. To unlock your account click the following link. {retrieveAccountLink}");
 
-        return Redirect($"{Request.Scheme}://{Request.Host}{Request.PathBase}/ActionComplete");
+        // TODO: Dont need to add the ActionComplete if callback is provided /nb
+        return Redirect($"{request.CallbackUri}/ActionComplete");
     }
 }

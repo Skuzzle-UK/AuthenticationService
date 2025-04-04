@@ -141,7 +141,7 @@ public class RegistrationController : ControllerBase
         {
             { "token", token },
             { "email", user.Email! },
-            { "callbackUri", callbackUri ?? string.Empty }
+            { "callbackUri", callbackUri ?? $"{Request.Scheme}://{Request.Host}{Request.PathBase}/confirm/email?callbackUri={{Request.Scheme}}://{{Request.Host}}{{Request.PathBase}}/ActionComplete" }
         };
 
         var confirmEmailUri = QueryHelpers.AddQueryString(confirmEmailPath, confirmEmailParams!);
