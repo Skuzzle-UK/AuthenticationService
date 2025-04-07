@@ -1,17 +1,14 @@
-﻿using AuthenticationService.Shared.Enums;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace AuthenticationService.Shared.Dtos;
 
-public class RegistrationDto
+public class RetrieveAccountDto
 {
-    [Required(ErrorMessage = "UserName is required."), MaxLength(50)]
+    [Required(ErrorMessage = "UserName is required.")]
     public string? UserName { get; set; }
-    
-    [MaxLength(50)]
+
     public string? FirstName { get; set; }
 
-    [MaxLength(50)]
     public string? LastName { get; set; }
 
     [Required(ErrorMessage = "Date of birth is required.")]
@@ -23,34 +20,25 @@ public class RegistrationDto
     [Phone]
     public string? PhoneNumber { get; set; }
 
-    [MaxLength(60)]
     public string? Country { get; set; }
 
-    [Required(ErrorMessage = "Password is required.")]
-    public string? Password { get; set; }
-
-    [Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
-    public string? ConfirmPassword { get; set; }
-
-    public string? EmailConfirmationCallbackUri { get; set; }
-
-    public MfaProviders? Preferred2FAProvider { get; set; }
-
-    [MaxLength(150)]
     public string? MothersMaidenName { get; set; }
 
-    [MaxLength(256)]
     public string? AddressLine1 { get; set; }
 
-    [MaxLength(256)]
     public string? AddressLine2 { get; set; }
 
-    [MaxLength(256)]
     public string? AddressLine3 { get; set; }
 
-    [MaxLength(20)]
     public string? Postcode { get; set; }
 
-    [MaxLength(60)]
     public string? City { get; set; }
+
+    public string? LockAccountUri { get; set; }
+
+    [Required(ErrorMessage = "Password is required.")]
+    public string? NewPassword { get; set; }
+
+    [Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
+    public string? NewConfirmPassword { get; set; }
 }

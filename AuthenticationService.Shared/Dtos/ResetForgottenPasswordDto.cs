@@ -16,5 +16,5 @@ public class ResetForgottenPasswordDto
     [Compare("NewPassword", ErrorMessage = "The password and confirmation password do not match.")]
     public string? ConfirmPassword { get; set; }
 
-    public string? CallbackUri { get; set; }
+    public string? LockAccountUri { get; set; }
 }

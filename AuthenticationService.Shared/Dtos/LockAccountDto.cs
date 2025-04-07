@@ -10,5 +10,5 @@ public class LockAccountDto
     [Required(ErrorMessage = "Token is required.")]
     public string? Token { get; set; }
     
-    public string? CallbackUri { get; set; }
+    public string? RetrieveAccountUri { get; set; }
 }

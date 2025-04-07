@@ -1,20 +1,20 @@
 ﻿@page
-@model AuthenticationService.Pages.LockAccountModel
+@model AuthenticationService.Pages.RetrieveAccountModel
 @{
-    ViewData["Title"] = "Lock Account";
+    ViewData["Title"] = "Retrieve Account";
 }
 
 <script>
-    function LockoutAccount() {
-        var token = '@Model.Token';
-        var email = '@Model.Email';
+    function submitResetPassword() {
+        var newPassword = document.getElementById('NewPassword').value;
+        var confirmPassword = document.getElementById('ConfirmPassword').value;
 
         var request = {
-            Email: email,
-            Token: token,
+            NewPassword: newPassword,
+            ConfirmPassword: confirmPassword
         };
 
-        fetch('api/accounts/lock', {
+        fetch('api/accounts/retrieve', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -31,7 +31,7 @@
         })
         .then(data => {
             if (data.success) {
-                alert('Account locked');
+                alert('Account retrieved successfully');
             } else {
                 let errorMessages = '';
                 if (Array.isArray(data.errors)) {
@@ -45,15 +45,22 @@
                         }
                     }
                 }
-                alert('Account lock failed:\n' + errorMessages);
+                alert('Account retrieval failed:\n' + errorMessages);
             }
         })
         .catch(error => console.error('Error:', error));
     }
-
-    window.onload = function() {
-        LockoutAccount();
-    };
 </script>
 
+@* Add more fields *@
+
 <h2>@ViewData["Title"]</h2>
+<div>
+    New password: <input type="password" id="NewPassword" name="NewPassword" placeholder="Enter new password ..." />
+</div>
+<div>
+    Confirm password: <input type="password" id="ConfirmPassword" name="ConfirmPassword" placeholder="Enter new password again..." />
+</div>
+<div>
+    <button type="button" onclick="submitResetPassword()">Reset Password</button>
+</div>

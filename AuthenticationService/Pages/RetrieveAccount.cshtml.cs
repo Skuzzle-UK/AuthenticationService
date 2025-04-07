@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace AuthenticationService.Pages
 {
-    public class ActionCompleteModel : PageModel
+    public class RetrieveAccountModel : PageModel
     {
         public void OnGet()
         {

@@ -121,7 +121,7 @@ public class RegistrationController : ControllerBase
 
         if (await _userService.IsEmailConfirmedAsync(user))
         {
-            return BadRequest(new ApiResponse().AddError("Invalid request"));
+            return BadRequest(new ApiResponse().AddError("User email already confirmed"));
         }
 
         await SendConfirmEmailAsync(user, request.CallbackUri);

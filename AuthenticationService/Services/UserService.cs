@@ -104,6 +104,26 @@ public class UserService : IUserService
     public async Task UpdateAsync(User user) =>
         await _userManager.UpdateAsync(user);
 
+    public bool VerifyRetrieveAccountValues(
+        User user, string? userName, string? firstName, string? lastName, DateOnly? dateOfBirth, string? email,
+        string? phoneNumber, string? Country, string? mothersMaidenName, string? addressLine1, string? addressLine2,
+        string? addressLine3, string? postcode, string? city)
+    {
+        return (user.UserName is null || user.UserName == userName)
+            && (user.FirstName is null || user.FirstName == firstName)
+            && (user.LastName is null || user.LastName == lastName)
+            && (user.DateOfBirth is null || user.DateOfBirth == dateOfBirth)
+            && (user.Email is null || user.Email == email)
+            && (user.PhoneNumber is null || user.PhoneNumber == phoneNumber)
+            && (user.Country is null || user.Country == Country)
+            && (user.MotherMaidenName is null || user.MotherMaidenName == mothersMaidenName)
+            && (user.AddressLine1 is null || user.AddressLine1 == addressLine1)
+            && (user.AddressLine2 is null || user.AddressLine2 == addressLine2)
+            && (user.AddressLine3 is null || user.AddressLine3 == addressLine3)
+            && (user.Postcode is null || user.Postcode == postcode)
+            && (user.City is null || user.City == city);
+    }
+
     public async Task<bool> VerifyTwoFactorTokenAsync(User user, string tokenProvider, string token) =>
         await _userManager.VerifyTwoFactorTokenAsync(user, tokenProvider, token);
 
