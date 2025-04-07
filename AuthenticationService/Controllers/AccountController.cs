@@ -10,6 +10,8 @@ using System.Text;
 
 namespace AuthenticationService.Controllers;
 
+// TODO: Update user details controller /nb
+
 [Route("api/[controller]")]
 [ApiController]
 public class AccountController : ControllerBase
