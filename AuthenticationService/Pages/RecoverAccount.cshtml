@@ -1,0 +1,127 @@
+﻿@page
+@model AuthenticationService.Pages.RecoverAccountModel
+@{
+    ViewData["Title"] = "Recover Account";
+}
+
+<script>
+    function submitRecoverAccount() {
+        let username = document.getElementById('Username').value;
+        let email = document.getElementById('Email').value;
+        let phone = document.getElementById('Phone').value;
+        let firstName = document.getElementById('FirstName').value;
+        let lastName = document.getElementById('LastName').value;
+        let dateOfBirth = document.getElementById('DateOfBirth').value;
+        let mothersMaidenName = document.getElementById('MothersMaidenName').value;
+        let address1 = document.getElementById('AddressLine1').value;
+        let address2 = document.getElementById('AddressLine2').value;
+        let address3 = document.getElementById('AddressLine3').value;
+        let city = document.getElementById('City').value;
+        let country = document.getElementById('Country').value;
+        let postcode = document.getElementById('Postcode').value;
+        let newPassword = document.getElementById('NewPassword').value;
+        let newConfirmPassword = document.getElementById('NewConfirmPassword').value;
+
+        let request = {
+            UserName: username,
+            Email: email,
+            Phone: phone,
+            FirstName: firstName,
+            LastName: lastName,
+            DateOfBirth: dateOfBirth !== "" ? dateOfBirth : null,
+            MothersMaidenName: mothersMaidenName,
+            AddressLine1: address1,
+            AddressLine2: address2,
+            AddressLine3: address3,
+            City: city,
+            Country: country,
+            Postcode: postcode,
+            NewPassword: newPassword,
+            NewConfirmPassword: newConfirmPassword
+        };
+
+        fetch('api/account/recover', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(request)
+        })
+        // TODO: Why dont errors get reported back in the alert /nb
+        .then(data => {
+            if (data.status == 200) {
+                alert('Account recovery successfully');
+                setTimeout(() => {
+                    window.location.href = '/ActionComplete';
+                }, 1000);
+            } else {
+                let errorMessages = '';
+                if (Array.isArray(data.errors)) {
+                    errorMessages = data.errors.join(' ');
+                } else {
+                    for (const key in data.errors) {
+                        if (Array.isArray(data.errors[key])) {
+                            errorMessages += data.errors[key].join(' ') + '\n';
+                        } else {
+                            errorMessages += data.errors[key] + '\n';
+                        }
+                    }
+                }
+                alert('Account recovery failed:\n' + errorMessages);
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    }
+</script>
+
+@* Add more fields *@
+
+<h2>@ViewData["Title"]</h2>
+<div>
+    Username: <input type="text" id="Username" name="Username" placeholder="Enter username ..." />
+</div>
+<div>
+    Email: <input type="text" id="Email" name="Email" placeholder="Enter email ..." />
+</div>
+<div>
+    Phone: <input type="text" id="Phone" name="Phone" placeholder="Enter phone number ..." />
+</div>
+<div>
+    First name: <input type="text" id="FirstName" name="FirstName" placeholder="Enter first name ..." />
+</div>
+<div>
+    Last name: <input type="text" id="LastName" name="LastName" placeholder="Enter last name ..." />
+</div>
+<div>
+    Date of birth: <input type="date" id="DateOfBirth" name="DateOfBirth" placeholder="Enter date of birth ..." />
+</div>
+<div>
+    Mothers maiden name: <input type="text" id="MothersMaidenName" name="MothersMaidenName" placeholder="Enter mothers maiden name ..." />
+</div>
+<div>
+    Address line 1: <input type="text" id="AddressLine1" name="AddressLine1" placeholder="Enter address ..." />
+</div>
+<div>
+    Address line 2: <input type="text" id="AddressLine2" name="AddressLine2" />
+</div>
+<div>
+    Address line 3: <input type="text" id="AddressLine3" name="AddressLine3" />
+</div>
+<div>
+    Town/City: <input type="text" id="City" name="City" placeholder="Enter town/city ..." />
+</div>
+<div>
+    Country: <input type="text" id="Country" name="Country" placeholder="Enter country ..." />
+</div>
+<div>
+    Postcode: <input type="text" id="Postcode" name="Postcode" placeholder="Enter postcode ..." />
+</div>
+<div>
+    New password: <input type="password" id="NewPassword" name="NewPassword" placeholder="Enter new password ..." />
+</div>
+<div>
+    Confirm new password: <input type="password" id="NewConfirmPassword" name="NewConfirmPassword" placeholder="Enter new password again..." />
+</div>
+<div>
+    <button type="button" onclick="submitRecoverAccount()">Recover Account</button>
+</div>

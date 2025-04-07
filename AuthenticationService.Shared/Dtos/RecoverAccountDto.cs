@@ -2,7 +2,7 @@
 
 namespace AuthenticationService.Shared.Dtos;
 
-public class RetrieveAccountDto
+public class RecoverAccountDto
 {
     [Required(ErrorMessage = "UserName is required.")]
     public string? UserName { get; set; }
@@ -11,7 +11,6 @@ public class RetrieveAccountDto
 
     public string? LastName { get; set; }
 
-    [Required(ErrorMessage = "Date of birth is required.")]
     public DateOnly? DateOfBirth { get; set; }
 
     [Required(ErrorMessage = "Email is required."), EmailAddress]
@@ -34,11 +33,11 @@ public class RetrieveAccountDto
 
     public string? City { get; set; }
 
-    public string? LockAccountUri { get; set; }
-
     [Required(ErrorMessage = "Password is required.")]
     public string? NewPassword { get; set; }
 
-    [Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
+    [Compare("NewPassword", ErrorMessage = "The password and confirmation password do not match.")]
     public string? NewConfirmPassword { get; set; }
+
+    public string? LockAccountUri { get; set; }
 }

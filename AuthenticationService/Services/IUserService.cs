@@ -33,7 +33,7 @@ public interface IUserService
     Task<bool> CheckPasswordAsync(User user, string password);
     Task AccessFailedAsync(User user);
     Task InvalidateUserTokensAsync(User user, string ipAddress, string? token = null);
-    bool VerifyRetrieveAccountValues(
+    bool VerifyRecoverAccountValues(
         User user, string? userName, string? firstName, string? lastName, DateOnly? dateOfBirth, string? email,
         string? phoneNumber, string? Country, string? mothersMaidenName, string? addressLine1, string? addressLine2,
         string? addressLine3, string? postcode, string? city);

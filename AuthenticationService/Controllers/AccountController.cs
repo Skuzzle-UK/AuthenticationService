@@ -10,7 +10,7 @@ using System.Text;
 
 namespace AuthenticationService.Controllers;
 
-// TODO: Update user details controller /nb
+// TODO: Update user details endpoint /nb
 
 [Route("api/[controller]")]
 [ApiController]
@@ -251,21 +251,21 @@ public class AccountController : ControllerBase
         await _userService.SetLockoutEnabledAsync(user, true);
         await _userService.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
 
-        if (string.IsNullOrWhiteSpace(request.RetrieveAccountUri))
+        if (string.IsNullOrWhiteSpace(request.RecoverAccountUri))
         {
-            request.RetrieveAccountUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/RetrieveAccount";
+            request.RecoverAccountUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/RetrieveAccount";
         }
 
         await _emailService.SendEmailAsync(
             user.Email!,
             "Account Locked",
-            $"Your account was locked at {DateTime.UtcNow} UTC. If you didn't make this request please contact a system administrator. To unlock your account click the following link. {request.RetrieveAccountUri}");
+            $"Your account was locked at {DateTime.UtcNow} UTC. If you didn't make this request please contact a system administrator. To unlock your account click the following link. {request.RecoverAccountUri}");
 
         return Ok(new ApiResponse());
     }
 
-    [HttpPost("retrieve")]
-    public async Task<IActionResult> RetrieveAccountAsync(RetrieveAccountDto request)
+    [HttpPost("recover")]
+    public async Task<IActionResult> RecoverAccountAsync([FromBody]RecoverAccountDto request)
     {
         var user = await _userService.FindByEmailAsync(request.Email!);
         if (user is null)
@@ -273,7 +273,7 @@ public class AccountController : ControllerBase
             return BadRequest(new ApiResponse().AddError("Invalid request"));
         }
 
-        if (!_userService.VerifyRetrieveAccountValues(
+        if (!_userService.VerifyRecoverAccountValues(
             user,
             request.UserName,
             request.FirstName,
@@ -316,8 +316,8 @@ public class AccountController : ControllerBase
 
         await _emailService.SendEmailAsync(
             user.Email!,
-            "Account Retrieval Password Reset",
-            $"Your account was unlocked and password was reset at {DateTime.UtcNow} UTC. If you didn't make this request please click the following link to lock your account and contact a system administrator. {lockAccountUri}");
+            "Account Recovery",
+            $"Your account recovered and password was reset at {DateTime.UtcNow} UTC. If you didn't make this request please click the following link to lock your account and contact a system administrator. {lockAccountUri}");
 
         return Ok(new ApiResponse());
     }

@@ -6,32 +6,27 @@
 
 <script>
     function LockoutAccount() {
-        var token = '@Model.Token';
-        var email = '@Model.Email';
+        let token = '@Model.Token';
+        let email = '@Model.Email';
 
-        var request = {
+        let request = {
             Email: email,
             Token: token,
         };
 
-        fetch('api/accounts/lock', {
+        fetch('api/account/lock', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(request)
         })
-        .then(response => {
-            // TODO: Dont redirected as expecting OK result
-            if (response.redirected){
-                window.location.href = response.url;
-            } else {
-                return response.json();
-            }
-        })
         .then(data => {
-            if (data.success) {
+            if (data.status == 200) {
                 alert('Account locked');
+                setTimeout(() => {
+                    window.location.href = '/ActionComplete';
+                }, 1000);
             } else {
                 let errorMessages = '';
                 if (Array.isArray(data.errors)) {

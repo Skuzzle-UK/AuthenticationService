@@ -104,7 +104,7 @@ public class UserService : IUserService
     public async Task UpdateAsync(User user) =>
         await _userManager.UpdateAsync(user);
 
-    public bool VerifyRetrieveAccountValues(
+    public bool VerifyRecoverAccountValues(
         User user, string? userName, string? firstName, string? lastName, DateOnly? dateOfBirth, string? email,
         string? phoneNumber, string? Country, string? mothersMaidenName, string? addressLine1, string? addressLine2,
         string? addressLine3, string? postcode, string? city)
