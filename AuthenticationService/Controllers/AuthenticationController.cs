@@ -1,4 +1,5 @@
-﻿using AuthenticationService.Entities;
+﻿using AuthenticationService.Constants;
+using AuthenticationService.Entities;
 using AuthenticationService.Services;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
@@ -37,17 +38,17 @@ public class AuthenticationController : ControllerBase
         var user = await _userService.FindByEmailAsync(request.Email!);
         if (user is null)
         {
-            return BadRequest(new AuthenticationResponse().AddError("Invalid request"));
+            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, "Invalid request"));
         }
 
         if (!await _userService.IsEmailConfirmedAsync(user))
         {
-            return Unauthorized(new AuthenticationResponse().AddError("Email is not confirmed"));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Email is not confirmed"));
         }
 
         if (await _userService.IsLockedOutAsync(user))
         {
-            return Unauthorized(new AuthenticationResponse().AddError("Your account is locked due to too many failed login attempts"));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Your account is locked due to too many failed login attempts"));
         }
 
         if (!await _userService.CheckPasswordAsync(user, request.Password!))
@@ -65,7 +66,7 @@ public class AuthenticationController : ControllerBase
             var providers = await _userService.GetValidTwoFactorProvidersAsync(user);
             if (!providers.Contains(request.MfaProvider.ToString()!))
             {
-                return Unauthorized(new AuthenticationResponse().AddError("Invalid MFA Provider"));
+                return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Invalid MFA Provider"));
             }
 
             switch (request.MfaProvider)
@@ -78,7 +79,7 @@ public class AuthenticationController : ControllerBase
                         $"Your token is: {mfaToken}");
                     break;
                 case MfaProviders.Phone:
-                    return BadRequest(new AuthenticationResponse().AddError("Phone MFA is not supported yet."));
+                    return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, "Phone MFA is not supported yet."));
                 case MfaProviders.Authenticator:
                     break;
             }
@@ -109,17 +110,17 @@ public class AuthenticationController : ControllerBase
         var user = await _userService.FindByEmailAsync(request.Email!);
         if (user is null)
         {
-            return BadRequest(new AuthenticationResponse().AddError("Invalid Request"));
+            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, "Invalid Request"));
         }
 
         if (!user.WaitingForTwoFactorAuthentication)
         {
-            return BadRequest(new AuthenticationResponse().AddError("Invalid Request"));
+            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, "Invalid Request"));
         }
 
         if (await _userService.IsLockedOutAsync(user))
         {
-            return Unauthorized(new AuthenticationResponse().AddError("Your account is locked due to too many failed login attempts."));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Your account is locked due to too many failed login attempts."));
         }
 
         if (!await _userService.VerifyTwoFactorTokenAsync(user, request.MfaProvider.ToString()!, request.Token!))
@@ -149,23 +150,23 @@ public class AuthenticationController : ControllerBase
         var token = Request.Headers.Authorization.ToString().Replace("Bearer ", "");
         if (!await _tokenService.ValidateExpiredTokenAsync(token))
         {
-            return BadRequest(new AuthenticationResponse().AddError("Invalid Request"));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Token is invalid"));
         }
 
         var user = await _userService.FindByNameAsync(_tokenService.GetUserName(token));
         if (user is null)
         {
-            return BadRequest(new AuthenticationResponse().AddError("Invalid Request"));
+            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, "Invalid Request"));
         }
 
         if (user.RefreshToken != request.RefreshToken)
         {
-            return BadRequest(new AuthenticationResponse().AddError("Invalid Request"));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Refresh token is invalid"));
         }
 
         if (user.RefreshTokenExpiresAt < DateTime.UtcNow)
         {
-            return BadRequest(new AuthenticationResponse().AddError("Refresh token has expired"));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Refresh token has expired"));
         }
 
         var roles = await _userService.GetRolesAsync(user);
@@ -186,7 +187,7 @@ public class AuthenticationController : ControllerBase
         var user = await _userService.FindByNameAsync(_tokenService.GetUserName(token));
         if (user is null)
         {
-            return BadRequest(new ApiResponse().AddError("Invalid Request"));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, "Invalid Request"));
         }
 
         await _userService.InvalidateUserTokensAsync(user, Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty, token);
@@ -210,9 +211,9 @@ public class AuthenticationController : ControllerBase
 
             await _userService.InvalidateUserTokensAsync(user, Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty);
 
-            return Unauthorized(new AuthenticationResponse().AddError(content));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, content));
         }
 
-        return Unauthorized(new AuthenticationResponse().AddError("Authentication failed."));
+        return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Authentication failed."));
     }
 }

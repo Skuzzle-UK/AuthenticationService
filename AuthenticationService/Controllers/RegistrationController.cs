@@ -1,4 +1,5 @@
-﻿using AuthenticationService.Entities;
+﻿using AuthenticationService.Constants;
+using AuthenticationService.Entities;
 using AuthenticationService.Services;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
@@ -52,7 +53,7 @@ public class RegistrationController : ControllerBase
             var result = await _userService.CreateAsync(user, request.Password!);
             if (!result.Succeeded)
             {
-                var errors = result.Errors.Select(e => e.Description);
+                var errors = result.Errors.ToDictionary(e => e.Code, e => e.Description);
                 return BadRequest(new ApiResponse().AddErrors(errors));
             }
 
@@ -91,13 +92,13 @@ public class RegistrationController : ControllerBase
         var user = await _userService.FindByEmailAsync(email);
         if (user is null)
         {
-            return BadRequest(new ApiResponse().AddError("Invalid email confirmation request"));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, "Invalid email confirmation request"));
         }
 
         var confirmationResult = await _userService.ConfirmEmailAsync(user, token);
         if (!confirmationResult.Succeeded)
         {
-            return BadRequest(new ApiResponse().AddError("Invalid email confirmation request"));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, "Invalid email confirmation request"));
         }
 
         return string.IsNullOrWhiteSpace(callbackUri)
@@ -116,12 +117,12 @@ public class RegistrationController : ControllerBase
         var user = await _userService.FindByEmailAsync(request.Email!);
         if (user is null)
         {
-            return BadRequest(new ApiResponse().AddError("Invalid request"));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, "Invalid request"));
         }
 
         if (await _userService.IsEmailConfirmedAsync(user))
         {
-            return BadRequest(new ApiResponse().AddError("User email already confirmed"));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, "User email already confirmed"));
         }
 
         await SendConfirmEmailAsync(user, request.CallbackUri);

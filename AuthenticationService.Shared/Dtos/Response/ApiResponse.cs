@@ -5,20 +5,20 @@ public class ApiResponse
     // All responses are successful by default.
     public bool IsSuccessful { get; private set; } = true;
 
-    public IEnumerable<string>? Errors { get; private set; }
+    public Dictionary<string, string>? Errors { get; private set; }
 
     /// <summary>
     /// Add a single error string to the response.
     /// </summary>
     /// <param name="error">string</param>
-    public ApiResponse AddError(string error)
+    public ApiResponse AddError(string key, string error)
     {
         if (Errors == null)
         {
-            Errors = new List<string>();
+            Errors = new Dictionary<string, string>();
         }
 
-        Errors = Errors.Append(error);
+        Errors.Add(key, error);
 
         IsSuccessful = false;
 
@@ -29,14 +29,14 @@ public class ApiResponse
     /// Add multiple error strings to the response.
     /// </summary>
     /// <param name="errors">IEnumerable<string></param>
-    public ApiResponse AddErrors(IEnumerable<string> errors)
+    public ApiResponse AddErrors(Dictionary<string, string> errors)
     {
         if (Errors == null)
         {
-            Errors = new List<string>();
+            Errors = new Dictionary<string, string>();
         }
 
-        Errors = Errors.Concat(errors);
+        Errors.Concat(errors);
 
         IsSuccessful = false;
 

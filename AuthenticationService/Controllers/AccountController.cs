@@ -1,4 +1,5 @@
-﻿using AuthenticationService.Helpers;
+﻿using AuthenticationService.Constants;
+using AuthenticationService.Helpers;
 using AuthenticationService.Services;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
@@ -45,7 +46,7 @@ public class AccountController : ControllerBase
         var user = await _userService.FindByNameAsync(_tokenService.GetUserName(token));
         if(user is null)
         {
-            return BadRequest(new AuthenticationResponse().AddError("Invalid Request"));
+            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, "Invalid Request"));
         }
 
         var key = await _userService.GetAuthenticatorKeyAsync(user);
@@ -58,7 +59,7 @@ public class AccountController : ControllerBase
         var providers = await _userService.GetValidTwoFactorProvidersAsync(user);
         if (!providers.Contains(request.Preferred2FAProvider.ToString()!))
         {
-            return Unauthorized(new AuthenticationResponse().AddError("Invalid MFA Provider"));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Invalid MFA Provider"));
         }
 
         var current2fAStatus = await _userService.GetTwoFactorEnabledAsync(user);
@@ -80,11 +81,12 @@ public class AccountController : ControllerBase
                 break;
             case MfaProviders.Phone:
                 await _userService.SetTwoFactorEnabledAsync(user, current2fAStatus);
-                return BadRequest(new AuthenticationResponse().AddError("Phone MFA is not supported yet."));
+                return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, "Phone MFA is not supported yet."));
             case MfaProviders.Authenticator:
                 response = new EnableMfaResponse(
                     MfaProviders.Authenticator,
-                    QrCodeHelpers.NewPng(user.Email!, key!));
+                    QrCodeHelpers.NewPng(user.Email!, key!),
+                    key);
                 break;
         }
 
@@ -102,12 +104,12 @@ public class AccountController : ControllerBase
         var user = await _userService.FindByEmailAsync(request.Email!);
         if (user is null || !await _userService.IsEmailConfirmedAsync(user))
         {
-            return BadRequest(new ApiResponse().AddError("Invalid request"));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, "Invalid request"));
         }
 
         if (await _userService.IsLockedOutAsync(user))
         {
-            return BadRequest(new ApiResponse().AddError("Your account is locked."));
+            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, "Your account is locked."));
         }
 
         var token = await _userService.GeneratePasswordResetTokenAsync(user);
@@ -139,12 +141,12 @@ public class AccountController : ControllerBase
         var user = await _userService.FindByEmailAsync(request.Email!);
         if (user is null || !await _userService.IsEmailConfirmedAsync(user))
         {
-            return BadRequest(new ApiResponse().AddError("Invalid request"));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, "Invalid request"));
         }
 
         if (await _userService.IsLockedOutAsync(user))
         {
-            return BadRequest(new ApiResponse().AddError("Your account is locked."));
+            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, "Your account is locked."));
         }
 
         var decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(request.Token!));
@@ -152,7 +154,7 @@ public class AccountController : ControllerBase
         var resetResult = await _userService.ResetPasswordAsync(user, decodedToken, request.NewPassword!);
         if (!resetResult.Succeeded)
         {
-            var errors = resetResult.Errors.Select(e => e.Description);
+            var errors = resetResult.Errors.ToDictionary(e => e.Code, e => e.Description);
             return BadRequest(new ApiResponse().AddErrors(errors));
         }
 
@@ -192,13 +194,13 @@ public class AccountController : ControllerBase
         var user = await _userService.FindByEmailAsync(request.Email!);
         if (user is null || !await _userService.IsEmailConfirmedAsync(user))
         {
-            return BadRequest(new ApiResponse().AddError("Invalid request"));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, "Invalid request"));
         }
 
         var resetResult = await _userService.ChangePasswordAsync(user, request.OldPassword!, request.NewPassword!);
         if (!resetResult.Succeeded)
         {
-            var errors = resetResult.Errors.Select(e => e.Description);
+            var errors = resetResult.Errors.ToDictionary(e => e.Code, e => e.Description);
             return BadRequest(new ApiResponse().AddErrors(errors));
         }
 
@@ -238,12 +240,12 @@ public class AccountController : ControllerBase
         var user = await _userService.FindByEmailAsync(request.Email!);
         if (user is null)
         {
-            return BadRequest(new ApiResponse().AddError("Invalid request"));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, "Invalid request"));
         }
 
         if (!await _userService.VerifyUserTokenAsync(user, MfaProviders.Email.ToString(), "Lockout", request.Token!))
         {
-            return BadRequest(new ApiResponse().AddError("Invalid request"));
+            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, "Token is not valid"));
         }
 
         await _userService.InvalidateUserTokensAsync(user, Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty);
@@ -270,7 +272,7 @@ public class AccountController : ControllerBase
         var user = await _userService.FindByEmailAsync(request.Email!);
         if (user is null)
         {
-            return BadRequest(new ApiResponse().AddError("Invalid request"));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, "Invalid request"));
         }
 
         if (!_userService.VerifyRecoverAccountValues(
@@ -289,7 +291,7 @@ public class AccountController : ControllerBase
             request.Postcode,
             request.City))
         {
-            return Unauthorized(new AuthenticationResponse().AddError("One or more values are not correct."));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "One or more of the supplied values are incorrect."));
         }
 
         var resetToken = await _userService.GeneratePasswordResetTokenAsync(user);
@@ -297,7 +299,7 @@ public class AccountController : ControllerBase
         var resetResult = await _userService.ResetPasswordAsync(user, resetToken, request.NewPassword!);
         if (!resetResult.Succeeded)
         {
-            var errors = resetResult.Errors.Select(e => e.Description);
+            var errors = resetResult.Errors.ToDictionary(e => e.Code, e => e.Description);
             return BadRequest(new ApiResponse().AddErrors(errors));
         }
 

@@ -20,7 +20,7 @@
         let country = document.getElementById('Country').value;
         let postcode = document.getElementById('Postcode').value;
         let newPassword = document.getElementById('NewPassword').value;
-        let newConfirmPassword = document.getElementById('NewConfirmPassword').value;
+        let confirmPassword = document.getElementById('ConfirmPassword').value;
 
         let request = {
             UserName: username,
@@ -37,7 +37,7 @@
             Country: country,
             Postcode: postcode,
             NewPassword: newPassword,
-            NewConfirmPassword: newConfirmPassword
+            ConfirmPassword: confirmPassword
         };
 
         fetch('api/account/recover', {
@@ -120,7 +120,7 @@
     New password: <input type="password" id="NewPassword" name="NewPassword" placeholder="Enter new password ..." />
 </div>
 <div>
-    Confirm new password: <input type="password" id="NewConfirmPassword" name="NewConfirmPassword" placeholder="Enter new password again..." />
+    Confirm new password: <input type="password" id="ConfirmPassword" name="ConfirmPassword" placeholder="Enter new password again..." />
 </div>
 <div>
     <button type="button" onclick="submitRecoverAccount()">Recover Account</button>

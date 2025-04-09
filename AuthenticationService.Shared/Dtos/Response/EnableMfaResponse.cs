@@ -5,6 +5,7 @@ namespace AuthenticationService.Shared.Dtos.Response;
 public class EnableMfaResponse : ApiResponse
 {
     public byte[]? QrCode { get; set; }
+    public string? Key { get; set; }
 
     public MfaProviders? EnabledMfaProvider { get; set; }
 
@@ -12,9 +13,10 @@ public class EnableMfaResponse : ApiResponse
     {
     }
 
-    public EnableMfaResponse(MfaProviders mfaProvider, byte[]? qrCode = null)
+    public EnableMfaResponse(MfaProviders mfaProvider, byte[]? qrCode = null, string? key = null)
     {
         EnabledMfaProvider = mfaProvider;
         QrCode = qrCode;
+        Key = key;
     }
 }

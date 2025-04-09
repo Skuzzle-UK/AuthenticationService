@@ -33,11 +33,11 @@ public class RecoverAccountDto
 
     public string? City { get; set; }
 
-    [Required(ErrorMessage = "Password is required.")]
+    [Required(ErrorMessage = "NewPassword is required.")]
     public string? NewPassword { get; set; }
 
     [Compare("NewPassword", ErrorMessage = "The password and confirmation password do not match.")]
-    public string? NewConfirmPassword { get; set; }
+    public string? ConfirmPassword { get; set; }
 
     public string? LockAccountUri { get; set; }
 }
