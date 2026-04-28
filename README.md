@@ -73,7 +73,7 @@ warn: AuthenticationService.Services.EcdsaKeyProvider[0]
       No signing key found at 'keys/jwt-signing.pem'. Generating a new ES256 key
       for Development. DO NOT use this key in production.
 info: ...
-      Application started. Listening on: https://localhost:50434
+      Application started. Listening on: https://localhost:53217
 ```
 
 A new `keys/jwt-signing.pem` is created next to the project. **It is gitignored**; do not commit it. Each developer gets their own local key — tokens you issue locally only validate against your own auth service.
@@ -116,7 +116,7 @@ In two terminals (or via VS multi-startup):
 
 ```bash
 # Terminal 1
-dotnet run --project AuthenticationService    # https://localhost:50434
+dotnet run --project AuthenticationService    # https://localhost:53217
 
 # Terminal 2
 dotnet run --project ExampleConsumer          # https://localhost:50500
@@ -132,7 +132,7 @@ The example consumer's Swagger lives at `https://localhost:50500/swagger`. It ex
 
 ### Walk-through
 
-1. Open `https://localhost:50434/swagger` (the **auth service**) and call `POST /api/Authentication/authenticate` with the seeded admin creds. Copy `token.value` from the response.
+1. Open `https://localhost:53217/swagger` (the **auth service**) and call `POST /api/Authentication/authenticate` with the seeded admin creds. Copy `token.value` from the response.
 2. Open `https://localhost:50500/swagger` (the **example consumer**).
 3. Click **Authorize**, paste the token, Authorize, Close.
 4. Call `GET /me` → 200 with your username, roles `["DefaultUser","Admin"]`, and the `jti`.
@@ -150,10 +150,12 @@ The example consumer's Swagger lives at `https://localhost:50500/swagger`. It ex
 
 When you start the consumer:
 
-1. JwtBearer hits `https://localhost:50434/.well-known/openid-configuration`.
-2. The discovery doc points at `https://localhost:50434/.well-known/jwks.json` and declares `issuer = https://auth.example.com`.
+1. JwtBearer hits `https://localhost:53217/.well-known/openid-configuration`.
+2. The discovery doc points at `https://localhost:53217/.well-known/jwks.json` and declares `issuer = https://auth.example.com`.
 3. JwtBearer fetches the JWK, caches it, and uses it to validate every incoming token's signature against the `kid` in the token header.
 4. It also checks `iss == https://auth.example.com`, `aud == platform-api`, and `exp > now`.
+
+> **Common gotcha:** if the consumer's `Authority` setting points at the wrong port, OIDC discovery silently fails — JwtBearer catches the connection error and carries on with no signing keys. The result is a `401` with `"The signature key was not found"` on every request, even with a perfectly valid token. Always verify that `Authority` in `ExampleConsumer/appsettings.json` (and in any new consumer service) matches the port reported by the auth service's `launchSettings.json` (`AuthenticationService/Properties/launchSettings.json`). The `Issuer` value must also match `JWTSettings.ValidIssuer` in the auth service's `appsettings.json`.
 
 There is **no shared secret** between the two services. The consumer never sees the signing key.
 
@@ -282,11 +284,14 @@ Microservices that need to authenticate users by validating tokens issued here u
 ```jsonc
 // appsettings.json
 "AuthenticationService": {
-  "Authority": "https://auth.example.com",
+  "Authority": "https://auth.example.com",   // base URL of the auth service
+  "Issuer": "https://auth.example.com",      // must match JWTSettings.ValidIssuer in the auth service
   "Audience": "platform-api",
-  "RequireHttpsMetadata": true   // set to false ONLY in Development
+  "RequireHttpsMetadata": true
 }
 ```
+
+> **`Authority` vs `Issuer`:** `Authority` is the URL JwtBearer contacts to fetch the OIDC discovery doc and signing keys. `Issuer` is the string value that must appear in the `iss` claim of every token — it comes from `JWTSettings.ValidIssuer` in the auth service's `appsettings.json`. In production these are typically the same URL, but in development the auth service may advertise a canonical issuer URL (`https://auth.example.com`) while actually running on `https://localhost:53217`. Both fields must be set correctly or token validation will fail.
 
 ### 3. Wire it up
 

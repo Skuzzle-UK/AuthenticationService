@@ -48,6 +48,7 @@ public static class ServiceCollectionExtensions
                     ValidateAudience = true,
                     ValidateLifetime = true,
                     ValidateIssuerSigningKey = true,
+                    ValidIssuer = settings.Issuer,
                     ValidAudience = settings.Audience,
                     ValidAlgorithms = new[] { SecurityAlgorithms.EcdsaSha256 }
                 };

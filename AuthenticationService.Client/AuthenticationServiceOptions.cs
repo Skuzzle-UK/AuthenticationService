@@ -23,6 +23,14 @@ public class AuthenticationServiceOptions
     public string Audience { get; set; } = default!;
 
     /// <summary>
+    /// Expected <c>iss</c> claim. Must match <c>ValidIssuer</c> in the auth service's
+    /// JWTSettings (e.g. "https://auth.example.com"). When provided, issuer validation
+    /// is explicit and does not depend on OIDC discovery succeeding.
+    /// </summary>
+    [Required]
+    public string Issuer { get; set; } = default!;
+
+    /// <summary>
     /// When true, requires HTTPS for the metadata endpoint. Set to false in
     /// Development if the auth service is reachable only over HTTP.
     /// </summary>
