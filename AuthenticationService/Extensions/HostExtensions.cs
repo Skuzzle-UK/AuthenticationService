@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using System.Reflection;
 using System.Security.Claims;
 using System.Text;
@@ -24,7 +24,7 @@ public static class HostExtensions
         host.ConfigureServices((context, services) =>
         {
             services.AddValidatedSettings(context);
-            services.AddAutoMapper(typeof(Program));
+            services.AddAutoMapper(cfg => { }, typeof(Program));
             services.AddDatabase(context);
             services.AddSecurity(context);
             services.AddServices();
