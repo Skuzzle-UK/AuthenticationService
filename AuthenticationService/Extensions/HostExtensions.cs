@@ -1,4 +1,4 @@
-﻿using AuthenticationService.Constants;
+﻿using AuthenticationService.Client.Constants;
 using AuthenticationService.Entities;
 using AuthenticationService.Services;
 using AuthenticationService.Services.Hosted;

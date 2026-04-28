@@ -1,4 +1,5 @@
-﻿using AuthenticationService.Constants;
+﻿using AuthenticationService.Client.Constants;
+using AuthenticationService.Constants;
 using AuthenticationService.Helpers;
 using AuthenticationService.Services;
 using AuthenticationService.Shared.Dtos;

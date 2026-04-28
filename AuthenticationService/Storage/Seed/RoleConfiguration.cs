@@ -1,4 +1,4 @@
-﻿using AuthenticationService.Constants;
+﻿using AuthenticationService.Client.Constants;
 using AuthenticationService.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;

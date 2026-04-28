@@ -1,4 +1,5 @@
-﻿using AuthenticationService.Constants;
+﻿using AuthenticationService.Client.Constants;
+using AuthenticationService.Constants;
 using AuthenticationService.Entities;
 using AuthenticationService.Settings;
 using Microsoft.AspNetCore.Identity;

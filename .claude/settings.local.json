@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -ks \"https://localhost:50434/.well-known/openid-configuration\")",
+      "Bash(curl -ks -o /dev/null -w \"%{http_code}\\\\n\" \"https://localhost:50434/.well-known/openid-configuration\")",
+      "Bash(dotnet build *)",
+      "Bash(dotnet dev-certs *)",
+      "Bash(dotnet run *)",
+      "Bash(echo \"PID=$!\" sleep 8 echo \"---\" echo)",
+      "Bash(openssl s_client -connect localhost:50434 -servername localhost)",
+      "Bash(openssl x509 *)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" \"https://localhost:50434/.well-known/openid-configuration\")",
+      "Bash(curl -s \"https://localhost:50434/.well-known/openid-configuration\")",
+      "Bash(curl -s \"https://localhost:50434/.well-known/jwks.json\")",
+      "Bash(Logging__LogLevel__Microsoft_AspNetCore_Authentication=Debug Logging__LogLevel__Microsoft_IdentityModel=Debug ASPNETCORE_ENVIRONMENT=Development dotnet run --project ExampleConsumer --no-build --no-launch-profile --urls \"https://localhost:50500\")",
+      "Bash(echo \"PID=$!\")",
+      "Read(//tmp/**)",
+      "Bash(taskkill -F -IM dotnet.exe)",
+      "PowerShell($thumb = '0EE0619FD261237B0A0AB8C1DE96113CBA7F9ED7'; \"CurrentUser\\\\Root:\"; Get-ChildItem \"Cert:\\\\CurrentUser\\\\Root\\\\$thumb\" -ErrorAction SilentlyContinue | Format-List Subject, Thumbprint; \"LocalMachine\\\\Root:\"; Get-ChildItem \"Cert:\\\\LocalMachine\\\\Root\\\\$thumb\" -ErrorAction SilentlyContinue | Format-List Subject, Thumbprint; \"CurrentUser\\\\My:\"; Get-ChildItem \"Cert:\\\\CurrentUser\\\\My\\\\$thumb\" -ErrorAction SilentlyContinue | Format-List Subject, Thumbprint)"
+    ]
+  }
+}

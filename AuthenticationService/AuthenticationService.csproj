@@ -30,6 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\AuthenticationService.Client\AuthenticationService.Client.csproj" />
     <ProjectReference Include="..\AuthenticationService.Shared\AuthenticationService.Shared.csproj" />
   </ItemGroup>
 

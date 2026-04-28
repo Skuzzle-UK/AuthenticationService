@@ -1,6 +1,6 @@
-namespace AuthenticationService.Constants;
+namespace AuthenticationService.Client.Constants;
 
-public class AuthSchemeConstants
+public static class AuthSchemeConstants
 {
     public const string Bearer = "Bearer";
     public const string BearerPrefix = "Bearer ";

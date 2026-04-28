@@ -1,4 +1,4 @@
-﻿using AuthenticationService.Constants;
+﻿using AuthenticationService.Client.Constants;
 using AuthenticationService.Services;
 using Microsoft.Net.Http.Headers;
 
