@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using AuthenticationService.Constants;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AuthenticationService.Controllers;
@@ -15,7 +16,7 @@ public class TestController : ControllerBase
     /// </summary>
     /// <returns>Ok if successful auth else returns 401</returns>
     [HttpGet]
-    [Authorize(Policy = "OnlyAdminUsers")]
+    [Authorize(Policy = PolicyConstants.AdminOnly)]
     public IActionResult TestAdminOnlyAsync()
     {
         return Ok("Test succeeded");

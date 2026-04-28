@@ -1,4 +1,4 @@
-﻿#pragma warning disable
+#pragma warning disable
 using System.ComponentModel.DataAnnotations;
 
 namespace AuthenticationService.Settings;
@@ -6,7 +6,9 @@ namespace AuthenticationService.Settings;
 public class JWTSettings
 {
     [Required]
-    public string SecurityKey { get; set; }
+    public string PrivateKeyPath { get; set; }
+
+    public string? KeyId { get; set; }
 
     [Required]
     public string ValidIssuer { get; set; }

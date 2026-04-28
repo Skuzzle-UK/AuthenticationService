@@ -3,6 +3,10 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+# JWT signing keys (auto-generated in Development; injected via secrets in prod)
+keys/
+*.pem
+
 # User-specific files
 *.rsuser
 *.suo

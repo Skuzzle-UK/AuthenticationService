@@ -8,11 +8,11 @@ using AuthenticationService.Validators;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using System.Reflection;
 using System.Security.Claims;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -63,6 +63,7 @@ public static class HostExtensions
 
     public static IServiceCollection AddServices(this IServiceCollection services) =>
         services
+            .AddSingleton<IEcdsaKeyProvider, EcdsaKeyProvider>()
             .AddScoped<ITokenService, JWTService>()
             .AddScoped<IUserService, UserService>()
             .AddSingleton<IEmailService, EmailService>();
@@ -92,25 +93,28 @@ public static class HostExtensions
            .AddPasswordValidator<CustomPasswordValidator<User>>()
            .AddDefaultTokenProviders();
 
-        var jwtSettings = context.Configuration.GetSection(nameof(JWTSettings));
-
         services.AddAuthentication(opt =>
         {
             opt.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
             opt.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-        }).AddJwtBearer(opt =>
-        {
-            opt.TokenValidationParameters = new TokenValidationParameters
+        }).AddJwtBearer();
+
+        services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+            .Configure<IEcdsaKeyProvider, IOptions<JWTSettings>>((opt, keyProvider, jwtOptions) =>
             {
-                ValidateIssuer = true,
-                ValidateAudience = true,
-                ValidateLifetime = true,
-                ValidateIssuerSigningKey = true,
-                ValidIssuer = jwtSettings["ValidIssuer"],
-                ValidAudience = jwtSettings["ValidAudience"],
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.GetSection(nameof(SecurityKey)).Value!))
-            };
-        });
+                var jwt = jwtOptions.Value;
+                opt.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidateAudience = true,
+                    ValidateLifetime = true,
+                    ValidateIssuerSigningKey = true,
+                    ValidIssuer = jwt.ValidIssuer,
+                    ValidAudience = jwt.ValidAudience,
+                    IssuerSigningKey = keyProvider.PublicSecurityKey,
+                    ValidAlgorithms = new[] { SecurityAlgorithms.EcdsaSha256 }
+                };
+            });
 
         services.AddAuthorizationBuilder()
             .AddPolicy(PolicyConstants.AdminOnly, policy => policy.RequireRole(RolesConstants.Admin));
@@ -140,6 +144,24 @@ public static class HostExtensions
                 var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
                 var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
                 opt.IncludeXmlComments(xmlPath);
+
+                opt.AddSecurityDefinition(AuthSchemeConstants.Bearer, new OpenApiSecurityScheme
+                {
+                    Name = "Authorization",
+                    Type = SecuritySchemeType.Http,
+                    Scheme = "bearer",
+                    BearerFormat = "JWT",
+                    In = ParameterLocation.Header,
+                    Description = "Paste the JWT access token (without the 'Bearer ' prefix)."
+                });
+
+                opt.AddSecurityRequirement(doc => new OpenApiSecurityRequirement
+                {
+                    {
+                        new OpenApiSecuritySchemeReference(AuthSchemeConstants.Bearer, doc),
+                        new List<string>()
+                    }
+                });
             });
 
     public static IServiceCollection AddRateLimiting(this IServiceCollection services) =>

@@ -10,7 +10,6 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace AuthenticationService.Services;
 
@@ -19,22 +18,24 @@ public class JWTService : ITokenService
     private readonly JWTSettings _jwtSettings;
     private readonly UserManager<User> _userManager;
     private readonly DatabaseContext _context;
+    private readonly IEcdsaKeyProvider _keyProvider;
 
     public JWTService(
         IOptions<JWTSettings> jwtSettings,
         UserManager<User> userManager,
-        DatabaseContext context)
+        DatabaseContext context,
+        IEcdsaKeyProvider keyProvider)
     {
         _jwtSettings = jwtSettings.Value;
         _userManager = userManager;
         _context = context;
+        _keyProvider = keyProvider;
     }
 
     public async Task<Token> CreateTokenAsync(User user, IList<string> roles)
     {
-        var signingCredentials = GetSigningCredentials();
         var claims = GetClaims(user, roles);
-        var tokenOptions = GenerateTokenOptions(signingCredentials, claims);
+        var tokenOptions = GenerateTokenOptions(_keyProvider.SigningCredentials, claims);
         user.RefreshToken = GenerateRefreshToken();
         user.RefreshTokenExpiresAt = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenExpiryInDays);
 
@@ -60,7 +61,8 @@ public class JWTService : ITokenService
             ValidateLifetime = false,
             ValidIssuer = _jwtSettings.ValidIssuer,
             ValidAudience = _jwtSettings.ValidAudience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.SecurityKey))
+            IssuerSigningKey = _keyProvider.PublicSecurityKey,
+            ValidAlgorithms = new[] { SecurityAlgorithms.EcdsaSha256 }
         };
 
         var validationResult = await tokenHandler.ValidateTokenAsync(token, parameters);
@@ -192,13 +194,6 @@ public class JWTService : ITokenService
         }
 
         return DateTimeOffset.FromUnixTimeSeconds(long.Parse(expClaim)).UtcDateTime;
-    }
-
-    private SigningCredentials GetSigningCredentials()
-    {
-        var key = Encoding.UTF8.GetBytes(_jwtSettings.SecurityKey);
-        var secret = new SymmetricSecurityKey(key);
-        return new SigningCredentials(secret, SecurityAlgorithms.HmacSha256);
     }
 
     private List<Claim> GetClaims(User user, IList<string> roles)
