@@ -63,7 +63,7 @@ public class RegistrationController : ControllerBase
                 await _userService.UpdateAsync(user);
             }
 
-            await _userService.AddToRoleAsync(user, "User");
+            await _userService.AddToRoleAsync(user, RolesConstants.DefaultUser);
 
             await SendConfirmEmailAsync(user, request.EmailConfirmationCallbackUri);
 
@@ -92,13 +92,13 @@ public class RegistrationController : ControllerBase
         var user = await _userService.FindByEmailAsync(email);
         if (user is null)
         {
-            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, "Invalid email confirmation request"));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidEmailConfirmationRequest));
         }
 
         var confirmationResult = await _userService.ConfirmEmailAsync(user, token);
         if (!confirmationResult.Succeeded)
         {
-            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, "Invalid email confirmation request"));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidEmailConfirmationRequest));
         }
 
         return string.IsNullOrWhiteSpace(callbackUri)
@@ -117,7 +117,7 @@ public class RegistrationController : ControllerBase
         var user = await _userService.FindByEmailAsync(request.Email!);
         if (user is null)
         {
-            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, "Invalid request"));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
         }
 
         if (await _userService.IsEmailConfirmedAsync(user))
@@ -134,22 +134,22 @@ public class RegistrationController : ControllerBase
     {
         var host = $"{Request.Scheme}://{Request.Host}";
         var controllerPath = $"/api/{ControllerContext.ActionDescriptor.ControllerName.ToLower()}";
-        var confirmEmailPath = $"{host}{controllerPath}/confirm/email";
+        var confirmEmailPath = $"{host}{controllerPath}{ApiRouteConstants.ConfirmEmail}";
 
         var token = await _userService.GenerateEmailConfirmationTokenAsync(user);
 
         var confirmEmailParams = new Dictionary<string, string>
         {
-            { "token", token },
-            { "email", user.Email! },
-            { "callbackUri", callbackUri ?? $"{Request.Scheme}://{Request.Host}{Request.PathBase}/confirm/email?callbackUri={{Request.Scheme}}://{{Request.Host}}{{Request.PathBase}}/ActionComplete" }
+            { UriConstants.Token, token },
+            { UriConstants.Email, user.Email! },
+            { UriConstants.CallBackUri, callbackUri ?? $"{Request.Scheme}://{Request.Host}{Request.PathBase}{ApiRouteConstants.ConfirmEmail}?callbackUri={{Request.Scheme}}://{{Request.Host}}{{Request.PathBase}}{RouteConstants.ActionComplete}" }
         };
 
         var confirmEmailUri = QueryHelpers.AddQueryString(confirmEmailPath, confirmEmailParams!);
 
         await _emailService.SendEmailAsync(
             user.Email!,
-            "Email Confirmation",
+            EmailSubjectConstants.EmailConfirmation,
             $"To confirm your email address please click the following link: {confirmEmailUri}");
     }
 }

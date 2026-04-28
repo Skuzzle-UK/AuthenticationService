@@ -1,4 +1,5 @@
-﻿using AuthenticationService.Entities;
+﻿using AuthenticationService.Constants;
+using AuthenticationService.Entities;
 using AuthenticationService.Settings;
 using AuthenticationService.Shared.Models;
 using AuthenticationService.Storage;
@@ -40,7 +41,7 @@ public class JWTService : ITokenService
         await _userManager.UpdateAsync(user);
 
         return new Token(
-            "Bearer",
+            AuthSchemeConstants.Bearer,
             new JwtSecurityTokenHandler().WriteToken(tokenOptions),
             tokenOptions.ValidTo,
             user.RefreshToken,

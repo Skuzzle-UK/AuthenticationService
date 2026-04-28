@@ -6,6 +6,7 @@ using AuthenticationService.Shared.Dtos.Response;
 using AuthenticationService.Shared.Enums;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Net.Http.Headers;
 
 namespace AuthenticationService.Controllers;
 
@@ -38,7 +39,7 @@ public class AuthenticationController : ControllerBase
         var user = await _userService.FindByEmailAsync(request.Email!);
         if (user is null)
         {
-            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, "Invalid request"));
+            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
         }
 
         if (!await _userService.IsEmailConfirmedAsync(user))
@@ -48,7 +49,7 @@ public class AuthenticationController : ControllerBase
 
         if (await _userService.IsLockedOutAsync(user))
         {
-            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Your account is locked due to too many failed login attempts"));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.AccountLockedFailedAttempts));
         }
 
         if (!await _userService.CheckPasswordAsync(user, request.Password!))
@@ -66,7 +67,7 @@ public class AuthenticationController : ControllerBase
             var providers = await _userService.GetValidTwoFactorProvidersAsync(user);
             if (!providers.Contains(request.MfaProvider.ToString()!))
             {
-                return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Invalid MFA Provider"));
+                return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.InvalidMfaProvider));
             }
 
             switch (request.MfaProvider)
@@ -75,11 +76,11 @@ public class AuthenticationController : ControllerBase
                     var mfaToken = await _userService.GenerateTwoFactorTokenAsync(user, TokenOptions.DefaultEmailProvider);
                     await _emailService.SendEmailAsync(
                         user.Email!,
-                        "MFA Authentication Token",
+                        EmailSubjectConstants.MfaAuthenticationToken,
                         $"Your token is: {mfaToken}");
                     break;
                 case MfaProviders.Phone:
-                    return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, "Phone MFA is not supported yet."));
+                    return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.PhoneMfaNotSupported));
                 case MfaProviders.Authenticator:
                     break;
             }
@@ -110,17 +111,17 @@ public class AuthenticationController : ControllerBase
         var user = await _userService.FindByEmailAsync(request.Email!);
         if (user is null)
         {
-            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, "Invalid Request"));
+            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
         }
 
         if (!user.WaitingForTwoFactorAuthentication)
         {
-            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, "Invalid Request"));
+            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
         }
 
         if (await _userService.IsLockedOutAsync(user))
         {
-            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Your account is locked due to too many failed login attempts."));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.AccountLockedFailedAttempts));
         }
 
         if (!await _userService.VerifyTwoFactorTokenAsync(user, request.MfaProvider.ToString()!, request.Token!))
@@ -147,7 +148,7 @@ public class AuthenticationController : ControllerBase
     [HttpPost("refresh")]
     public async Task<IActionResult> RefreshTokenAsync([FromBody] RefreshTokenDto request)
     {
-        var token = Request.Headers.Authorization.ToString().Replace("Bearer ", "");
+        var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
         if (!await _tokenService.ValidateExpiredTokenAsync(token))
         {
             return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Token is invalid"));
@@ -156,7 +157,7 @@ public class AuthenticationController : ControllerBase
         var user = await _userService.FindByNameAsync(_tokenService.GetUserName(token));
         if (user is null)
         {
-            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, "Invalid Request"));
+            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
         }
 
         if (user.RefreshToken != request.RefreshToken)
@@ -182,12 +183,12 @@ public class AuthenticationController : ControllerBase
     [HttpGet("logout")]
     public async Task<IActionResult> LogoutAsync()
     {
-        var token = Request.Headers["Authorization"].ToString().Replace("Bearer ", string.Empty);
+        var token = Request.Headers[HeaderNames.Authorization].ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
 
         var user = await _userService.FindByNameAsync(_tokenService.GetUserName(token));
         if (user is null)
         {
-            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, "Invalid Request"));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
         }
 
         await _userService.InvalidateUserTokensAsync(user, Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty, token);
@@ -199,19 +200,17 @@ public class AuthenticationController : ControllerBase
         await _userService.AccessFailedAsync(user);
         if (await _userService.IsLockedOutAsync(user))
         {
-            var content = $"Your account is locked due to too many failed login attempts.";
-
-            await _emailService.SendEmailAsync(
+                await _emailService.SendEmailAsync(
                 user.Email!,
-                "Locked account information",
-                content);
+                EmailSubjectConstants.LockedAccountInfo,
+                ErrorMessageConstants.AccountLockedFailedAttempts);
 
             user.WaitingForTwoFactorAuthentication = false;
             await _userService.UpdateAsync(user);
 
             await _userService.InvalidateUserTokensAsync(user, Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty);
 
-            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, content));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.AccountLockedFailedAttempts));
         }
 
         return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Authentication failed."));

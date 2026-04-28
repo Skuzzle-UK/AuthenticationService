@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.WebUtilities;
+﻿using AuthenticationService.Constants;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace AuthenticationService.Helpers;
 
@@ -8,8 +9,8 @@ public static class AccountHelpers
     {
         var resetPasswordParams = new Dictionary<string, string>
         {
-            { "token", token },
-            { "email", email }
+            { UriConstants.Token, token },
+            { UriConstants.Email, email }
         };
 
         return QueryHelpers.AddQueryString(callbackUri, resetPasswordParams!);
@@ -19,9 +20,9 @@ public static class AccountHelpers
     {
         var lockoutParams = new Dictionary<string, string>
         {
-            { "token", token },
-            { "email", email },
-            { "lockout", "true" }
+            { UriConstants.Token, token },
+            { UriConstants.Email, email },
+            { UriConstants.Lockout, UriConstants.True }
         };
 
         return QueryHelpers.AddQueryString(callbackUri, lockoutParams!);

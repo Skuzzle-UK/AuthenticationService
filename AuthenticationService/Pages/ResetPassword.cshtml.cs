@@ -1,3 +1,4 @@
+using AuthenticationService.Constants;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace AuthenticationService.Pages
@@ -9,8 +10,8 @@ namespace AuthenticationService.Pages
 
         public void OnGet()
         {
-            Token = Request.Query["token"];
-            Email = Request.Query["email"];
+            Token = Request.Query[UriConstants.Token];
+            Email = Request.Query[UriConstants.Email];
         }
     }
 }

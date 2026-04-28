@@ -1,4 +1,5 @@
-﻿using AuthenticationService.Entities;
+﻿using AuthenticationService.Constants;
+using AuthenticationService.Entities;
 using AuthenticationService.Settings;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
@@ -20,12 +21,12 @@ public static class RuntimeDbSeeders
             var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
             var settings = scope.ServiceProvider.GetRequiredService<IOptions<AdminAccountSeedSettings>>().Value;
 
-            if (userManager.FindByNameAsync("admin").Result == null)
+            if (userManager.FindByNameAsync(UserConstants.Admin).Result == null)
             {
                 var result = userManager.CreateAsync(
                     new User
                     {
-                        UserName = "admin",
+                        UserName = UserConstants.Admin,
                         FirstName = settings.FirstName,
                         LastName = settings.LastName,
                         Email = settings.Email,
@@ -49,8 +50,8 @@ public static class RuntimeDbSeeders
                 }
 
                 var user = userManager.FindByEmailAsync(settings.Email).Result;
-                userManager.AddToRoleAsync(user!, "Admin").Wait();
-                userManager.AddToRoleAsync(user!, "User").Wait();
+                userManager.AddToRoleAsync(user!, RolesConstants.Admin).Wait();
+                userManager.AddToRoleAsync(user!, RolesConstants.DefaultUser).Wait();
             }
         }
 

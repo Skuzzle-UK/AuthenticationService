@@ -1,4 +1,6 @@
-﻿using AuthenticationService.Services;
+﻿using AuthenticationService.Constants;
+using AuthenticationService.Services;
+using Microsoft.Net.Http.Headers;
 
 namespace AuthenticationService.Middleware;
 
@@ -20,7 +22,7 @@ public class RevokedTokenMiddleware
         using (var scope = _serviceScopeFactory.CreateScope())
         {
             var tokenService = scope.ServiceProvider.GetRequiredService<ITokenService>();
-            var token = context.Request.Headers["Authorization"].ToString().Replace("Bearer ", string.Empty);
+            var token = context.Request.Headers[HeaderNames.Authorization].ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
             if (!string.IsNullOrEmpty(token) && await tokenService.IsRevokedAsync(token))
             {
                 var ipaddress = context.Connection.RemoteIpAddress?.ToString() ?? string.Empty;

@@ -1,4 +1,5 @@
-﻿using AuthenticationService.Entities;
+﻿using AuthenticationService.Constants;
+using AuthenticationService.Entities;
 using AuthenticationService.Services;
 using AuthenticationService.Services.Hosted;
 using AuthenticationService.Settings;
@@ -91,7 +92,7 @@ public static class HostExtensions
            .AddPasswordValidator<CustomPasswordValidator<User>>()
            .AddDefaultTokenProviders();
 
-        var jwtSettings = context.Configuration.GetSection("JWTSettings");
+        var jwtSettings = context.Configuration.GetSection(nameof(JWTSettings));
 
         services.AddAuthentication(opt =>
         {
@@ -107,12 +108,12 @@ public static class HostExtensions
                 ValidateIssuerSigningKey = true,
                 ValidIssuer = jwtSettings["ValidIssuer"],
                 ValidAudience = jwtSettings["ValidAudience"],
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.GetSection("SecurityKey").Value!))
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.GetSection(nameof(SecurityKey)).Value!))
             };
         });
 
         services.AddAuthorizationBuilder()
-            .AddPolicy("OnlyAdminUsers", policy => policy.RequireRole("Admin"));
+            .AddPolicy(PolicyConstants.AdminOnly, policy => policy.RequireRole(RolesConstants.Admin));
 
         return services;
     }
@@ -135,7 +136,7 @@ public static class HostExtensions
             .AddEndpointsApiExplorer()
             .AddSwaggerGen(opt =>
             {
-                opt.SwaggerDoc("v1", new OpenApiInfo { Title = "My API", Version = "v1" });
+                opt.SwaggerDoc("v1", new OpenApiInfo { Title = "Authentication API", Version = "v1" });
                 var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
                 var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
                 opt.IncludeXmlComments(xmlPath);

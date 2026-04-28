@@ -12,7 +12,7 @@ public static class WebApplicationExtensions
         app.UseSwagger();
         app.UseSwaggerUI(opt =>
         {
-            opt.SwaggerEndpoint("/swagger/v1/swagger.json", "My API V1");
+            opt.SwaggerEndpoint("/swagger/v1/swagger.json", "Authentication API V1");
         });
 
         app.RunMigrations();
