@@ -44,7 +44,7 @@ public class AccountController : ControllerBase
     {
         var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
         
-        var user = await _userService.FindByNameAsync(_tokenService.GetUserName(token));
+        var user = await _userService.FindByIdAsync(_tokenService.GetUserId(token));
         if(user is null)
         {
             return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
@@ -192,10 +192,21 @@ public class AccountController : ControllerBase
     [Authorize]
     public async Task<IActionResult> ChangePasswordAsync([FromBody] ChangePasswordDto request)
     {
-        var user = await _userService.FindByEmailAsync(request.Email!);
+        var sub = User.FindFirst("sub")?.Value;
+        if(string.IsNullOrEmpty(sub))
+        {
+            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.InvalidRequest));
+        }
+        
+        var user = await _userService.FindByIdAsync(sub);
         if (user is null || !await _userService.IsEmailConfirmedAsync(user))
         {
             return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
+        }
+
+        if (await _userService.IsLockedOutAsync(user))
+        {
+            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.AccountLocked));
         }
 
         var resetResult = await _userService.ChangePasswordAsync(user, request.OldPassword!, request.NewPassword!);
@@ -219,8 +230,8 @@ public class AccountController : ControllerBase
 
         await _emailService.SendEmailAsync(
             user.Email!,
-            EmailSubjectConstants.PasswordReset,
-            $"Your password was reset at {DateTime.UtcNow} UTC. If you didn't make this request please click the following link to lock your account and contact a system administrator. {lockAccountUri}");
+            EmailSubjectConstants.PasswordChanged,
+            $"Your password was changed at {DateTime.UtcNow} UTC. If you didn't make this request please click the following link to lock your account and contact a system administrator. {lockAccountUri}");
 
         user.LockoutEnd = null;
         await _userService.UpdateAsync(user);

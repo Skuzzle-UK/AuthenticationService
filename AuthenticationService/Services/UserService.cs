@@ -37,8 +37,8 @@ public class UserService : IUserService
     public async Task<User?> FindByEmailAsync(string email) =>
         await _userManager.FindByEmailAsync(email);
 
-    public async Task<User?> FindByNameAsync(string userName) =>
-        await (_userManager.FindByNameAsync(userName));
+    public async Task<User?> FindByIdAsync(string id) =>
+        await _userManager.FindByIdAsync(id);
 
     public async Task<string> GenerateEmailConfirmationTokenAsync(User user) =>
         await _userManager.GenerateEmailConfirmationTokenAsync(user);

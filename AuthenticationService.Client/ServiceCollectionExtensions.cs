@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
 
 namespace AuthenticationService.Client;
 
@@ -50,7 +51,9 @@ public static class ServiceCollectionExtensions
                     ValidateIssuerSigningKey = true,
                     ValidIssuer = settings.Issuer,
                     ValidAudience = settings.Audience,
-                    ValidAlgorithms = new[] { SecurityAlgorithms.EcdsaSha256 }
+                    ValidAlgorithms = new[] { SecurityAlgorithms.EcdsaSha256 },
+                    NameClaimType = JwtRegisteredClaimNames.Name,
+                    RoleClaimType = "role"
                 };
             });
 

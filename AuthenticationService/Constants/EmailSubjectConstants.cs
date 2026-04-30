@@ -3,6 +3,7 @@ namespace AuthenticationService.Constants;
 public class EmailSubjectConstants
 {
     public const string PasswordReset = "Password Reset";
+    public const string PasswordChanged = "Password Changed";
     public const string EmailConfirmation = "Email Confirmation";
     public const string MfaAuthenticationToken = "MFA Authentication Token";
     public const string LockedAccountInfo = "Locked account information";

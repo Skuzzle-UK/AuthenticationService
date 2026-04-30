@@ -1,0 +1,233 @@
+# Corporate-readiness TODO
+
+Findings from the project review on 2026-04-30. Ordered by category; recommended fix order
+is at the bottom. Each item carries the file/line where the issue lives so it can be picked
+up cold.
+
+---
+
+## Security correctness (bugs / vulnerabilities)
+
+- [x] ~~**`ChangePassword` doesn't bind identity from the bearer token.**
+  [AccountController.cs:193-231](AuthenticationService/Controllers/AccountController.cs:193) reads
+  `request.Email` from the body and looks the user up by that. A logged-in user A can change
+  user B's password if they know B's email + B's old password. The user must be derived from
+  `User.Identity.Name` (or the `sub`/`jti` claim), and the request body's email must either be
+  removed or asserted equal.~~ Done — identity now derives from the `sub` claim via
+  `FindByIdAsync(User.FindFirst("sub")?.Value)`; `Email` removed from `ChangePasswordDto`;
+  added the missing lockout check (closing the silent-unlock side-effect); email subject/body
+  now correctly say "changed" not "reset".
+
+- [ ] **Account-recovery static-PII bypass.**
+  [UserService.VerifyRecoverAccountValues](AuthenticationService/Services/UserService.cs:107)
+  treats every nullable field as `(stored is null || stored == supplied)`, so any field a user
+  left blank at registration is unverified. Practical recovery secret reduces to
+  email + username + DOB. Replace with email-link recovery: generate a single-use token, email
+  it, validate on submission, rotate the security stamp on consumption. Rate-limit per
+  email/IP and add a per-user lockout independent of the login lockout.
+
+- [ ] **DTO/entity name mismatch silently drops mother's-maiden-name.**
+  [RegistrationDto.MothersMaidenName](AuthenticationService.Shared/Dtos/RegistrationDto.cs:40)
+  vs [User.MotherMaidenName](AuthenticationService/Entities/User.cs:29). AutoMapper convention
+  doesn't match. Compounds the recovery bypass above. Fix: rename one side or add an explicit
+  AutoMapper mapping; backfill is unnecessary because the column is currently always null.
+
+- [ ] **`JWTService.AddAccessAttemptAsync` semantics are inverted.**
+  [JWTService.cs:103-124](AuthenticationService/Services/JWTService.cs:103). If the token's
+  `jti` is *not* in the revoked table, the method calls `RevokeTokenAsync(...)` on it. Today
+  it's only invoked from `RevokedTokenMiddleware` inside an `if (IsRevoked)` block so the
+  inverted branch is unreachable, but a future caller will silently revoke valid tokens.
+  Either rename to `RecordRevokedAccessAttemptAsync` and remove the auto-revoke branch, or
+  split the method into two with explicit names.
+
+- [ ] **`Logout` is `[HttpGet]` and not `[Authorize]`.**
+  [AuthenticationController.cs:184-197](AuthenticationService/Controllers/AuthenticationController.cs:184).
+  State-changing on GET (link-prefetch / image-tag CSRF). With no Authorize attribute, missing
+  bearer header throws inside `ReadJwtToken("")` and returns 500 instead of 401. Change to
+  `[HttpPost]` + `[Authorize]`, derive the token from `HttpContext.GetTokenAsync("access_token")`
+  rather than re-parsing the header.
+
+- [ ] **Refresh tokens stored in plaintext.**
+  [User.cs:24](AuthenticationService/Entities/User.cs:24). Hash before persisting (SHA-256 of
+  the random bytes is fine — they're high-entropy). On `/refresh`, hash the supplied token
+  and compare. Add rotation-on-use: invalidate the old refresh token immediately and detect
+  reuse as an anomaly worth alerting on.
+
+- [ ] **No reuse defence on Identity-issued links.**
+  Reset-password / lockout / email-confirmation tokens stay valid until the security stamp
+  changes. `LockAccount` and `RecoverAccount` already call `InvalidateUserTokensAsync` (which
+  rotates the stamp), but `ConfirmEmail` and `ResetForgottenPassword` should also rotate the
+  stamp post-consumption so the link can't be replayed before the next password change.
+
+- [ ] **Reserved-username registration not blocked.**
+  [RegistrationDto.cs:8](AuthenticationService.Shared/Dtos/RegistrationDto.cs:8) has no deny
+  list. Add a check (case-insensitive) for `admin`, `administrator`, `root`, `system`,
+  `support`, `security`, `null`, etc. before `CreateAsync`.
+
+- [ ] **`RegistrationController` returns `ex.Message` on 500.**
+  [RegistrationController.cs:78](AuthenticationService/Controllers/RegistrationController.cs:78).
+  Leaks DB / framework details. Log the exception with a correlation id, return a generic
+  500 with that id.
+
+- [ ] **Default admin password shipped in `appsettings.json`.**
+  [appsettings.json:13](AuthenticationService/appsettings.json:13) — `Pa5$word123`. Remove
+  the default and require `AdminAccountSeedSettings:Password` to be supplied via env var /
+  user-secrets / vault. Fail startup if it's still the placeholder.
+
+---
+
+## Operational correctness (will break in multi-replica prod)
+
+- [ ] **Persist data-protection keys.**
+  ASP.NET Core's data-protection ring defaults to ephemeral container storage. Every Identity
+  token (email confirmation, password reset, lockout, MFA) is signed with this ring. In
+  multi-replica deploys, tokens minted by replica A won't validate on B; on restart, every
+  outstanding email link breaks. Configure `services.AddDataProtection()
+  .PersistKeysToFileSystem(...)` + `.ProtectKeysWithCertificate(...)` (or the Azure Blob /
+  Redis variant). Add this to `HostExtensions.AddSecurity`.
+
+- [ ] **`UseForwardedHeaders` is missing.**
+  Behind any LB / reverse proxy, `Connection.RemoteIpAddress` is the proxy. Audit IPs and
+  the rate-limiter's IP partition will all be wrong. Add the middleware in
+  [WebApplicationExtensions.ConfigureApplication](AuthenticationService/Extensions/WebApplicationExtensions.cs)
+  before `UseAuthentication`, and configure `KnownNetworks`/`KnownProxies` for the deploy.
+
+- [ ] **No health-check endpoints.**
+  Add `services.AddHealthChecks()` with DB + JWT-key-loadable probes; map `/healthz` (live)
+  and `/readyz` (ready, includes DB).
+
+- [ ] **Migrations run unconditionally at startup.**
+  [WebApplicationExtensions.RunMigrations](AuthenticationService/Extensions/WebApplicationExtensions.cs:45-54).
+  Multi-replica startup races. Move migrations to a separate `dotnet ef database update`
+  step in the deploy pipeline (or an init-container / Job in K8s), and gate the runtime call
+  behind an env flag for local-dev only.
+
+- [ ] **CORS is not configured.**
+  Browser-based clients can't call this. Add `services.AddCors(...)` with an explicit
+  origin allow-list bound from configuration; apply the policy via `app.UseCors(...)` between
+  `UseRouting` and `UseAuthentication`.
+
+- [ ] **Structured logging / security events are absent.**
+  Two `_logger` calls in the entire codebase. Wire Serilog (or whatever the platform
+  standard is) and emit structured events for: registration, registration-confirmed,
+  login-success, login-failure, lockout-triggered, password-reset-requested,
+  password-reset-completed, password-changed, refresh-issued, logout, token-revoked,
+  recovery-attempt, MFA-enabled, MFA-failed. Tag with `userId`, `jti`, `ip`, `userAgent`.
+  Pipe to whatever SIEM the corporate platform uses.
+
+- [ ] **Single signing key, no rotation.**
+  [EcdsaKeyProvider](AuthenticationService/Services/EcdsaKeyProvider.cs) holds one key; the
+  JWKS endpoint exposes one. Add `IReadOnlyList<EcdsaKey>` keys, with one designated as
+  active for signing; publish all of them in the JWKS response so consumers can validate
+  during overlap windows. Add a runbook for rotation: introduce new key, wait one
+  cache-refresh cycle, switch active, wait until the longest-lived old token expires, drop
+  the old key.
+
+- [ ] **No tests, no CI.**
+  No `*Test*.csproj`, no GitHub Actions / Azure Pipelines yaml. At minimum:
+  - Unit tests for `JWTService` (claim shape, expiry, validation) and the password validator.
+  - Integration tests for the auth flow against a real MySQL container (Testcontainers).
+  - Snapshot test for the JWKS / OIDC discovery doc shape.
+  - CI workflow that runs `dotnet build` + tests on PR.
+
+- [ ] **No OpenTelemetry / W3C trace propagation.**
+  Auth is the most-logged-against service. Add `services.AddOpenTelemetry()` with
+  ASP.NET Core + EF Core + HttpClient instrumentation; export to whatever the platform's
+  collector is (OTLP).
+
+---
+
+## Standards / interop
+
+- [ ] **`OpenIdConfiguration` advertises capabilities the service doesn't have.**
+  [WellKnownController.cs:65](AuthenticationService/Controllers/WellKnownController.cs:65)
+  declares `response_types_supported = ["token"]` without an `/authorize` or `/token`
+  endpoint. Either implement OAuth2 / OIDC properly (preferred long-term — switch to
+  Duende IdentityServer or OpenIddict) or trim the discovery doc to the minimum JwtBearer
+  needs (`issuer`, `jwks_uri`, `id_token_signing_alg_values_supported`).
+
+- [ ] **`kid` is not the RFC 7638 JWK thumbprint.**
+  [EcdsaKeyProvider.ComputeThumbprint](AuthenticationService/Services/EcdsaKeyProvider.cs:89)
+  computes `SHA256(X || Y)`. Replace with the canonical-JSON form: `SHA256(`
+  `{"crv":"P-256","kty":"EC","x":"<x>","y":"<y>"}` `)` with members in lexical order.
+
+- [x] ~~**Issued JWTs lack `sub`.**
+  [JWTService.GetClaims](AuthenticationService/Services/JWTService.cs:199-213) emits only
+  `jti`, `name`, and roles. Add `JwtRegisteredClaimNames.Sub = user.Id` and
+  `JwtRegisteredClaimNames.Email = user.Email` so consumers don't have to round-trip a
+  username (which can change) to get a stable identifier.~~ Done — token now emits
+  `sub`/`name`/`email`/`role`/`jti`; server + client both run with `MapInboundClaims = false`
+  + explicit `NameClaimType`/`RoleClaimType`; rate limiter and all controller lookups switched
+  to ID-based via `FindByIdAsync(GetUserId(...))`; legacy `GetUserName` / `FindByNameAsync`
+  abstractions removed.
+
+- [ ] **`Authority` vs `Issuer` discrepancy is a footgun.**
+  In dev, `Authority = https://localhost:53217` but `Issuer = https://auth.example.com`.
+  README explains it, but a corporate deploy should make these match by terminating TLS at
+  a reverse proxy with the canonical hostname. Document the production network expectation
+  alongside the README's "HTTPS / hostname" section.
+
+---
+
+## Smaller corrections worth bundling
+
+- [ ] Sync-over-async in
+  [RuntimeDbSeeders](AuthenticationService/Storage/Seed/RuntimeDbSeeders.cs:25) (`.Result`,
+  `.Wait()`). Make `SeedAdministratorAccount` async and `await` the calls from
+  `RuntimeDbSeed` (which can be made `async Task` and awaited at startup).
+
+- [ ] **`Token` class has four constructor overloads** for the same fields
+  ([Token.cs](AuthenticationService.Shared/Models/Token.cs)). Collapse to one constructor or
+  use an init-only record with required members.
+
+- [ ] **`AccessRecord.Revoked` is hardcoded `true`.**
+  [JWTService.cs:89,119](AuthenticationService/Services/JWTService.cs:89). Either capture
+  every access (not just revoked-token attempts) or drop the column and rename the table to
+  `RevokedTokenAccessAttempts`.
+
+- [ ] **Rate-limiter is one global partition.**
+  [HostExtensions.AddRateLimiting](AuthenticationService/Extensions/HostExtensions.cs:167) —
+  4 req / 10s. Tighten on `/authenticate`, `/forgotpassword`, `/recover`, `/mfa`; relax on
+  `/me`-style reads. Use named policies + `[EnableRateLimiting("auth-strict")]` per endpoint.
+
+- [ ] **`LockoutEnd = UtcNow.AddYears(100)`** in
+  [AccountController.LockAccountAsync](AuthenticationService/Controllers/AccountController.cs:255).
+  Replace with `DateTimeOffset.MaxValue` or a separate `IsHardLocked` flag — far-future
+  arithmetic risks `DateTime` overflow on quirky host clocks.
+
+- [ ] **Phone MFA is half-built.**
+  [AuthenticationController.cs:84](AuthenticationService/Controllers/AuthenticationController.cs:84)
+  and [AccountController.cs:84](AuthenticationService/Controllers/AccountController.cs:84)
+  return BadRequest "PhoneMfaNotSupported". Either implement (SMS provider integration) or
+  remove the enum value so it can't be selected.
+
+- [ ] **No `/me` introspection endpoint.**
+  Useful for consumers debugging "is the token I have actually any good?". Add
+  `GET /api/Account/me` returning the resolved `User` snapshot (without sensitive fields)
+  for the bearer.
+
+- [ ] **`UserConstants.Admin = "admin"`** is referenced as a username only by the seeder.
+  Worth dropping the constant once the seeder is removed (see admin-password TODO above)
+  and using `AdminAccountSeedSettings.UserName` instead.
+
+---
+
+## Recommended fix order
+
+1. **Bugs first** — recovery PII bypass + DTO/entity name mismatch,
+   `AddAccessAttemptAsync` semantics, `Logout` HTTP method/auth. (~~`ChangePassword`
+   authorisation done.~~)
+2. **Multi-replica blockers** — data-protection key persistence, forwarded-headers,
+   migrations-out-of-startup, health checks.
+3. **Observability** — structured logging, security events, OpenTelemetry. Without these,
+   #1 is much harder to verify in prod.
+4. **Key rotation** — dual-key support before the first real production rotation is needed.
+5. **Recovery redesign** — email-link with single-use stamp-rotating token; rate-limit the
+   endpoints.
+6. **Refresh-token hashing + rotation-on-use.**
+7. **Tests + CI** — should ideally happen alongside #1 so the bug fixes have regression
+   coverage.
+8. **CORS + standards cleanups + smaller corrections.**
+
+Rough effort estimate to reach "I'd put this in a production gate review with a straight
+face": ~2-4 weeks of focused work.

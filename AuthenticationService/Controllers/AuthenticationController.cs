@@ -155,7 +155,7 @@ public class AuthenticationController : ControllerBase
             return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Token is invalid"));
         }
 
-        var user = await _userService.FindByNameAsync(_tokenService.GetUserName(token));
+        var user = await _userService.FindByIdAsync(_tokenService.GetUserId(token));
         if (user is null)
         {
             return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
@@ -186,7 +186,7 @@ public class AuthenticationController : ControllerBase
     {
         var token = Request.Headers[HeaderNames.Authorization].ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
 
-        var user = await _userService.FindByNameAsync(_tokenService.GetUserName(token));
+        var user = await _userService.FindByIdAsync(_tokenService.GetUserId(token));
         if (user is null)
         {
             return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));

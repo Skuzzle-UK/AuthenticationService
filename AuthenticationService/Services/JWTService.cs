@@ -77,7 +77,7 @@ public class JWTService : ITokenService
         {
             TokenJti = jti,
             ExpiresAt = GetExpiryDateTime(token),
-            UserId = await GetUserId(token)
+            UserId = GetUserId(token)
         };
 
         var accessRecord = new AccessRecord()
@@ -123,29 +123,12 @@ public class JWTService : ITokenService
         await _context.SaveChangesAsync();
     }
 
-    public string GetUserName(string token)
+    public string GetUserId(string token)
     {
         var handler = new JwtSecurityTokenHandler();
         var jwtToken = handler.ReadJwtToken(token);
-        var userNameClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Name);
 
-        return userNameClaim?.Value ?? string.Empty;
-    }
-
-    private async Task<string> GetUserId(string token)
-    {
-        var handler = new JwtSecurityTokenHandler();
-        var jwtToken = handler.ReadJwtToken(token);
-        
-        var userIdClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Name);
-        if (userIdClaim is null)
-        {
-            return string.Empty;
-        }
-
-        var user = await _userManager.FindByNameAsync(userIdClaim.Value);
-
-        return user?.Id ?? string.Empty;
+        return jwtToken.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Sub)?.Value ?? string.Empty;
     }
 
     private string GetJtiFromToken(string token)
@@ -200,13 +183,15 @@ public class JWTService : ITokenService
     {
         var claims = new List<Claim>()
         {
+            new Claim(JwtRegisteredClaimNames.Sub, user.Id),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new Claim(ClaimTypes.Name, user.UserName!)
+            new Claim(JwtRegisteredClaimNames.Name, user.UserName!),
+            new Claim(JwtRegisteredClaimNames.Email, user.Email!)
         };
 
         foreach (var role in roles)
         {
-            claims.Add(new Claim(ClaimTypes.Role, role));
+            claims.Add(new Claim("role", role));
         }
 
         return claims;

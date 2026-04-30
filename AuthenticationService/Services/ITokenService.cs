@@ -9,7 +9,7 @@ public interface ITokenService
     Task<bool> ValidateExpiredTokenAsync(string token);
     Task RevokeTokenAsync(string token, string ipAddress);
     DateTime? GetExpiryDateTime(string token);
-    string GetUserName(string token);
+    string GetUserId(string token);
     Task<bool> IsRevokedAsync(string token);
     Task AddAccessAttemptAsync(string token, string ipAddress);
 }

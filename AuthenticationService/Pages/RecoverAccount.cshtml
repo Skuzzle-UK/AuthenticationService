@@ -25,7 +25,7 @@
         let request = {
             UserName: username,
             Email: email,
-            Phone: phone,
+            PhoneNumber: phone,
             FirstName: firstName,
             LastName: lastName,
             DateOfBirth: dateOfBirth !== "" ? dateOfBirth : null,
@@ -47,28 +47,19 @@
             },
             body: JSON.stringify(request)
         })
-        // TODO: Why dont errors get reported back in the alert /nb
-        .then(data => {
-            if (data.status == 200) {
-                alert('Account recovery successfully');
+        .then(async response => {
+            const body = await response.json().catch(() => ({}));
+            if (response.ok) {
+                alert('Account recovery successful');
                 setTimeout(() => {
                     window.location.href = '/ActionComplete';
                 }, 1000);
-            } else {
-                let errorMessages = '';
-                if (Array.isArray(data.errors)) {
-                    errorMessages = data.errors.join(' ');
-                } else {
-                    for (const key in data.errors) {
-                        if (Array.isArray(data.errors[key])) {
-                            errorMessages += data.errors[key].join(' ') + '\n';
-                        } else {
-                            errorMessages += data.errors[key] + '\n';
-                        }
-                    }
-                }
-                alert('Account recovery failed:\n' + errorMessages);
+                return;
             }
+            const errorMessages = body.errors
+                ? Object.values(body.errors).join('\n')
+                : '(no details returned)';
+            alert('Account recovery failed:\n' + errorMessages);
         })
         .catch(error => console.error('Error:', error));
     }

@@ -10,8 +10,8 @@ public interface IUserService
     Task<IList<string>> GetRolesAsync(User user);
     Task<IdentityResult> ConfirmEmailAsync(User user, string token);
     Task<string> GenerateEmailConfirmationTokenAsync(User user);
-    Task<User?> FindByNameAsync(string userName);
     Task<User?> FindByEmailAsync(string email);
+    Task<User?> FindByIdAsync(string id);
     Task<string?> GetAuthenticatorKeyAsync(User user);
     Task ResetAuthenticatorKeyAsync(User user);
     Task<IList<string>> GetValidTwoFactorProvidersAsync(User user);

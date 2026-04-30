@@ -36,7 +36,10 @@ public class ApiResponse
             Errors = new Dictionary<string, string>();
         }
 
-        Errors.Concat(errors);
+        foreach (var kvp in errors)
+        {
+            Errors[kvp.Key] = kvp.Value;
+        }
 
         IsSuccessful = false;
 

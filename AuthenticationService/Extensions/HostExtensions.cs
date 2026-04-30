@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
+using System.IdentityModel.Tokens.Jwt;
 using System.Reflection;
 using System.Security.Claims;
 using System.Text.Json;
@@ -103,6 +104,7 @@ public static class HostExtensions
             .Configure<IEcdsaKeyProvider, IOptions<JWTSettings>>((opt, keyProvider, jwtOptions) =>
             {
                 var jwt = jwtOptions.Value;
+                opt.MapInboundClaims = false;
                 opt.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
@@ -112,7 +114,9 @@ public static class HostExtensions
                     ValidIssuer = jwt.ValidIssuer,
                     ValidAudience = jwt.ValidAudience,
                     IssuerSigningKey = keyProvider.PublicSecurityKey,
-                    ValidAlgorithms = new[] { SecurityAlgorithms.EcdsaSha256 }
+                    ValidAlgorithms = new[] { SecurityAlgorithms.EcdsaSha256 },
+                    NameClaimType = JwtRegisteredClaimNames.Name,
+                    RoleClaimType = "role"
                 };
             });
 
@@ -170,7 +174,7 @@ public static class HostExtensions
                 opt.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
                 {
                     // Will check token for name first and then IP address, finally fallback to "anonymous" to decide if same user.
-                    var userId = context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+                    var userId = context.User?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
                     return RateLimitPartition.GetFixedWindowLimiter(
                     partitionKey: userId,
                     factory: _ => new FixedWindowRateLimiterOptions

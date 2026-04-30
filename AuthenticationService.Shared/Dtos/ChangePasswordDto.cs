@@ -4,9 +4,6 @@ namespace AuthenticationService.Shared.Dtos;
 
 public class ChangePasswordDto
 {
-    [Required(ErrorMessage = "Email is required.")]
-    public string? Email { get; set; }
-
     [Required(ErrorMessage = "Old password is required.")]
     public string? OldPassword { get; set; }
 

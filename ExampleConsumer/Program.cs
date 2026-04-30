@@ -49,8 +49,9 @@ app.MapGet("/me", (ClaimsPrincipal user) => Results.Ok(new
 {
     name = user.Identity?.Name,
     isAuthenticated = user.Identity?.IsAuthenticated ?? false,
-    roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value),
+    roles = user.FindAll("role").Select(c => c.Value),
     jti = user.FindFirstValue("jti"),
+    sub = user.FindFirstValue("sub"),
 }))
     .RequireAuthorization()
     .WithName("Me");
