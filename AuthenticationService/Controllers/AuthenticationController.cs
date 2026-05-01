@@ -60,10 +60,7 @@ public class AuthenticationController : ControllerBase
 
         if (await _userService.GetTwoFactorEnabledAsync(user))
         {
-            if (request.MfaProvider is null)
-            {
-                request.MfaProvider = user.Preferred2FAProvider;
-            }
+            request.MfaProvider ??= user.Preferred2FAProvider;
 
             var providers = await _userService.GetValidTwoFactorProvidersAsync(user);
             if (!providers.Contains(request.MfaProvider.ToString()!))
