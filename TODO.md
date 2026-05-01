@@ -18,19 +18,25 @@ up cold.
   added the missing lockout check (closing the silent-unlock side-effect); email subject/body
   now correctly say "changed" not "reset".
 
-- [ ] **Account-recovery static-PII bypass.**
+- [x] ~~**Account-recovery static-PII bypass.**
   [UserService.VerifyRecoverAccountValues](AuthenticationService/Services/UserService.cs:107)
   treats every nullable field as `(stored is null || stored == supplied)`, so any field a user
   left blank at registration is unverified. Practical recovery secret reduces to
   email + username + DOB. Replace with email-link recovery: generate a single-use token, email
   it, validate on submission, rotate the security stamp on consumption. Rate-limit per
-  email/IP and add a per-user lockout independent of the login lockout.
+  email/IP and add a per-user lockout independent of the login lockout.~~ Done — recover
+  endpoint deleted entirely; the password-reset flow is now the unlock path. Lockout checks
+  removed from `ForgotPasswordAsync`/`ResetForgottenPasswordAsync`; `LockAccountAsync` now
+  emails a real reset link so users can self-recover from a malicious password change in one
+  click. (Per-email rate limiting still pending under the rate-limiter entry below.)
 
-- [ ] **DTO/entity name mismatch silently drops mother's-maiden-name.**
+- [x] ~~**DTO/entity name mismatch silently drops mother's-maiden-name.**
   [RegistrationDto.MothersMaidenName](AuthenticationService.Shared/Dtos/RegistrationDto.cs:40)
   vs [User.MotherMaidenName](AuthenticationService/Entities/User.cs:29). AutoMapper convention
   doesn't match. Compounds the recovery bypass above. Fix: rename one side or add an explicit
-  AutoMapper mapping; backfill is unnecessary because the column is currently always null.
+  AutoMapper mapping; backfill is unnecessary because the column is currently always null.~~
+  Done — entity field renamed to `MothersMaidenName` so AutoMapper convention matches.
+  (Now moot anyway since the recovery endpoint that consumed it is gone.)
 
 - [ ] **`JWTService.AddAccessAttemptAsync` semantics are inverted.**
   [JWTService.cs:103-124](AuthenticationService/Services/JWTService.cs:103). If the token's
@@ -53,11 +59,14 @@ up cold.
   and compare. Add rotation-on-use: invalidate the old refresh token immediately and detect
   reuse as an anomaly worth alerting on.
 
-- [ ] **No reuse defence on Identity-issued links.**
-  Reset-password / lockout / email-confirmation tokens stay valid until the security stamp
-  changes. `LockAccount` and `RecoverAccount` already call `InvalidateUserTokensAsync` (which
-  rotates the stamp), but `ConfirmEmail` and `ResetForgottenPassword` should also rotate the
-  stamp post-consumption so the link can't be replayed before the next password change.
+- [ ] **No reuse defence on Identity-issued links (`ConfirmEmail`).**
+  `LockAccount`, `ChangePassword`, and `ResetForgottenPassword` all call
+  `InvalidateUserTokensAsync` post-consumption (rotates the security stamp, so the issuing
+  link can't be replayed). `ConfirmEmailAsync` in [RegistrationController](AuthenticationService/Controllers/RegistrationController.cs:91)
+  doesn't — `_userManager.ConfirmEmailAsync` flips `EmailConfirmed = true` but doesn't rotate
+  the stamp. Replay isn't terribly exploitable today (re-confirming an already-confirmed
+  email is a no-op) but it's the only Identity-issued-link path not following the pattern,
+  so worth tightening for consistency.
 
 - [ ] **Reserved-username registration not blocked.**
   [RegistrationDto.cs:8](AuthenticationService.Shared/Dtos/RegistrationDto.cs:8) has no deny
@@ -187,8 +196,10 @@ up cold.
 
 - [ ] **Rate-limiter is one global partition.**
   [HostExtensions.AddRateLimiting](AuthenticationService/Extensions/HostExtensions.cs:167) —
-  4 req / 10s. Tighten on `/authenticate`, `/forgotpassword`, `/recover`, `/mfa`; relax on
-  `/me`-style reads. Use named policies + `[EnableRateLimiting("auth-strict")]` per endpoint.
+  4 req / 10s. Tighten on `/authenticate`, `/forgotpassword`, `/forgotpassword/reset`, `/mfa`,
+  and `/lock`; relax on `/me`-style reads. Use named policies +
+  `[EnableRateLimiting("auth-strict")]` per endpoint. (`/forgotpassword` is now also the
+  unlock path post-merge, so the per-email partition matters more than it used to.)
 
 - [ ] **`LockoutEnd = UtcNow.AddYears(100)`** in
   [AccountController.LockAccountAsync](AuthenticationService/Controllers/AccountController.cs:255).
@@ -214,16 +225,15 @@ up cold.
 
 ## Recommended fix order
 
-1. **Bugs first** — recovery PII bypass + DTO/entity name mismatch,
-   `AddAccessAttemptAsync` semantics, `Logout` HTTP method/auth. (~~`ChangePassword`
-   authorisation done.~~)
+1. **Bugs first** — `AddAccessAttemptAsync` semantics, `Logout` HTTP method/auth.
 2. **Multi-replica blockers** — data-protection key persistence, forwarded-headers,
    migrations-out-of-startup, health checks.
 3. **Observability** — structured logging, security events, OpenTelemetry. Without these,
    #1 is much harder to verify in prod.
 4. **Key rotation** — dual-key support before the first real production rotation is needed.
-5. **Recovery redesign** — email-link with single-use stamp-rotating token; rate-limit the
-   endpoints.
+5. ~~**Recovery redesign** — email-link with single-use stamp-rotating token; rate-limit the
+   endpoints.~~ Done — recover endpoint merged into the existing reset-password flow. (Rate
+   limiting still pending under the rate-limiter entry.)
 6. **Refresh-token hashing + rotation-on-use.**
 7. **Tests + CI** — should ideally happen alongside #1 so the bug fixes have regression
    coverage.

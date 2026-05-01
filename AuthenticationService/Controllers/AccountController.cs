@@ -108,11 +108,6 @@ public class AccountController : ControllerBase
             return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
         }
 
-        if (await _userService.IsLockedOutAsync(user))
-        {
-            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.AccountLocked));
-        }
-
         var token = await _userService.GeneratePasswordResetTokenAsync(user);
         var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
 
@@ -143,11 +138,6 @@ public class AccountController : ControllerBase
         if (user is null || !await _userService.IsEmailConfirmedAsync(user))
         {
             return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
-        }
-
-        if (await _userService.IsLockedOutAsync(user))
-        {
-            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.AccountLocked));
         }
 
         var decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(request.Token!));
@@ -265,73 +255,20 @@ public class AccountController : ControllerBase
         await _userService.SetLockoutEnabledAsync(user, true);
         await _userService.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
 
-        if (string.IsNullOrWhiteSpace(request.RecoverAccountUri))
+        var token = await _userService.GeneratePasswordResetTokenAsync(user);
+        var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+
+        if (string.IsNullOrWhiteSpace(request.ResetPasswordUri))
         {
-            request.RecoverAccountUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}{RouteConstants.RecoverAccount}";
+            request.ResetPasswordUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}{RouteConstants.ResetPassword}";
         }
+
+        var resetPasswordUri = AccountHelpers.GenerateResetPasswordUri(user.Email!, encodedToken, request.ResetPasswordUri);
 
         await _emailService.SendEmailAsync(
             user.Email!,
             EmailSubjectConstants.AccountLocked,
-            $"Your account was locked at {DateTime.UtcNow} UTC. If you didn't make this request please contact a system administrator. To unlock your account click the following link. {request.RecoverAccountUri}");
-
-        return Ok(new ApiResponse());
-    }
-
-    [HttpPost("recover")]
-    public async Task<IActionResult> RecoverAccountAsync([FromBody]RecoverAccountDto request)
-    {
-        var user = await _userService.FindByEmailAsync(request.Email!);
-        if (user is null)
-        {
-            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
-        }
-
-        if (!_userService.VerifyRecoverAccountValues(
-            user,
-            request.UserName,
-            request.FirstName,
-            request.LastName,
-            request.DateOfBirth,
-            request.Email,
-            request.PhoneNumber,
-            request.Country,
-            request.MothersMaidenName,
-            request.AddressLine1,
-            request.AddressLine2,
-            request.AddressLine3,
-            request.Postcode,
-            request.City))
-        {
-            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "One or more of the supplied values are incorrect."));
-        }
-
-        var resetToken = await _userService.GeneratePasswordResetTokenAsync(user);
-
-        var resetResult = await _userService.ResetPasswordAsync(user, resetToken, request.NewPassword!);
-        if (!resetResult.Succeeded)
-        {
-            var errors = resetResult.Errors.ToDictionary(e => e.Code, e => e.Description);
-            return BadRequest(new ApiResponse().AddErrors(errors));
-        }
-
-        await _userService.InvalidateUserTokensAsync(user, Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty);
-
-        var lockoutToken = await _userService.GenerateUserTokenAsync(user, MfaProviders.Email.ToString(), TokenPurposeConstants.Lockout);
-
-        if (string.IsNullOrWhiteSpace(request.LockAccountUri))
-        {
-            request.LockAccountUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}{RouteConstants.LockAccount}";
-        }
-
-        await _userService.SetLockoutEndDateAsync(user, null);
-
-        var lockAccountUri = AccountHelpers.GenerateLockoutUri(user.Email!, lockoutToken, request.LockAccountUri);
-
-        await _emailService.SendEmailAsync(
-            user.Email!,
-            EmailSubjectConstants.AccountRecovery,
-            $"Your account recovered and password was reset at {DateTime.UtcNow} UTC. If you didn't make this request please click the following link to lock your account and contact a system administrator. {lockAccountUri}");
+            $"Your account was locked at {DateTime.UtcNow} UTC. If you didn't make this request please contact a system administrator. To unlock your account you need to reset your password via the following link. {resetPasswordUri}");
 
         return Ok(new ApiResponse());
     }

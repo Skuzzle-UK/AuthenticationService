@@ -26,7 +26,7 @@ public class User : IdentityUser
     public DateTime? RefreshTokenExpiresAt { get; set; }
 
     [MaxLength(150)]
-    public string? MotherMaidenName { get; set; }
+    public string? MothersMaidenName { get; set; }
 
     [MaxLength(256)]
     public string? AddressLine1 { get; set; }
