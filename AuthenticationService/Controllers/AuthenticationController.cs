@@ -229,8 +229,8 @@ public class AuthenticationController : ControllerBase
         var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
         var ipAddress = Request.GetRemoteIpAddress();
 
-        await _tokenService.RevokeFamilyAsync(familyId, "logout");
-        await _tokenService.RevokeTokenAsync(token, ipAddress);
+        await _tokenService.RevokeFamilyAsync(familyId, RevocationReasons.Logout);
+        await _tokenService.RevokeTokenAsync(token, ipAddress, RevocationReasons.Logout);
 
         return Ok(new ApiResponse());
     }
@@ -260,7 +260,7 @@ public class AuthenticationController : ControllerBase
         var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
         var ipAddress = Request.GetRemoteIpAddress();
 
-        await _userService.InvalidateUserTokensAsync(user, ipAddress, token);
+        await _userService.InvalidateUserTokensAsync(user, ipAddress, RevocationReasons.LogoutAll, token);
         return Ok(new ApiResponse());
     }
 
@@ -277,7 +277,7 @@ public class AuthenticationController : ControllerBase
             user.WaitingForTwoFactorAuthentication = false;
             await _userService.UpdateAsync(user);
 
-            await _userService.InvalidateUserTokensAsync(user, Request.GetRemoteIpAddress());
+            await _userService.InvalidateUserTokensAsync(user, Request.GetRemoteIpAddress(), RevocationReasons.FailedLoginLockout);
 
             return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.AccountLockedFailedAttempts));
         }

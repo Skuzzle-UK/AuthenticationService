@@ -32,5 +32,5 @@ public interface IUserService
     Task<bool> IsLockedOutAsync(User user);
     Task<bool> CheckPasswordAsync(User user, string password);
     Task AccessFailedAsync(User user);
-    Task InvalidateUserTokensAsync(User user, string ipAddress, string? token = null);
+    Task InvalidateUserTokensAsync(User user, string ipAddress, string reason, string? token = null);
 }

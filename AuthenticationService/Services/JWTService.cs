@@ -90,7 +90,7 @@ public class JWTService : ITokenService
             // Reuse detected. Defensive cascade: revoke every refresh-token family for this
             // user and rotate the security stamp so all outstanding access tokens die too.
             var compromisedFamilyId = existing.FamilyId;
-            await RevokeAllRefreshTokenFamiliesAsync(userId, "reuse_detected");
+            await RevokeAllRefreshTokenFamiliesAsync(userId, RevocationReasons.ReuseDetected);
             var compromisedUser = await _userManager.FindByIdAsync(userId);
             if (compromisedUser is not null)
             {
@@ -181,7 +181,7 @@ public class JWTService : ITokenService
         return validationResult.IsValid;
     }
 
-    public async Task RevokeTokenAsync(string token, string ipAddress)
+    public async Task RevokeTokenAsync(string token, string ipAddress, string reason)
     {
         var jti = GetJtiFromToken(token);
 
@@ -191,6 +191,8 @@ public class JWTService : ITokenService
             ExpiresAt = GetExpiryDateTime(token),
             UserId = GetUserId(token),
             RevokedFromIp = ipAddress,
+            RevokedAt = DateTime.UtcNow,
+            RevocationReason = reason,
         };
 
         await _context.RevokedTokens.AddAsync(revokedToken);

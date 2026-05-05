@@ -64,14 +64,14 @@ public class UserService : IUserService
     public async Task<IList<string>> GetValidTwoFactorProvidersAsync(User user) =>
         await _userManager.GetValidTwoFactorProvidersAsync(user);
 
-    public async Task InvalidateUserTokensAsync(User user, string ipAddress, string? token = null)
+    public async Task InvalidateUserTokensAsync(User user, string ipAddress, string reason, string? token = null)
     {
         await _userManager.UpdateSecurityStampAsync(user);
-        await _tokenService.RevokeAllRefreshTokenFamiliesAsync(user.Id, "user_invalidated");
+        await _tokenService.RevokeAllRefreshTokenFamiliesAsync(user.Id, reason);
 
         if (!string.IsNullOrEmpty(token))
         {
-            await _tokenService.RevokeTokenAsync(token, ipAddress);
+            await _tokenService.RevokeTokenAsync(token, ipAddress, reason);
         }
     }
 

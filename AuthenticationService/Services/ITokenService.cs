@@ -16,7 +16,7 @@ public interface ITokenService
 
     Task<bool> ValidateExpiredTokenAsync(string token);
 
-    Task RevokeTokenAsync(string token, string ipAddress);
+    Task RevokeTokenAsync(string token, string ipAddress, string reason);
 
     /// <summary>
     /// Validates a refresh token, marks it consumed, issues a new pair in the same family.
