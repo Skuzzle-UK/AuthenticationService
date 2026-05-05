@@ -1,5 +1,6 @@
 ﻿using AuthenticationService.Client.Constants;
 using AuthenticationService.Entities;
+using AuthenticationService.Enums;
 using AuthenticationService.Settings;
 using AuthenticationService.Shared.Models;
 using AuthenticationService.Storage;
@@ -80,17 +81,7 @@ public class JWTService : ITokenService
             UserId = GetUserId(token)
         };
 
-        var accessRecord = new AccessRecord()
-        {
-            TokenJti = jti,
-            IpAddress = ipaddress,
-            AccessAt = DateTime.UtcNow,
-            UserId = revokedToken.UserId,
-            Revoked = true
-        };
-
         await _context.RevokedTokens.AddAsync(revokedToken);
-        await _context.AccessRecords.AddAsync(accessRecord);
         await _context.SaveChangesAsync();
     }
 
@@ -100,23 +91,30 @@ public class JWTService : ITokenService
         return await _context.RevokedTokens.AnyAsync(t => t.TokenJti == jti);
     }
 
-    public async Task AddAccessAttemptAsync(string token, string ipAddress)
+    public async Task RecordAccessAttemptAsync(string token, string ipAddress)
     {
         var jti = GetJtiFromToken(token);
+        var severity = Severity.Low;
+        var isRevoked = false;
+
         var revokedToken = await _context.RevokedTokens.FindAsync(jti);
-        if(revokedToken is null)
+        if (revokedToken is not null)
         {
-            await RevokeTokenAsync(token, ipAddress);
-            return;
+            isRevoked = true;
+
+            severity = revokedToken.ExpiresAt.HasValue && revokedToken.ExpiresAt.Value < DateTime.UtcNow
+                ? Severity.Low
+                : Severity.Medium;
         }
 
         var accessRecord = new AccessRecord()
         {
             TokenJti = jti,
             IpAddress = ipAddress,
-            AccessAt = DateTime.UtcNow,
-            UserId = revokedToken.UserId,
-            Revoked = true
+            CreatedAt = DateTime.UtcNow,
+            UserId = GetUserId(token),
+            Revoked = isRevoked,
+            Severity = severity
         };
 
         await _context.AccessRecords.AddAsync(accessRecord);

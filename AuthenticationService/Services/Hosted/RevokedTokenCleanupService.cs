@@ -24,12 +24,12 @@ public class RevokedTokenCleanupService : BackgroundService
             using var scope = _serviceScopeFactory.CreateScope();
             {
                 var context = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
-                context.AccessRecords.RemoveRange(context.AccessRecords.Where(x => x.AccessAt.AddDays(_settings.AccessRecordsTTLInDays) < DateTime.UtcNow));
+                context.AccessRecords.RemoveRange(context.AccessRecords.Where(x => x.CreatedAt.AddDays(_settings.AccessRecordsTTLInDays) < DateTime.UtcNow));
                 context.RevokedTokens.RemoveRange(context.RevokedTokens.Where(x => x.ExpiresAt < DateTime.UtcNow));
 
                 await context.SaveChangesAsync(stoppingToken);
             }
-            await Task.Delay(TimeSpan.FromMinutes(_settings.CleanupIntervalInMinutes), stoppingToken);
+            await Task.Delay(TimeSpan.FromHours(_settings.CleanupIntervalInHours), stoppingToken);
         }
     }
 }

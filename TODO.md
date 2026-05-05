@@ -38,13 +38,18 @@ up cold.
   Done — entity field renamed to `MothersMaidenName` so AutoMapper convention matches.
   (Now moot anyway since the recovery endpoint that consumed it is gone.)
 
-- [ ] **`JWTService.AddAccessAttemptAsync` semantics are inverted.**
+- [x] ~~**`JWTService.AddAccessAttemptAsync` semantics are inverted.**
   [JWTService.cs:103-124](AuthenticationService/Services/JWTService.cs:103). If the token's
   `jti` is *not* in the revoked table, the method calls `RevokeTokenAsync(...)` on it. Today
   it's only invoked from `RevokedTokenMiddleware` inside an `if (IsRevoked)` block so the
   inverted branch is unreachable, but a future caller will silently revoke valid tokens.
   Either rename to `RecordRevokedAccessAttemptAsync` and remove the auto-revoke branch, or
-  split the method into two with explicit names.
+  split the method into two with explicit names.~~ Done — method renamed to
+  `RecordAccessAttemptAsync`, inverted branch removed entirely; now writes a single
+  `AccessRecord` with a calculated `Severity` (Medium for live-revoked replays, Low for
+  past-expiry replays). `RevokeTokenAsync` no longer writes an `AccessRecord` itself —
+  middleware handles that on replay, no double-counting. New `Severity` enum + entity column
+  + migration shipped together.
 
 - [ ] **`Logout` is `[HttpGet]` and not `[Authorize]`.**
   [AuthenticationController.cs:184-197](AuthenticationService/Controllers/AuthenticationController.cs:184).
@@ -56,8 +61,44 @@ up cold.
 - [ ] **Refresh tokens stored in plaintext.**
   [User.cs:24](AuthenticationService/Entities/User.cs:24). Hash before persisting (SHA-256 of
   the random bytes is fine — they're high-entropy). On `/refresh`, hash the supplied token
-  and compare. Add rotation-on-use: invalidate the old refresh token immediately and detect
-  reuse as an anomaly worth alerting on.
+  and compare. (Rotation-on-use behaviour and reuse detection are tracked separately below;
+  hashed storage is the prerequisite — comparison becomes constant-time and the DB stops
+  carrying plaintext credentials.)
+
+- [ ] **Refresh-token rotation-on-use + reuse detection.**
+  When a refresh token is presented at [AuthenticationController.RefreshTokenAsync](AuthenticationService/Controllers/AuthenticationController.cs:149),
+  issue a new refresh token and *immediately* invalidate the presented one. If the same
+  refresh token is later presented again, treat it as theft: revoke the entire token family
+  (clear `RefreshToken` and rotate the security stamp via `InvalidateUserTokensAsync`),
+  force re-login, and emit a high-severity security event so the user can be alerted. This
+  is the OAuth2 "refresh token rotation with reuse detection" pattern. Highest-leverage
+  anomaly defence the system can add, and the only one that catches refresh-token theft
+  before the access-token TTL expires. Depends on hashed storage (above).
+
+- [ ] **No threshold escalation on revoked-token replay.**
+  Today [RevokedTokenMiddleware](AuthenticationService/Middleware/RevokedTokenMiddleware.cs)
+  401s and writes an `AccessRecord` row when a revoked token is replayed, but nothing
+  escalates if the same `jti` is hammered against the API many times (a stolen-token replay
+  by automation). Add a hosted service that periodically scans `AccessRecords` for the same
+  `jti` from the same `UserId`:
+  - At ~3 attempts within ~10 minutes: emit a security event.
+  - At ~10 attempts: lock the account via `_userManager.SetLockoutEndDateAsync` and email
+    the user a "your old token is being replayed, change your password" notice.
+  Cheap to implement on top of the audit data already being collected (no new tables, no
+  new endpoints — just a periodic query and a hosted worker). Pairs naturally with the
+  cleanup service that already exists in
+  [Services/Hosted](AuthenticationService/Services/Hosted/RevokedTokenCleanupService.cs).
+
+- [ ] **Behavioural anomaly detection on token use (defer to SIEM, do not build inline).**
+  Real-world token-theft detection looks for: same `jti` used from geographically impossible
+  IPs within minutes (impossible travel), sudden user-agent change, token used from an IP
+  block on a known-bad list, etc. This is product territory — Auth0 / Okta / Entra Identity
+  Protection sell it as a feature, and the rules need ongoing maintenance against evolving
+  attacker behaviour. For a corporate deployment, the right path is to forward the
+  structured security events emitted by the threshold escalator above to the platform's
+  existing SIEM / fraud-detection team and let their rules engine handle it. Flagged here
+  so we don't reinvent it; **the implementation work is "wire up a log sink", not "build
+  detection."**
 
 - [ ] **No reuse defence on Identity-issued links (`ConfirmEmail`).**
   `LockAccount`, `ChangePassword`, and `ResetForgottenPassword` all call
@@ -225,7 +266,7 @@ up cold.
 
 ## Recommended fix order
 
-1. **Bugs first** — `AddAccessAttemptAsync` semantics, `Logout` HTTP method/auth.
+1. **Bugs first** — `Logout` HTTP method/auth.
 2. **Multi-replica blockers** — data-protection key persistence, forwarded-headers,
    migrations-out-of-startup, health checks.
 3. **Observability** — structured logging, security events, OpenTelemetry. Without these,

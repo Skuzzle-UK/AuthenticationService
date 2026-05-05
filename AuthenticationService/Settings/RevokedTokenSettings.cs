@@ -2,6 +2,6 @@
 
 public class RevokedTokenSettings
 {
-    public double CleanupIntervalInMinutes { get; set; } = 5;
-    public double AccessRecordsTTLInDays { get; set; } = 5;
+    public double CleanupIntervalInHours { get; set; } = 12;
+    public double AccessRecordsTTLInDays { get; set; } = 90;
 }

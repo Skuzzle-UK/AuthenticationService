@@ -26,7 +26,7 @@ public class RevokedTokenMiddleware
             if (!string.IsNullOrEmpty(token) && await tokenService.IsRevokedAsync(token))
             {
                 var ipaddress = context.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
-                await tokenService.AddAccessAttemptAsync(token, ipaddress);
+                await tokenService.RecordAccessAttemptAsync(token, ipaddress);
 
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 await context.Response.WriteAsync("Token has been revoked");

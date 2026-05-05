@@ -189,7 +189,7 @@ SMTP credentials for outbound email (registration confirmation, MFA, recovery, l
 | Key | Description |
 |---|---|
 | `CleanupIntervalInMinutes` | How often the background hosted service prunes expired entries from the revoked-token / access-record tables. |
-| `AcessRecordsTTLInDays` | How long access records are retained. |
+| `AccessRecordsTTLInDays` | How long access records are retained. |
 
 ---
 
