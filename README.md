@@ -10,9 +10,9 @@ sharing secrets.
 
 | Project | Purpose |
 |---|---|
-| `AuthenticationService` | The HTTP API: registration, login, MFA, refresh, account recovery, JWKS/OIDC discovery. |
-| `AuthenticationService.Shared` | DTOs and view models shared between the API and any non-.NET clients (mobile, frontend, etc). |
-| `AuthenticationService.Client` | The drop-in NuGet/project reference for **other microservices** that need to validate tokens. Provides `AddAuthenticationServiceJwt(...)` plus the shared policy/role/scheme constants. |
+| `AuthenticationService` | The HTTP API: registration, login, MFA, refresh (with rotation + reuse detection), per-device & all-device logout, password reset (which is also the account-unlock path), JWKS/OIDC discovery. |
+| `AuthenticationService.Shared` | DTOs, view models, and wire-contract constants (claim names, role values, policy names, auth scheme). Shared between the API, the client library, and any non-.NET clients (mobile, frontend, etc). |
+| `AuthenticationService.Client` | The drop-in NuGet/project reference for **other microservices** that need to validate tokens. Provides `AddAuthenticationServiceJwt(...)` and brings `AuthenticationService.Shared` in transitively so consumers get the constants without an extra reference. |
 | `ExampleConsumer` | A small minimal-API microservice that demonstrates the client library end-to-end. Useful as a smoke test and as a copy-paste starting point for new services. See [Try it end-to-end](#try-it-end-to-end). |
 
 ---
@@ -21,11 +21,13 @@ sharing secrets.
 
 1. **Register** with email + password.
 2. **Confirm email** via the link sent to the inbox.
-3. **Authenticate** with email/username + password — receive a JWT (5 min) + refresh token (5 days).
+3. **Authenticate** with email/username + password — receive a JWT (5 min) + refresh token (5 days). The pair belongs to a "session family" identified by the `sid` claim — a single login is one family; multiple devices each get their own.
 4. (Optional) **Enable MFA** — server returns a QR code.
 5. With MFA enabled: authenticate with credentials → server returns "MFA required" → submit MFA code → receive token.
-6. **Refresh** before expiry using the refresh token.
-7. **Logout** revokes the access token's `jti` (denylist held in the auth service DB).
+6. **Refresh** before expiry. Each refresh issues a new pair and *immediately consumes* the presented refresh token. Presenting an already-consumed token (e.g., a stolen one being replayed) is treated as theft: every refresh-token family for the user is revoked, the security stamp is rotated, and a "suspicious activity" email is sent.
+7. **Logout (per device)** revokes the caller's session family and adds the current access token to the deny-list. Other devices the user is signed in on are unaffected.
+8. **Logout-all** revokes every session family for the user and rotates the security stamp — all outstanding access tokens die immediately.
+9. **Account locked or password forgotten?** The `forgotpassword` flow is the unlock path too — a successful reset clears any active lockout.
 
 ---
 
@@ -128,7 +130,7 @@ The example consumer's Swagger lives at `https://localhost:50500/swagger`. It ex
 | Endpoint | Auth | Behaviour |
 |---|---|---|
 | `GET /` | Anonymous | Returns a hello message. |
-| `GET /me` | Authenticated | Returns the caller's identity (name, roles, jti) from the validated token. |
+| `GET /me` | Authenticated | Returns the caller's identity (name, roles, jti, sub) from the validated token. |
 | `GET /admin` | Admin role | Restricted to tokens whose `role` claim contains `Admin`. |
 
 ### Walk-through
@@ -136,7 +138,7 @@ The example consumer's Swagger lives at `https://localhost:50500/swagger`. It ex
 1. Open `https://localhost:53217/swagger` (the **auth service**) and call `POST /api/Authentication/authenticate` with the seeded admin creds. Copy `token.value` from the response.
 2. Open `https://localhost:50500/swagger` (the **example consumer**).
 3. Click **Authorize**, paste the token, Authorize, Close.
-4. Call `GET /me` → 200 with your username, roles `["DefaultUser","Admin"]`, and the `jti`.
+4. Call `GET /me` → 200 with your username, roles `["DefaultUser","Admin"]`, the `jti` (per-token ID), and the `sub` (stable user ID — the value to use as a foreign key in any consumer DB).
 5. Call `GET /admin` → 200 (because your token carries the `Admin` role).
 6. Call `GET /` → 200 anonymously, no token needed.
 
@@ -146,6 +148,9 @@ The example consumer's Swagger lives at `https://localhost:50500/swagger`. It ex
 - **Wait > 5 minutes**, then retry — 401, expired (`exp` claim).
 - **Stop the auth service before the consumer starts** — the consumer fails fast at startup (can't reach the discovery endpoint).
 - **Restart the auth service so a new dev key is generated** — old tokens stop validating; the consumer auto-picks up the new JWKS at next refresh.
+- **Replay a consumed refresh token.** Authenticate, hit `/refresh` once successfully, then hit `/refresh` again with the *original* (now-consumed) refresh token. Expect 401, plus a `RevocationReason = "reuse_detected"` row in `RefreshTokens` for every active family for the user, plus a `LogWarning` event in the auth service logs. (Email send may also fire if SMTP is reachable.)
+- **Per-device logout isolation.** Log in twice with the same admin account (two browser sessions). Hit `/logout` from one — the other should keep working until you also `/logout` it (or `/logoutall` from either). Inspect the `RefreshTokens` table to see the per-family revocation.
+- **Restart the auth service WITHOUT restarting Redis.** Outstanding email-link tokens (request a password reset, don't click the link, restart the service, click the link) should still work — proof that the data-protection key ring survived restart via Redis persistence. Restart Redis without persistence configured and the link will be broken — proof that AOF/RDB matters.
 
 ### What's actually happening
 
@@ -185,12 +190,43 @@ Seeds a single admin user on first startup. All fields except `LastName`/`PhoneN
 
 SMTP credentials for outbound email (registration confirmation, MFA, recovery, lockout notices).
 
-### `RevokedTokenSettings`
+### `DataRetentionSettings`
+
+Controls the `DataRetentionService` background sweep that prunes expired audit + token rows.
 
 | Key | Description |
 |---|---|
-| `CleanupIntervalInMinutes` | How often the background hosted service prunes expired entries from the revoked-token / access-record tables. |
-| `AccessRecordsTTLInDays` | How long access records are retained. |
+| `CleanupIntervalInHours` | How often the sweep runs. Default 12. |
+| `AccessRecordsTTLInDays` | How long `AccessRecord` audit rows are retained after creation. Default 90. `RevokedTokens` and `RefreshTokens` are pruned by their own natural `ExpiresAt`, no separate TTL. |
+
+### `DataProtectionSettings`
+
+ASP.NET Core's data-protection key ring is persisted to Redis (required) and optionally protected by a certificate. Identity tokens (password reset, email confirmation, MFA, lockout) are signed with this ring — without persistence, every replica restart invalidates outstanding email-link tokens.
+
+| Key | Description |
+|---|---|
+| `RedisKey` | Hash key under which the data-protection keys are stored. Default `"AuthService:DataProtectionKeys"`. Must be unique per app sharing a Redis instance. |
+| `ApplicationName` | Data-protection isolation name. Replicas of this service must share it; different apps must not. **Do not change once deployed** — invalidates all outstanding Identity tokens. |
+| `Certificate.PfxPath` | (Optional) Path to a PFX file containing the cert + private key used to encrypt the key ring at rest. When absent, keys sit in Redis as readable XML — acceptable on a controlled network during initial rollout, but should be populated before the service is exposed broadly. |
+| `Certificate.PfxPassword` | (Optional) Password for the PFX. |
+
+### `ForwardedHeadersSettings`
+
+Trust list for the `UseForwardedHeaders` middleware. Behind a load balancer / reverse proxy these MUST be populated, otherwise audit IPs and the rate-limiter's IP partition will all be the proxy's IP rather than the real client. Local-dev with no proxy can leave both empty.
+
+| Key | Description |
+|---|---|
+| `KnownNetworks` | List of CIDR blocks for trusted upstream proxies (e.g. `["10.0.0.0/8"]`). Most production setups want this. |
+| `KnownProxies` | List of specific proxy IPs (e.g. `["203.0.113.10"]`). Use when the LB IPs are stable and explicitly known. |
+
+Only `X-Forwarded-For` and `X-Forwarded-Proto` are honoured. `X-Forwarded-Host` is intentionally not honoured (host-header attack surface).
+
+### `ConnectionStrings`
+
+| Key | Description |
+|---|---|
+| `MySQL` | EF Core connection string for the auth database. |
+| `Redis` | StackExchange.Redis connection string for the data-protection key ring. Required in every environment — startup throws on empty. Defaults to `localhost:6379` for local dev. |
 
 ---
 
@@ -227,7 +263,46 @@ The app just reads a file at the configured `PrivateKeyPath`. Pick whichever del
 
 If the file is missing in non-Development environments the service refuses to start with a clear error.
 
-### 3. Override config via environment variables
+### 3. Provision Redis
+
+The data-protection key ring is persisted to Redis. **Without it, the service will refuse to start.** Two things matter for the deploy:
+
+- **Reachability.** Set `ConnectionStrings__Redis` to whatever the platform's Redis endpoint is (host:port, or full StackExchange.Redis connection string for clustered/auth'd setups).
+- **Persistence.** Confirm with the platform team that the Redis instance has AOF or RDB persistence enabled. If it's a pure-cache Redis that gets wiped on restart, every outstanding email-link token (password reset, email confirmation, MFA codes, lockout links) breaks whenever Redis restarts. Most production Redis has persistence on, but explicitly confirm.
+
+If the Redis is shared with other apps, the `DataProtectionSettings:RedisKey` and `ApplicationName` together provide isolation — keep them unique per app.
+
+### 4. Configure data-protection at-rest encryption (recommended)
+
+Without a protection certificate, the data-protection keys sit in Redis as readable XML. Anyone with read access to the Redis DB can extract them and forge anti-forgery tokens / decrypt protected payloads offline.
+
+To wrap the keys with an X.509 cert at rest:
+
+1. Provision a cert (PFX file with private key) via your platform's certificate-management story.
+2. Mount it into the container — same delivery mechanisms as the JWT signing key (Docker volume, K8s Secret, Vault sidecar, etc).
+3. Set:
+
+   ```bash
+   DataProtectionSettings__Certificate__PfxPath=/run/secrets/data-protection.pfx
+   DataProtectionSettings__Certificate__PfxPassword=<from-secret-store>
+   ```
+
+The cert and the JWT signing key are independent and rotate on different schedules. Both should live in your secret store.
+
+### 5. Configure forwarded headers (if behind a proxy)
+
+If the service is deployed behind a load balancer / reverse proxy / ingress (which it almost certainly is in any corporate setup), populate `ForwardedHeadersSettings` with the proxy's network range. Without this, every audit IP recorded will be the LB's address rather than the real client.
+
+```bash
+ForwardedHeadersSettings__KnownNetworks__0=10.0.0.0/8
+ForwardedHeadersSettings__KnownProxies__0=203.0.113.10
+```
+
+(Either of `KnownNetworks` or `KnownProxies` is fine; usually you'd populate `KnownNetworks` with the LB subnet.)
+
+The middleware also uses `X-Forwarded-Proto` to detect TLS-terminated-at-the-LB deployments. Without it, `app.UseHttpsRedirection()` would loop because the app sees an HTTP connection from the LB and tries to redirect to HTTPS, which the LB receives back and forwards as HTTP again.
+
+### 6. Override config via environment variables
 
 ASP.NET Core's standard double-underscore mapping applies:
 
@@ -236,11 +311,15 @@ JWTSettings__PrivateKeyPath=/run/secrets/jwt-signing
 JWTSettings__ValidIssuer=https://auth.example.com
 JWTSettings__ValidAudience=platform-api
 ConnectionStrings__MySQL=server=...
+ConnectionStrings__Redis=redis.internal:6379
 AdminAccountSeedSettings__Password=<one-time-bootstrap-password>
 EmailServerSettings__Password=<smtp-secret>
+DataProtectionSettings__Certificate__PfxPath=/run/secrets/data-protection.pfx
+DataProtectionSettings__Certificate__PfxPassword=<from-secret-store>
+ForwardedHeadersSettings__KnownNetworks__0=10.0.0.0/8
 ```
 
-### 4. Database migrations
+### 7. Database migrations
 
 Migrations run automatically at startup. If you'd rather run them out-of-band:
 
@@ -249,13 +328,13 @@ cd AuthenticationService
 dotnet ef database update
 ```
 
-### 5. HTTPS / hostname
+### 8. HTTPS / hostname
 
 Production must be HTTPS. Consumers configured with `RequireHttpsMetadata = true` (the default) will refuse to fetch JWKS over HTTP.
 
 The **public hostname of the auth service is the contract** — this is the `Authority` URL every consuming microservice points at. Pick it deliberately and avoid changing it (e.g. `https://auth.example.com`, not the load-balancer's hostname).
 
-### 6. Key rotation (when needed)
+### 9. Key rotation (when needed)
 
 The current implementation serves a single key. To rotate:
 
@@ -298,7 +377,7 @@ Microservices that need to authenticate users by validating tokens issued here u
 
 ```csharp
 using AuthenticationService.Client;
-using AuthenticationService.Client.Constants;
+using AuthenticationService.Shared.Constants;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -320,7 +399,7 @@ That's it. JwtBearer auto-discovers signing keys from `{Authority}/.well-known/o
 ### 4. Protect endpoints
 
 ```csharp
-using AuthenticationService.Client.Constants;
+using AuthenticationService.Shared.Constants;
 
 [Authorize]                                               // any authenticated user
 [Authorize(Policy = PolicyConstants.AdminOnly)]           // admin only
@@ -333,17 +412,27 @@ public class WidgetsController : ControllerBase { ... }
 Standard ASP.NET Core `ClaimsPrincipal`:
 
 ```csharp
-var username = User.Identity?.Name;
-var isAdmin  = User.IsInRole(RolesConstants.Admin);
-var jti      = User.FindFirstValue("jti");   // useful for correlation / logging
+using AuthenticationService.Shared.Constants;
+using System.Security.Claims;
+
+var username = User.Identity?.Name;                          // display name from "name" claim
+var isAdmin  = User.IsInRole(RolesConstants.Admin);          // checks "role" claims
+
+var userId   = User.FindFirstValue(ClaimConstants.Sub);      // stable user ID — use this as a foreign key in your DB
+var jti      = User.FindFirstValue(ClaimConstants.Jti);      // unique per token; useful for correlation / dedup
+var sid      = User.FindFirstValue(ClaimConstants.Sid);      // session/refresh-family ID
+var email    = User.FindFirstValue(ClaimConstants.Email);
 ```
+
+`sub` is the value to persist if you ever need to reference this user from your own data. It never changes; `name` and `email` can.
 
 ### Available shared constants
 
-From `AuthenticationService.Client.Constants`:
+From `AuthenticationService.Shared.Constants` (transitively available via the Client lib reference):
 
 | Class | Members |
 |---|---|
+| `ClaimConstants` | `Sub`, `Sid`, `Jti`, `Name`, `Email`, `Role`, `Exp` |
 | `PolicyConstants` | `AdminOnly` |
 | `RolesConstants` | `Admin`, `DefaultUser` (+ `.Normalised.*`) |
 | `AuthSchemeConstants` | `Bearer`, `BearerPrefix` |
@@ -377,13 +466,30 @@ Request arrives with Authorization: Bearer eyJ...
 
 No shared secrets. The auth service is the only thing holding the private key.
 
+### Claim shape
+
+Issued access tokens carry the following claims (consumers can rely on all of these being present):
+
+| Claim | Source | Notes |
+|---|---|---|
+| `sub` | `User.Id` (GUID) | **Stable user ID.** Use this as a foreign key in consumer databases — `name` and `email` can change. |
+| `sid` | `RefreshToken.FamilyId` | Session/refresh-family ID. Persists across rotations within one login session. Used internally for per-device logout. |
+| `jti` | New GUID per token | Unique per access token. Used by the deny-list and for correlation. |
+| `name` | `User.UserName` | Display name. Mapped to `User.Identity.Name` for `ClaimsPrincipal`. |
+| `email` | `User.Email` | Email address. |
+| `role` | (multi-value) | One claim per role assignment. Mapped to `ClaimsPrincipal.IsInRole`. |
+| `iss` | `JWTSettings.ValidIssuer` | Validated by JwtBearer. |
+| `aud` | `JWTSettings.ValidAudience` | Validated by JwtBearer. |
+| `exp` | issue time + `JWTSettings.ExpiryInMinutes` | Validated by JwtBearer. |
+
 ---
 
 ## Open items / future work
 
 - **Service-to-service tokens (client credentials).** Currently consumers forward the user's JWT for downstream calls. A "service identity" flow (each service authenticates to get its own token) is on the roadmap but not implemented.
 - **Key rotation tooling.** The `EcdsaKeyProvider` serves one key; rotation requires a code change. Consider implementing dual-key support before first production rotation.
-- **Cross-service revocation.** `IsRevokedAsync` checks the auth service's DB. Other services can't see revocations — they accept tokens until expiry (5 min). For instant cross-service revocation, add an introspection endpoint or pub/sub.
+- **Cross-service revocation latency.** Refresh-token revocation (logout, password change, reuse detection) is instant — the next refresh fails. Access-token revocation has a window equal to the access-token TTL (5 min): the auth service's deny-list catches replays at its own ingress, but other microservices accept tokens until natural `exp`. Acceptable for a 5-min TTL; if instant cross-service revocation is needed, add a token-introspection endpoint or pub/sub.
+- **Threshold escalation on revoked-token replay.** Today a stolen access token replayed against the deny-list returns 401 and writes an `AccessRecord` row, but nothing escalates if the same `jti` is hammered repeatedly. Tracked as a TODO; pairs with the SIEM-forwarding story.
 
 ---
 
@@ -392,10 +498,18 @@ No shared secrets. The auth service is the only thing holding the private key.
 | Endpoint | Auth | Purpose |
 |---|---|---|
 | `POST /api/Registration/register` | None | Create account |
+| `GET /api/Registration/confirm/email` | None | Confirm email via the link sent at registration |
+| `POST /api/Registration/confirm/email` | None | Resend the confirmation email |
 | `POST /api/Authentication/authenticate` | None | Login (returns token or "MFA required") |
 | `POST /api/Authentication/mfa` | None | Submit MFA code, receive token |
-| `POST /api/Authentication/refresh` | Expired bearer + refresh body | Get a new token pair |
-| `GET /api/Authentication/logout` | Bearer | Revoke current token |
+| `POST /api/Authentication/refresh` | Expired bearer + refresh body | Rotate to a new pair. Reuse of a consumed refresh token revokes every session for the user (cascade). |
+| `POST /api/Authentication/logout` | Bearer | Revoke this device's session. Other devices keep working. |
+| `POST /api/Authentication/logoutall` | Bearer | Revoke every session for the user + rotate the security stamp. |
+| `POST /api/Account/forgotpassword` | None | Request a password-reset email. Also clears any active lockout on successful reset. |
+| `POST /api/Account/forgotpassword/reset` | None | Apply the reset using the email-link token. |
+| `POST /api/Account/changepassword` | Bearer | Change password while authenticated. Identity is read from the token's `sub`. |
+| `GET /api/Account/enablemfa` | Bearer | Begin MFA enrolment; returns a QR code for the authenticator app. |
+| `POST /api/Account/lock` | Email-link token | Triggered from the "wasn't you?" link in password-changed emails — locks the account and sends a reset link. |
 | `GET /.well-known/openid-configuration` | None | OIDC discovery doc |
 | `GET /.well-known/jwks.json` | None | Public signing keys |
 | `GET /api/Test` | Admin | Smoke test (admin policy) |

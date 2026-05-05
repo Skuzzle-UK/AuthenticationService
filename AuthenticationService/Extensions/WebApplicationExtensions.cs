@@ -10,6 +10,7 @@ public static class WebApplicationExtensions
     public static WebApplication ConfigureApplication(this WebApplication app)
     {
         // Always keep UseForwardedHeaders at the top of the pipeline, before any middleware that might consume the forwarded header values (e.g. auth, rate-limiting).
+        // Without this, the service won't respect X-Forwarded-For and all client IPs will be the load balancers — meaning audit logs and the rate-limiter's per-IP partitioning will both be wrong.
         app.UseForwardedHeaders();
 
         app.UseSwagger();
