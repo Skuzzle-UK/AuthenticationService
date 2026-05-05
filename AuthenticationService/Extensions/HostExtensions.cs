@@ -1,8 +1,8 @@
-﻿using AuthenticationService.Client.Constants;
-using AuthenticationService.Entities;
+﻿using AuthenticationService.Entities;
 using AuthenticationService.Services;
 using AuthenticationService.Services.Hosted;
 using AuthenticationService.Settings;
+using AuthenticationService.Shared.Constants;
 using AuthenticationService.Storage;
 using AuthenticationService.Validators;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -13,7 +13,6 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using System.IdentityModel.Tokens.Jwt;
 using System.Reflection;
-using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -22,13 +21,13 @@ namespace AuthenticationService.Extensions;
 
 public static class HostExtensions
 {
-    public static IHostBuilder ConfigureHost(this IHostBuilder host, IConfiguration config) =>
+    public static IHostBuilder ConfigureHost(this IHostBuilder host) =>
         host.ConfigureServices((context, services) =>
         {
             services.AddValidatedSettings(context);
             services.AddAutoMapper(cfg => { }, typeof(Program));
             services.AddDatabase(context);
-            services.AddSecurity(context);
+            services.AddSecurity();
             services.AddServices();
             services.AddHostedServices();
             services.AddRazorPages();
@@ -80,7 +79,7 @@ public static class HostExtensions
                 opt.UseMySQL(context.Configuration.GetConnectionString("MySQL")!);
             });
 
-    public static IServiceCollection AddSecurity(this IServiceCollection services, HostBuilderContext context)
+    public static IServiceCollection AddSecurity(this IServiceCollection services)
     {
         services.AddIdentity<User, Role>(opt =>
         {
@@ -114,9 +113,9 @@ public static class HostExtensions
                     ValidIssuer = jwt.ValidIssuer,
                     ValidAudience = jwt.ValidAudience,
                     IssuerSigningKey = keyProvider.PublicSecurityKey,
-                    ValidAlgorithms = new[] { SecurityAlgorithms.EcdsaSha256 },
-                    NameClaimType = JwtRegisteredClaimNames.Name,
-                    RoleClaimType = "role"
+                    ValidAlgorithms = [SecurityAlgorithms.EcdsaSha256],
+                    NameClaimType = ClaimConstants.Name,
+                    RoleClaimType = ClaimConstants.Role
                 };
             });
 
@@ -174,7 +173,7 @@ public static class HostExtensions
                 opt.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
                 {
                     // Will check token for name first and then IP address, finally fallback to "anonymous" to decide if same user.
-                    var userId = context.User?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+                    var userId = context.User?.FindFirst(ClaimConstants.Sub)?.Value ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
                     return RateLimitPartition.GetFixedWindowLimiter(
                     partitionKey: userId,
                     factory: _ => new FixedWindowRateLimiterOptions

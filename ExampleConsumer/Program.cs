@@ -1,5 +1,5 @@
 using AuthenticationService.Client;
-using AuthenticationService.Client.Constants;
+using AuthenticationService.Shared.Constants;
 using Microsoft.OpenApi;
 using System.Security.Claims;
 
@@ -49,9 +49,9 @@ app.MapGet("/me", (ClaimsPrincipal user) => Results.Ok(new
 {
     name = user.Identity?.Name,
     isAuthenticated = user.Identity?.IsAuthenticated ?? false,
-    roles = user.FindAll("role").Select(c => c.Value),
-    jti = user.FindFirstValue("jti"),
-    sub = user.FindFirstValue("sub"),
+    roles = user.FindAll(ClaimConstants.Role).Select(c => c.Value),
+    jti = user.FindFirstValue(ClaimConstants.Jti),
+    sub = user.FindFirstValue(ClaimConstants.Sub),
 }))
     .RequireAuthorization()
     .WithName("Me");

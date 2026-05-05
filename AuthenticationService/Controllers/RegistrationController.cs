@@ -1,7 +1,7 @@
-﻿using AuthenticationService.Client.Constants;
-using AuthenticationService.Constants;
+﻿using AuthenticationService.Constants;
 using AuthenticationService.Entities;
 using AuthenticationService.Services;
+using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
 using AuthenticationService.Storage;

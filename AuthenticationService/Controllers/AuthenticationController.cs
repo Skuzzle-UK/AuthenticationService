@@ -1,13 +1,13 @@
-﻿using AuthenticationService.Client.Constants;
-using AuthenticationService.Constants;
+﻿using AuthenticationService.Constants;
 using AuthenticationService.Entities;
 using AuthenticationService.Services;
+using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
 using AuthenticationService.Shared.Enums;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Net.Http.Headers;
 
 namespace AuthenticationService.Controllers;
 
@@ -149,7 +149,7 @@ public class AuthenticationController : ControllerBase
         var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
         if (!await _tokenService.ValidateExpiredTokenAsync(token))
         {
-            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Token is invalid"));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.InvalidToken));
         }
 
         var user = await _userService.FindByIdAsync(_tokenService.GetUserId(token));
@@ -160,12 +160,12 @@ public class AuthenticationController : ControllerBase
 
         if (user.RefreshToken != request.RefreshToken)
         {
-            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Refresh token is invalid"));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.InvalidRefreshToken));
         }
 
         if (user.RefreshTokenExpiresAt < DateTime.UtcNow)
         {
-            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Refresh token has expired"));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.ExpiredRefreshToken));
         }
 
         var roles = await _userService.GetRolesAsync(user);
@@ -178,16 +178,23 @@ public class AuthenticationController : ControllerBase
     /// Endpoint to log the user out. Invalidates the user's tokens and logs them out.
     /// </summary>
     /// <returns>ApiResponse</returns>
-    [HttpGet("logout")]
+    [Authorize]
+    [HttpPost("logout")]
     public async Task<IActionResult> LogoutAsync()
     {
-        var token = Request.Headers[HeaderNames.Authorization].ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
+        var sub = User.FindFirst(ClaimConstants.Sub)?.Value;
+        if (string.IsNullOrEmpty(sub))
+        {
+            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.InvalidToken));
+        }
 
-        var user = await _userService.FindByIdAsync(_tokenService.GetUserId(token));
+        var user = await _userService.FindByIdAsync(sub);
         if (user is null)
         {
-            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
+            return Ok(new ApiResponse());
         }
+
+        var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
 
         await _userService.InvalidateUserTokensAsync(user, Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty, token);
         return Ok(new ApiResponse());

@@ -1,7 +1,7 @@
-﻿using AuthenticationService.Client.Constants;
-using AuthenticationService.Constants;
+﻿using AuthenticationService.Constants;
 using AuthenticationService.Entities;
 using AuthenticationService.Settings;
+using AuthenticationService.Shared.Constants;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 

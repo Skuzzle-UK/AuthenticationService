@@ -1,4 +1,4 @@
-namespace AuthenticationService.Client.Constants;
+namespace AuthenticationService.Shared.Constants;
 
 public static class AuthSchemeConstants
 {

@@ -1,3 +1,4 @@
+using AuthenticationService.Shared.Constants;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -51,9 +52,9 @@ public static class ServiceCollectionExtensions
                     ValidateIssuerSigningKey = true,
                     ValidIssuer = settings.Issuer,
                     ValidAudience = settings.Audience,
-                    ValidAlgorithms = new[] { SecurityAlgorithms.EcdsaSha256 },
+                    ValidAlgorithms = [SecurityAlgorithms.EcdsaSha256],
                     NameClaimType = JwtRegisteredClaimNames.Name,
-                    RoleClaimType = "role"
+                    RoleClaimType = ClaimConstants.Role
                 };
             });
 

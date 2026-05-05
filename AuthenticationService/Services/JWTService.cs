@@ -1,7 +1,8 @@
-﻿using AuthenticationService.Client.Constants;
+﻿using AuthenticationService.Constants;
 using AuthenticationService.Entities;
 using AuthenticationService.Enums;
 using AuthenticationService.Settings;
+using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Models;
 using AuthenticationService.Storage;
 using Microsoft.AspNetCore.Identity;
@@ -63,7 +64,7 @@ public class JWTService : ITokenService
             ValidIssuer = _jwtSettings.ValidIssuer,
             ValidAudience = _jwtSettings.ValidAudience,
             IssuerSigningKey = _keyProvider.PublicSecurityKey,
-            ValidAlgorithms = new[] { SecurityAlgorithms.EcdsaSha256 }
+            ValidAlgorithms = [SecurityAlgorithms.EcdsaSha256]
         };
 
         var validationResult = await tokenHandler.ValidateTokenAsync(token, parameters);
@@ -126,29 +127,25 @@ public class JWTService : ITokenService
         var handler = new JwtSecurityTokenHandler();
         var jwtToken = handler.ReadJwtToken(token);
 
-        return jwtToken.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Sub)?.Value ?? string.Empty;
+        return jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimConstants.Sub)?.Value ?? string.Empty;
     }
 
-    private string GetJtiFromToken(string token)
+    private static string GetJtiFromToken(string token)
     {
         var tokenHandler = new JwtSecurityTokenHandler();
 
-        var jwtToken = tokenHandler.ReadToken(token) as JwtSecurityToken;
-        if (jwtToken == null)
+        if (tokenHandler.ReadToken(token) is not JwtSecurityToken jwtToken)
         {
-            throw new UnauthorizedAccessException("Invalid token");
+            throw new UnauthorizedAccessException(ErrorMessageConstants.InvalidToken);
         }
 
-        var jti = jwtToken.Claims.FirstOrDefault(claim => claim.Type == JwtRegisteredClaimNames.Jti)?.Value;
-        if (jti == null)
-        {
-            throw new UnauthorizedAccessException("Token does not contain a jti claim");
-        }
-
-        return jti;
+        var jti = jwtToken.Claims.FirstOrDefault(claim => claim.Type == ClaimConstants.Jti)?.Value;
+        
+        return jti
+            ?? throw new UnauthorizedAccessException(ErrorMessageConstants.MissingJtiClaim);
     }
 
-    private string GenerateRefreshToken()
+    private static string GenerateRefreshToken()
     {
         var randomNumber = new byte[32];
         using (var rng = RandomNumberGenerator.Create())
@@ -161,14 +158,13 @@ public class JWTService : ITokenService
     public DateTime? GetExpiryDateTime(string token)
     {
         var tokenHandler = new JwtSecurityTokenHandler();
-        
-        var jwtToken = tokenHandler.ReadToken(token) as JwtSecurityToken;
-        if (jwtToken == null)
+
+        if (tokenHandler.ReadToken(token) is not JwtSecurityToken jwtToken)
         {
             return null;
         }
 
-        var expClaim = jwtToken.Claims.FirstOrDefault(claim => claim.Type == JwtRegisteredClaimNames.Exp)?.Value;
+        var expClaim = jwtToken.Claims.FirstOrDefault(claim => claim.Type == ClaimConstants.Exp)?.Value;
         if (expClaim == null)
         {
             return null;
@@ -177,19 +173,19 @@ public class JWTService : ITokenService
         return DateTimeOffset.FromUnixTimeSeconds(long.Parse(expClaim)).UtcDateTime;
     }
 
-    private List<Claim> GetClaims(User user, IList<string> roles)
+    private static List<Claim> GetClaims(User user, IList<string> roles)
     {
         var claims = new List<Claim>()
         {
-            new Claim(JwtRegisteredClaimNames.Sub, user.Id),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new Claim(JwtRegisteredClaimNames.Name, user.UserName!),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email!)
+            new(ClaimConstants.Sub, user.Id),
+            new(ClaimConstants.Jti, Guid.NewGuid().ToString()),
+            new(ClaimConstants.Name, user.UserName!),
+            new(ClaimConstants.Email, user.Email!)
         };
 
         foreach (var role in roles)
         {
-            claims.Add(new Claim("role", role));
+            claims.Add(new Claim(ClaimConstants.Role, role));
         }
 
         return claims;

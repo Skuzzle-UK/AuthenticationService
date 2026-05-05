@@ -51,12 +51,18 @@ up cold.
   middleware handles that on replay, no double-counting. New `Severity` enum + entity column
   + migration shipped together.
 
-- [ ] **`Logout` is `[HttpGet]` and not `[Authorize]`.**
+- [x] ~~**`Logout` is `[HttpGet]` and not `[Authorize]`.**
   [AuthenticationController.cs:184-197](AuthenticationService/Controllers/AuthenticationController.cs:184).
   State-changing on GET (link-prefetch / image-tag CSRF). With no Authorize attribute, missing
   bearer header throws inside `ReadJwtToken("")` and returns 500 instead of 401. Change to
   `[HttpPost]` + `[Authorize]`, derive the token from `HttpContext.GetTokenAsync("access_token")`
-  rather than re-parsing the header.
+  rather than re-parsing the header.~~ Done — `[HttpPost]` + `[Authorize]`, identity derived
+  from the validated principal via `User.FindFirst(ClaimConstants.Sub)`, missing-user case
+  returns 200 (logout is idempotent), and the inline 401 message uses the new
+  `ErrorMessageConstants.InvalidToken`. Side win: the constants reorg moved all wire-contract
+  values (`ClaimConstants`, `RolesConstants`, `PolicyConstants`, `AuthSchemeConstants`) into
+  `AuthenticationService.Shared.Constants`, so the auth service no longer takes a project
+  reference on the consumer SDK.
 
 - [ ] **Refresh tokens stored in plaintext.**
   [User.cs:24](AuthenticationService/Entities/User.cs:24). Hash before persisting (SHA-256 of
@@ -266,7 +272,10 @@ up cold.
 
 ## Recommended fix order
 
-1. **Bugs first** — `Logout` HTTP method/auth.
+1. ~~**Bugs first** — `Logout` HTTP method/auth.~~ All headline bugs in this bucket closed.
+   Remaining items in the security-correctness section are feature gaps (refresh-token
+   hashing/rotation, anomaly detection, reserved-username deny-list, admin-password
+   bootstrap) rather than active vulnerabilities.
 2. **Multi-replica blockers** — data-protection key persistence, forwarded-headers,
    migrations-out-of-startup, health checks.
 3. **Observability** — structured logging, security events, OpenTelemetry. Without these,

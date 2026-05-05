@@ -1,4 +1,4 @@
-﻿using AuthenticationService.Client.Constants;
+﻿using AuthenticationService.Shared.Constants;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 

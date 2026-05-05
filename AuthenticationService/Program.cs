@@ -13,7 +13,7 @@ public class Program
             .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
             .AddEnvironmentVariables();
 
-        builder.Host.ConfigureHost(builder.Configuration);
+        builder.Host.ConfigureHost();
 
         var app = builder.Build();
 

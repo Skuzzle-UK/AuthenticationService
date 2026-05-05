@@ -1,5 +1,5 @@
-﻿using AuthenticationService.Client.Constants;
-using AuthenticationService.Services;
+﻿using AuthenticationService.Services;
+using AuthenticationService.Shared.Constants;
 using Microsoft.Net.Http.Headers;
 
 namespace AuthenticationService.Middleware;
