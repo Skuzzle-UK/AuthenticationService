@@ -1,5 +1,6 @@
 ﻿using AuthenticationService.Entities;
 using AuthenticationService.Services;
+using AuthenticationService.Services.HealthChecks;
 using AuthenticationService.Services.Hosted;
 using AuthenticationService.Settings;
 using AuthenticationService.Shared.Constants;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
@@ -34,6 +36,7 @@ public static class HostExtensions
             services.AddSecurity();
             services.AddDataProtectionConfiguration(context);
             services.AddForwardedHeadersConfiguration(context);
+            services.AddHealthChecksConfiguration();
             services.AddServices();
             services.AddHostedServices();
             services.AddRazorPages();
@@ -174,6 +177,10 @@ public static class HostExtensions
 
         var redis = StackExchange.Redis.ConnectionMultiplexer.Connect(redisConnectionString);
 
+        // Register the multiplexer so other components (e.g. the Redis health check) can
+        // share the same connection rather than opening a second one.
+        services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(redis);
+
         var builder = services.AddDataProtection()
             .SetApplicationName(settings.ApplicationName)
             .PersistKeysToStackExchangeRedis(redis, settings.RedisKey);
@@ -232,6 +239,16 @@ public static class HostExtensions
         return services;
     }
 
+    public static IServiceCollection AddHealthChecksConfiguration(this IServiceCollection services)
+    {
+        services.AddHealthChecks()
+            .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
+            .AddDbContextCheck<DatabaseContext>("database", tags: ["ready"])
+            .AddCheck<RedisHealthCheck>("redis", tags: ["ready"]);
+
+        return services;
+    }
+
     public static IServiceCollection AddApiControllers(this IServiceCollection services)
     {
         services
@@ -279,6 +296,25 @@ public static class HostExtensions
             {
                 opt.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
                 {
+                    // Health-check endpoints get a permissive bucket — orchestrator + monitoring
+                    // probes fire frequently (especially during startup) and shouldn't be throttled
+                    // alongside regular API traffic. Still rate-limited to cap DDoS abuse on the
+                    // anonymous health endpoints.
+                    if (context.Request.Path.StartsWithSegments("/healthz")
+                        || context.Request.Path.StartsWithSegments("/readyz"))
+                    {
+                        var probeIp = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+                        return RateLimitPartition.GetFixedWindowLimiter(
+                            partitionKey: $"health:{probeIp}",
+                            factory: _ => new FixedWindowRateLimiterOptions
+                            {
+                                Window = TimeSpan.FromSeconds(10),
+                                PermitLimit = 30,
+                                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                                QueueLimit = 0
+                            });
+                    }
+
                     // Will check token for name first and then IP address, finally fallback to "anonymous" to decide if same user.
                     var userId = context.User?.FindFirst(ClaimConstants.Sub)?.Value ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
                     return RateLimitPartition.GetFixedWindowLimiter(

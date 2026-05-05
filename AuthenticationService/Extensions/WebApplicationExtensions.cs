@@ -1,6 +1,7 @@
 ﻿using AuthenticationService.Middleware;
 using AuthenticationService.Storage;
 using AuthenticationService.Storage.Seed;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 
 namespace AuthenticationService.Extensions;
@@ -34,6 +35,20 @@ public static class WebApplicationExtensions
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseRateLimiter();
+
+        // Health-check endpoints. Anonymous (orchestrators don't carry credentials), but
+        // still rate-limited via the path-based partition in AddRateLimiting — generous
+        // enough for orchestrator probes, tight enough to cap DDoS abuse.
+        app.MapHealthChecks("/healthz", new HealthCheckOptions
+        {
+            Predicate = check => check.Tags.Contains("live")
+        }).AllowAnonymous();
+
+        app.MapHealthChecks("/readyz", new HealthCheckOptions
+        {
+            Predicate = check => check.Tags.Contains("ready")
+        }).AllowAnonymous();
+
         app.MapControllers();
         app.MapRazorPages();
 

@@ -167,9 +167,15 @@ up cold.
   every audit IP and the rate-limiter partition automatically become real client IPs
   without any further code change.
 
-- [ ] **No health-check endpoints.**
+- [x] ~~**No health-check endpoints.**
   Add `services.AddHealthChecks()` with DB + JWT-key-loadable probes; map `/healthz` (live)
-  and `/readyz` (ready, includes DB).
+  and `/readyz` (ready, includes DB).~~ Done — `/healthz` (liveness, no dependencies) and
+  `/readyz` (readiness, checks DB via `AddDbContextCheck` + Redis via custom
+  `RedisHealthCheck` that shares the existing `IConnectionMultiplexer`). Both anonymous;
+  rate-limited via a path-based partition in the global limiter (30 req/10s per IP for
+  health endpoints, the regular 4 req/10s elsewhere) so orchestrator probes don't get
+  throttled but DDoS abuse is still capped. Signing-key check skipped — startup fail-fast
+  already catches that case before health checks matter.
 
 - [ ] **Migrations run unconditionally at startup.**
   [WebApplicationExtensions.RunMigrations](AuthenticationService/Extensions/WebApplicationExtensions.cs:45-54).
