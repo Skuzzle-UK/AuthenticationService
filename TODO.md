@@ -140,19 +140,32 @@ up cold.
 
 ## Operational correctness (will break in multi-replica prod)
 
-- [ ] **Persist data-protection keys.**
+- [x] ~~**Persist data-protection keys.**
   ASP.NET Core's data-protection ring defaults to ephemeral container storage. Every Identity
   token (email confirmation, password reset, lockout, MFA) is signed with this ring. In
   multi-replica deploys, tokens minted by replica A won't validate on B; on restart, every
-  outstanding email link breaks. Configure `services.AddDataProtection()
-  .PersistKeysToFileSystem(...)` + `.ProtectKeysWithCertificate(...)` (or the Azure Blob /
-  Redis variant). Add this to `HostExtensions.AddSecurity`.
+  outstanding email link breaks.~~ Done — `HostExtensions.AddDataProtectionConfiguration`
+  persists the key ring to Redis (using `ConnectionStrings:Redis`) in non-Development
+  environments; startup fails fast if Redis isn't configured outside Dev. Application name
+  pins the key isolation. `DataProtectionSettings.Certificate` is the config slot for adding
+  `ProtectKeysWithCertificate` later — pure-config change, no code touch when the platform
+  cert story is ready. Caveat: until the cert is configured, Redis-stored keys sit as
+  readable XML — acceptable behind a controlled network during initial rollout, but the
+  cert should land before the service is exposed broadly. Also requires Redis to have AOF/RDB
+  persistence configured; without it, a Redis restart wipes the key ring and breaks every
+  in-flight email-link token.
 
-- [ ] **`UseForwardedHeaders` is missing.**
+- [x] ~~**`UseForwardedHeaders` is missing.**
   Behind any LB / reverse proxy, `Connection.RemoteIpAddress` is the proxy. Audit IPs and
-  the rate-limiter's IP partition will all be wrong. Add the middleware in
-  [WebApplicationExtensions.ConfigureApplication](AuthenticationService/Extensions/WebApplicationExtensions.cs)
-  before `UseAuthentication`, and configure `KnownNetworks`/`KnownProxies` for the deploy.
+  the rate-limiter's IP partition will all be wrong.~~ Done — `UseForwardedHeaders` is the
+  first piece of middleware in the pipeline, configured from `ForwardedHeadersSettings`
+  (`KnownNetworks` CIDRs + `KnownProxies` IPs). Honours `X-Forwarded-For` and
+  `X-Forwarded-Proto` from explicitly-trusted upstreams only; `X-Forwarded-Host` is
+  intentionally not honoured (host-header attack surface). Implicit framework default of
+  trusting loopback proxies is cleared — trust is explicit-only. With trust lists empty
+  it's a no-op (single-host / local-dev). Once the platform team populates the LB subnet,
+  every audit IP and the rate-limiter partition automatically become real client IPs
+  without any further code change.
 
 - [ ] **No health-check endpoints.**
   Add `services.AddHealthChecks()` with DB + JWT-key-loadable probes; map `/healthz` (live)

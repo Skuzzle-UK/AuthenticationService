@@ -33,6 +33,7 @@ sharing secrets.
 
 - **.NET 10 SDK**
 - **MySQL 8** (any reachable instance — local, container, or managed)
+- **Redis** for data-protection key persistence (any reachable instance — local, container, or managed). For local dev: `docker run -d -p 6379:6379 redis:alpine` or a native install. Defaults to `localhost:6379` in `appsettings.json`.
 - An **SMTP relay** for outbound email (registration confirmation, MFA codes, account recovery). For local dev, [Papercut SMTP](https://github.com/ChangemakerStudios/Papercut-SMTP) or MailHog work fine.
 
 ---

@@ -9,6 +9,9 @@ public static class WebApplicationExtensions
 {
     public static WebApplication ConfigureApplication(this WebApplication app)
     {
+        // Always keep UseForwardedHeaders at the top of the pipeline, before any middleware that might consume the forwarded header values (e.g. auth, rate-limiting).
+        app.UseForwardedHeaders();
+
         app.UseSwagger();
         app.UseSwaggerUI(opt =>
         {
@@ -17,13 +20,13 @@ public static class WebApplicationExtensions
 
         app.RunMigrations();
         app.RuntimeDbSeed();
-        
+
         if (!app.Environment.IsDevelopment())
         {
             app.UseExceptionHandler("/Error");
             app.UseHsts();
         }
-        
+
         app.UseHttpsRedirection();
         app.UseStaticFiles();
         app.UseApplicationMiddleware();

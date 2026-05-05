@@ -6,16 +6,20 @@ using AuthenticationService.Shared.Constants;
 using AuthenticationService.Storage;
 using AuthenticationService.Validators;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
-using System.IdentityModel.Tokens.Jwt;
+using System.Net;
 using System.Reflection;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using IPNetwork = System.Net.IPNetwork;
 
 namespace AuthenticationService.Extensions;
 
@@ -28,6 +32,8 @@ public static class HostExtensions
             services.AddAutoMapper(cfg => { }, typeof(Program));
             services.AddDatabase(context);
             services.AddSecurity();
+            services.AddDataProtectionConfiguration(context);
+            services.AddForwardedHeadersConfiguration(context);
             services.AddServices();
             services.AddHostedServices();
             services.AddRazorPages();
@@ -50,6 +56,16 @@ public static class HostExtensions
 
         services.AddOptions<DataRetentionSettings>()
             .Bind(context.Configuration.GetSection(nameof(DataRetentionSettings)))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<DataProtectionSettings>()
+            .Bind(context.Configuration.GetSection(nameof(DataProtectionSettings)))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<ForwardedHeadersSettings>()
+            .Bind(context.Configuration.GetSection(nameof(ForwardedHeadersSettings)))
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
@@ -121,6 +137,97 @@ public static class HostExtensions
 
         services.AddAuthorizationBuilder()
             .AddPolicy(PolicyConstants.AdminOnly, policy => policy.RequireRole(RolesConstants.Admin));
+
+        return services;
+    }
+
+    /// <summary>
+    /// Wires up ASP.NET Core's data-protection key ring. Keys are persisted to Redis
+    /// so the ring is shared across replicas and survives restarts;
+    /// otherwise outstanding password-reset / email-confirmation / MFA / lockout
+    /// tokens would be invalidated whenever a replica restarts. If a protection certificate
+    /// is configured, keys are encrypted at rest with it; without the cert, keys sit in
+    /// Redis as readable XML — acceptable for a transitional rollout behind a controlled
+    /// network, but `Certificate` should be populated before the service is exposed to
+    /// anything sensitive.
+    /// </summary>
+    public static IServiceCollection AddDataProtectionConfiguration(
+        this IServiceCollection services,
+        HostBuilderContext context)
+    {
+        var settings = context.Configuration
+            .GetSection(nameof(DataProtectionSettings))
+            .Get<DataProtectionSettings>() ?? new DataProtectionSettings();
+
+        var redisConnectionString = context.Configuration.GetConnectionString("Redis");
+
+        if (string.IsNullOrWhiteSpace(redisConnectionString))
+        {
+            throw new InvalidOperationException(
+                "ConnectionStrings:Redis must be configured. The data-protection key ring " +
+                "is persisted to Redis so it survives restarts and is shared across replicas; " +
+                "without it, every outstanding email-link token (password reset, email " +
+                "confirmation, MFA, lockout) would be invalidated on each restart. " +
+                "For local development, run a Redis container (e.g. " +
+                "`docker run -d -p 6379:6379 redis:alpine`) or install Redis locally.");
+        }
+
+        var redis = StackExchange.Redis.ConnectionMultiplexer.Connect(redisConnectionString);
+
+        var builder = services.AddDataProtection()
+            .SetApplicationName(settings.ApplicationName)
+            .PersistKeysToStackExchangeRedis(redis, settings.RedisKey);
+
+        if (!string.IsNullOrWhiteSpace(settings.Certificate?.PfxPath))
+        {
+            var cert = X509CertificateLoader.LoadPkcs12FromFile(
+                settings.Certificate.PfxPath,
+                settings.Certificate.PfxPassword);
+
+            builder.ProtectKeysWithCertificate(cert);
+        }
+
+        return services;
+    }
+
+    /// <summary>
+    /// Configures the <see cref="ForwardedHeadersOptions"/> from
+    /// <see cref="ForwardedHeadersSettings"/>. The actual middleware (<c>UseForwardedHeaders</c>)
+    /// is hooked into the pipeline by <c>WebApplicationExtensions.ConfigureApplication</c>.
+    ///
+    /// Honours <c>X-Forwarded-For</c> and <c>X-Forwarded-Proto</c> from trusted upstreams only.
+    /// <c>X-Forwarded-Host</c> is intentionally not honoured — host-header attacks (cache
+    /// poisoning, password-reset link manipulation) become possible if a malicious upstream
+    /// can override Host. Most LB deploys preserve the original Host header without needing
+    /// the override.
+    /// </summary>
+    public static IServiceCollection AddForwardedHeadersConfiguration(
+        this IServiceCollection services,
+        HostBuilderContext context)
+    {
+        var settings = context.Configuration
+            .GetSection(nameof(ForwardedHeadersSettings))
+            .Get<ForwardedHeadersSettings>() ?? new ForwardedHeadersSettings();
+
+        services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+            // The framework defaults to trusting localhost-loopback proxies. Clear that —
+            // we want explicit trust, no implicit defaults.
+            options.KnownIPNetworks.Clear();
+            options.KnownProxies.Clear();
+
+            foreach (var network in settings.KnownNetworks)
+            {
+                options.KnownIPNetworks.Add(IPNetwork.Parse(network));
+            }
+
+            foreach (var proxy in settings.KnownProxies)
+            {
+                options.KnownProxies.Add(IPAddress.Parse(proxy));
+            }
+        });
 
         return services;
     }
