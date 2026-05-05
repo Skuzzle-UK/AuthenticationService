@@ -12,6 +12,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Text;
 
 namespace AuthenticationService.Services;
 
@@ -34,21 +35,130 @@ public class JWTService : ITokenService
         _keyProvider = keyProvider;
     }
 
-    public async Task<Token> CreateTokenAsync(User user, IList<string> roles)
+    public async Task<Token> CreateTokenAsync(User user, IList<string> roles, Guid? familyId = null, string? ipAddress = null)
     {
-        var claims = GetClaims(user, roles);
-        var tokenOptions = GenerateTokenOptions(_keyProvider.SigningCredentials, claims);
-        user.RefreshToken = GenerateRefreshToken();
-        user.RefreshTokenExpiresAt = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenExpiryInDays);
+        var family = familyId ?? Guid.NewGuid();
+        var rawRefreshToken = GenerateRefreshToken();
 
-        await _userManager.UpdateAsync(user);
+        var refreshTokenEntity = new RefreshToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            TokenHash = HashRefreshToken(rawRefreshToken),
+            FamilyId = family,
+            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenExpiryInDays),
+            CreatedFromIp = ipAddress,
+        };
+
+        await _context.RefreshTokens.AddAsync(refreshTokenEntity);
+
+        var claims = GetClaims(user, roles, family);
+        var tokenOptions = GenerateTokenOptions(_keyProvider.SigningCredentials, claims);
+
+        await _context.SaveChangesAsync();
 
         return new Token(
             AuthSchemeConstants.Bearer,
             new JwtSecurityTokenHandler().WriteToken(tokenOptions),
             tokenOptions.ValidTo,
-            user.RefreshToken,
-            user.RefreshTokenExpiresAt);
+            rawRefreshToken,
+            refreshTokenEntity.ExpiresAt);
+    }
+
+    public async Task<RefreshResult> RotateRefreshTokenAsync(string accessToken, string rawRefreshToken, string ipAddress)
+    {
+        using var transaction = await _context.Database.BeginTransactionAsync();
+
+        var hash = HashRefreshToken(rawRefreshToken);
+        var userId = GetUserId(accessToken);
+        if (string.IsNullOrEmpty(userId))
+        {
+            return new RefreshResult.NotFound();
+        }
+
+        var existing = await _context.RefreshTokens
+            .FirstOrDefaultAsync(t => t.TokenHash == hash && t.UserId == userId);
+
+        if (existing is null)
+        {
+            return new RefreshResult.NotFound();
+        }
+
+        if (existing.ConsumedAt is not null)
+        {
+            // Reuse detected. Defensive cascade: revoke every refresh-token family for this
+            // user and rotate the security stamp so all outstanding access tokens die too.
+            var compromisedFamilyId = existing.FamilyId;
+            await RevokeAllRefreshTokenFamiliesAsync(userId, "reuse_detected");
+            var compromisedUser = await _userManager.FindByIdAsync(userId);
+            if (compromisedUser is not null)
+            {
+                await _userManager.UpdateSecurityStampAsync(compromisedUser);
+            }
+            await transaction.CommitAsync();
+            return new RefreshResult.Reused(compromisedFamilyId);
+        }
+
+        if (existing.ExpiresAt < DateTime.UtcNow)
+        {
+            return new RefreshResult.Expired();
+        }
+
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user is null)
+        {
+            return new RefreshResult.NotFound();
+        }
+
+        var roles = await _userManager.GetRolesAsync(user);
+        var newToken = await CreateTokenAsync(user, roles, existing.FamilyId, ipAddress);
+
+        existing.ConsumedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return new RefreshResult.Success(newToken);
+    }
+
+    public async Task RevokeAllRefreshTokenFamiliesAsync(string userId, string reason)
+    {
+        var activeTokens = await _context.RefreshTokens
+            .Where(t => t.UserId == userId && t.ConsumedAt == null)
+            .ToListAsync();
+
+        var now = DateTime.UtcNow;
+        foreach (var token in activeTokens)
+        {
+            token.ConsumedAt = now;
+            token.RevocationReason = reason;
+        }
+
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task RevokeFamilyAsync(Guid familyId, string reason)
+    {
+        var activeTokens = await _context.RefreshTokens
+            .Where(t => t.FamilyId == familyId && t.ConsumedAt == null)
+            .ToListAsync();
+
+        var now = DateTime.UtcNow;
+        foreach (var token in activeTokens)
+        {
+            token.ConsumedAt = now;
+            token.RevocationReason = reason;
+        }
+
+        await _context.SaveChangesAsync();
+    }
+
+    private static string HashRefreshToken(string rawToken)
+    {
+        var bytes = Encoding.UTF8.GetBytes(rawToken);
+        var hash = SHA256.HashData(bytes);
+        return Convert.ToBase64String(hash);
     }
 
     public async Task<bool> ValidateExpiredTokenAsync(string token)
@@ -71,7 +181,7 @@ public class JWTService : ITokenService
         return validationResult.IsValid;
     }
 
-    public async Task RevokeTokenAsync(string token, string ipaddress)
+    public async Task RevokeTokenAsync(string token, string ipAddress)
     {
         var jti = GetJtiFromToken(token);
 
@@ -79,7 +189,8 @@ public class JWTService : ITokenService
         {
             TokenJti = jti,
             ExpiresAt = GetExpiryDateTime(token),
-            UserId = GetUserId(token)
+            UserId = GetUserId(token),
+            RevokedFromIp = ipAddress,
         };
 
         await _context.RevokedTokens.AddAsync(revokedToken);
@@ -173,11 +284,12 @@ public class JWTService : ITokenService
         return DateTimeOffset.FromUnixTimeSeconds(long.Parse(expClaim)).UtcDateTime;
     }
 
-    private static List<Claim> GetClaims(User user, IList<string> roles)
+    private static List<Claim> GetClaims(User user, IList<string> roles, Guid familyId)
     {
         var claims = new List<Claim>()
         {
             new(ClaimConstants.Sub, user.Id),
+            new(ClaimConstants.Sid, familyId.ToString()),
             new(ClaimConstants.Jti, Guid.NewGuid().ToString()),
             new(ClaimConstants.Name, user.UserName!),
             new(ClaimConstants.Email, user.Email!)

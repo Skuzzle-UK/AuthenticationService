@@ -64,22 +64,28 @@ up cold.
   `AuthenticationService.Shared.Constants`, so the auth service no longer takes a project
   reference on the consumer SDK.
 
-- [ ] **Refresh tokens stored in plaintext.**
+- [x] ~~**Refresh tokens stored in plaintext.**
   [User.cs:24](AuthenticationService/Entities/User.cs:24). Hash before persisting (SHA-256 of
   the random bytes is fine — they're high-entropy). On `/refresh`, hash the supplied token
-  and compare. (Rotation-on-use behaviour and reuse detection are tracked separately below;
-  hashed storage is the prerequisite — comparison becomes constant-time and the DB stops
-  carrying plaintext credentials.)
+  and compare.~~ Done — refresh tokens now stored as SHA-256 hashes in a dedicated
+  `RefreshTokens` table; the raw token only ever exists in transit. The old
+  `User.RefreshToken`/`RefreshTokenExpiresAt` columns were dropped in migration
+  `DropRefreshTokenColumnsFromUser`.
 
-- [ ] **Refresh-token rotation-on-use + reuse detection.**
+- [x] ~~**Refresh-token rotation-on-use + reuse detection.**
   When a refresh token is presented at [AuthenticationController.RefreshTokenAsync](AuthenticationService/Controllers/AuthenticationController.cs:149),
   issue a new refresh token and *immediately* invalidate the presented one. If the same
   refresh token is later presented again, treat it as theft: revoke the entire token family
   (clear `RefreshToken` and rotate the security stamp via `InvalidateUserTokensAsync`),
-  force re-login, and emit a high-severity security event so the user can be alerted. This
-  is the OAuth2 "refresh token rotation with reuse detection" pattern. Highest-leverage
-  anomaly defence the system can add, and the only one that catches refresh-token theft
-  before the access-token TTL expires. Depends on hashed storage (above).
+  force re-login, and emit a high-severity security event so the user can be alerted.~~ Done
+  — `JWTService.RotateRefreshTokenAsync` is the OAuth2 rotation-with-reuse-detection
+  pattern. Each refresh consumes the presented token and issues a new one in the same
+  family (new `sid` claim threads the family across rotations). Reuse detection fires the
+  defensive cascade: revoke every refresh-token family for the user + rotate the security
+  stamp + email the user about suspicious activity + emit a `LogWarning` security event.
+  Per-device logout (`/logout`) revokes just the caller's family; `/logout-all` is a new
+  endpoint for the everywhere-out case. Cleanup service sweeps expired refresh-token rows
+  alongside revoked tokens.
 
 - [ ] **No threshold escalation on revoked-token replay.**
   Today [RevokedTokenMiddleware](AuthenticationService/Middleware/RevokedTokenMiddleware.cs)
@@ -284,7 +290,9 @@ up cold.
 5. ~~**Recovery redesign** — email-link with single-use stamp-rotating token; rate-limit the
    endpoints.~~ Done — recover endpoint merged into the existing reset-password flow. (Rate
    limiting still pending under the rate-limiter entry.)
-6. **Refresh-token hashing + rotation-on-use.**
+6. ~~**Refresh-token hashing + rotation-on-use.**~~ Done — full chain landed (hashed
+   storage, family-scoped rotation, reuse detection cascade, per-device + everywhere
+   logout, cleanup sweep, suspicious-activity email + security event).
 7. **Tests + CI** — should ideally happen alongside #1 so the bug fixes have regression
    coverage.
 8. **CORS + standards cleanups + smaller corrections.**

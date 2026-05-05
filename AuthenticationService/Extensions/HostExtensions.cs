@@ -48,8 +48,8 @@ public static class HostExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
-        services.AddOptions<RevokedTokenSettings>()
-            .Bind(context.Configuration.GetSection(nameof(RevokedTokenSettings)))
+        services.AddOptions<DataRetentionSettings>()
+            .Bind(context.Configuration.GetSection(nameof(DataRetentionSettings)))
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
@@ -70,7 +70,7 @@ public static class HostExtensions
 
     public static IServiceCollection AddHostedServices(this IServiceCollection services) =>
         services
-            .AddHostedService<RevokedTokenCleanupService>();
+            .AddHostedService<DataRetentionService>();
 
     public static IServiceCollection AddDatabase(this IServiceCollection services, HostBuilderContext context) =>
         services

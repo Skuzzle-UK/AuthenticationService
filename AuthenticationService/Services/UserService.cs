@@ -67,9 +67,7 @@ public class UserService : IUserService
     public async Task InvalidateUserTokensAsync(User user, string ipAddress, string? token = null)
     {
         await _userManager.UpdateSecurityStampAsync(user);
-        user.RefreshToken = null;
-        user.RefreshTokenExpiresAt = DateTime.MinValue;
-        await _userManager.UpdateAsync(user);
+        await _tokenService.RevokeAllRefreshTokenFamiliesAsync(user.Id, "user_invalidated");
 
         if (!string.IsNullOrEmpty(token))
         {

@@ -1,4 +1,5 @@
 ﻿using AuthenticationService.Constants;
+using AuthenticationService.Extensions;
 using AuthenticationService.Helpers;
 using AuthenticationService.Services;
 using AuthenticationService.Shared.Constants;
@@ -149,7 +150,7 @@ public class AccountController : ControllerBase
             return BadRequest(new ApiResponse().AddErrors(errors));
         }
 
-        await _userService.InvalidateUserTokensAsync(user, Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty);
+        await _userService.InvalidateUserTokensAsync(user, Request.GetRemoteIpAddress());
 
         var lockoutToken = await _userService.GenerateUserTokenAsync(user, MfaProviders.Email.ToString(), TokenPurposeConstants.Lockout);
 
@@ -207,7 +208,7 @@ public class AccountController : ControllerBase
         }
 
         var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
-        await _userService.InvalidateUserTokensAsync(user, Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty, token);
+        await _userService.InvalidateUserTokensAsync(user, Request.GetRemoteIpAddress(), token);
 
         var lockoutToken = await _userService.GenerateUserTokenAsync(user, MfaProviders.Email.ToString(), TokenPurposeConstants.Lockout);
 
@@ -250,7 +251,7 @@ public class AccountController : ControllerBase
             return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, "Token is not valid"));
         }
 
-        await _userService.InvalidateUserTokensAsync(user, Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty);
+        await _userService.InvalidateUserTokensAsync(user, Request.GetRemoteIpAddress());
 
         await _userService.SetLockoutEnabledAsync(user, true);
         await _userService.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));

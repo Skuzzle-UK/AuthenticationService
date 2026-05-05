@@ -21,10 +21,6 @@ public class User : IdentityUser
 
     public MfaProviders Preferred2FAProvider { get; set; }
 
-    public string? RefreshToken { get; set; }
-
-    public DateTime? RefreshTokenExpiresAt { get; set; }
-
     [MaxLength(150)]
     public string? MothersMaidenName { get; set; }
 

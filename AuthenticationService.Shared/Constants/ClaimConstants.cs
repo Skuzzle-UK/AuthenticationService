@@ -12,6 +12,12 @@ public static class ClaimConstants
     public const string Sub = "sub";
 
     /// <summary>
+    /// Session ID. Identifies the refresh-token family this access token belongs to.
+    /// Survives across rotations within a single login session. Standard OIDC claim.
+    /// </summary>
+    public const string Sid = "sid";
+
+    /// <summary>
     /// Token's unique ID. Standard JWT claim.
     /// </summary>
     public const string Jti = "jti";

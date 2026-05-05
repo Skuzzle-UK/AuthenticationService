@@ -1,5 +1,6 @@
 ﻿using AuthenticationService.Constants;
 using AuthenticationService.Entities;
+using AuthenticationService.Extensions;
 using AuthenticationService.Services;
 using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Dtos;
@@ -8,6 +9,7 @@ using AuthenticationService.Shared.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace AuthenticationService.Controllers;
 
@@ -18,15 +20,18 @@ public class AuthenticationController : ControllerBase
     private readonly IEmailService _emailService;
     private readonly ITokenService _tokenService;
     private readonly IUserService _userService;
+    private readonly ILogger<AuthenticationController> _logger;
 
     public AuthenticationController(
         IEmailService emailService,
         ITokenService tokenService,
-        IUserService userService)
+        IUserService userService,
+        ILogger<AuthenticationController> logger)
     {
         _emailService = emailService;
         _tokenService = tokenService;
         _userService = userService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -90,7 +95,8 @@ public class AuthenticationController : ControllerBase
         }
 
         var roles = await _userService.GetRolesAsync(user);
-        var token = await _tokenService.CreateTokenAsync(user, roles);
+        var ipAddress = Request.GetRemoteIpAddress();
+        var token = await _tokenService.CreateTokenAsync(user, roles, familyId: null, ipAddress: ipAddress);
 
         await _userService.ResetAccessFailedCountAsync(user);
 
@@ -128,7 +134,8 @@ public class AuthenticationController : ControllerBase
         }
 
         var roles = await _userService.GetRolesAsync(user);
-        var token = await _tokenService.CreateTokenAsync(user, roles);
+        var ipAddress = Request.GetRemoteIpAddress();
+        var token = await _tokenService.CreateTokenAsync(user, roles, familyId: null, ipAddress: ipAddress);
 
         await _userService.ResetAccessFailedCountAsync(user);
 
@@ -152,35 +159,91 @@ public class AuthenticationController : ControllerBase
             return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.InvalidToken));
         }
 
-        var user = await _userService.FindByIdAsync(_tokenService.GetUserId(token));
-        if (user is null)
-        {
-            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
-        }
+        var ipAddress = Request.GetRemoteIpAddress();
+        var result = await _tokenService.RotateRefreshTokenAsync(token, request.RefreshToken!, ipAddress);
 
-        if (user.RefreshToken != request.RefreshToken)
+        if (result is RefreshResult.Reused reused)
         {
+            // Reuse has already fired inside the service (all families revoked +
+            // stamp rotated). Notify the user out-of-band, emit a security event, and respond
+            // with a generic 401 so the attacker can't tell they've been caught.
+            await HandleReuseDetectedAsync(token, reused.FamilyId, ipAddress);
             return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.InvalidRefreshToken));
         }
 
-        if (user.RefreshTokenExpiresAt < DateTime.UtcNow)
+        return result switch
         {
-            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.ExpiredRefreshToken));
+            RefreshResult.Success s => Ok(AuthenticationResponse.WithToken(s.Token)),
+            RefreshResult.Expired => Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.ExpiredRefreshToken)),
+            _ => Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.InvalidRefreshToken)),
+        };
+    }
+
+    private async Task HandleReuseDetectedAsync(string accessToken, Guid familyId, string ipAddress)
+    {
+        var userId = _tokenService.GetUserId(accessToken);
+        var compromisedUser = await _userService.FindByIdAsync(userId);
+
+        _logger.LogWarning(
+            "Refresh token reuse detected. UserId={UserId} FamilyId={FamilyId} IpAddress={IpAddress}",
+            userId, familyId, ipAddress);
+
+        if (compromisedUser?.Email is null)
+        {
+            return;
         }
 
-        var roles = await _userService.GetRolesAsync(user);
-        var newToken = await _tokenService.CreateTokenAsync(user, roles);
-
-        return Ok(AuthenticationResponse.WithToken(newToken));
+        try
+        {
+            await _emailService.SendEmailAsync(
+                compromisedUser.Email,
+                EmailSubjectConstants.SuspiciousActivity,
+                $"We detected suspicious activity on your account at {DateTime.UtcNow:u} UTC from IP {ipAddress}. " +
+                "As a precaution, all your sessions have been signed out and you'll need to sign in again. " +
+                "If this wasn't you, please change your password immediately.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to send suspicious-activity email. UserId={UserId} FamilyId={FamilyId}",
+                userId, familyId);
+        }
     }
 
     /// <summary>
-    /// Endpoint to log the user out. Invalidates the user's tokens and logs them out.
+    /// Logs the caller out of this device only. Revokes the refresh-token family identified
+    /// by the <c>sid</c> claim and adds the current access token to the deny-list. Other
+    /// devices for the same user are unaffected.
     /// </summary>
     /// <returns>ApiResponse</returns>
     [Authorize]
     [HttpPost("logout")]
     public async Task<IActionResult> LogoutAsync()
+    {
+        var sidStr = User.FindFirst(ClaimConstants.Sid)?.Value;
+        if (!Guid.TryParse(sidStr, out var familyId))
+        {
+            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.InvalidToken));
+        }
+
+        var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
+        var ipAddress = Request.GetRemoteIpAddress();
+
+        await _tokenService.RevokeFamilyAsync(familyId, "logout");
+        await _tokenService.RevokeTokenAsync(token, ipAddress);
+
+        return Ok(new ApiResponse());
+    }
+
+    /// <summary>
+    /// Logs the caller out of every device. Revokes every refresh-token family for the user,
+    /// rotates the security stamp (kills outstanding access tokens), and adds the current
+    /// access token to the deny-list. After this, every device that was logged in must re-authenticate.
+    /// </summary>
+    /// <returns>ApiResponse</returns>
+    [Authorize]
+    [HttpPost("logoutall")]
+    public async Task<IActionResult> LogoutAllAsync()
     {
         var sub = User.FindFirst(ClaimConstants.Sub)?.Value;
         if (string.IsNullOrEmpty(sub))
@@ -195,8 +258,9 @@ public class AuthenticationController : ControllerBase
         }
 
         var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
+        var ipAddress = Request.GetRemoteIpAddress();
 
-        await _userService.InvalidateUserTokensAsync(user, Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty, token);
+        await _userService.InvalidateUserTokensAsync(user, ipAddress, token);
         return Ok(new ApiResponse());
     }
 
@@ -213,7 +277,7 @@ public class AuthenticationController : ControllerBase
             user.WaitingForTwoFactorAuthentication = false;
             await _userService.UpdateAsync(user);
 
-            await _userService.InvalidateUserTokensAsync(user, Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty);
+            await _userService.InvalidateUserTokensAsync(user, Request.GetRemoteIpAddress());
 
             return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.AccountLockedFailedAttempts));
         }

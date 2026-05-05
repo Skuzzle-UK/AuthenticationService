@@ -1,4 +1,5 @@
-﻿using AuthenticationService.Services;
+﻿using AuthenticationService.Extensions;
+using AuthenticationService.Services;
 using AuthenticationService.Shared.Constants;
 using Microsoft.Net.Http.Headers;
 
@@ -25,7 +26,7 @@ public class RevokedTokenMiddleware
             var token = context.Request.Headers[HeaderNames.Authorization].ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
             if (!string.IsNullOrEmpty(token) && await tokenService.IsRevokedAsync(token))
             {
-                var ipaddress = context.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
+                var ipaddress = context.GetRemoteIpAddress();
                 await tokenService.RecordAccessAttemptAsync(token, ipaddress);
 
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;

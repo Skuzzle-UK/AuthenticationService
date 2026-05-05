@@ -14,6 +14,7 @@ public class DatabaseContext : IdentityDbContext<User, Role, string>
 
     public DbSet<RevokedToken> RevokedTokens { get; set; }
     public DbSet<AccessRecord> AccessRecords { get; set; }
+    public DbSet<RefreshToken> RefreshTokens { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -31,6 +32,21 @@ public class DatabaseContext : IdentityDbContext<User, Role, string>
             entity.HasKey(e => e.Id);
             entity.Property(e => e.TokenJti).IsRequired();
             entity.HasIndex(e => e.TokenJti);
+        });
+
+        builder.Entity<RefreshToken>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.UserId).IsRequired();
+            entity.Property(e => e.TokenHash).IsRequired();
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+            entity.HasIndex(e => new { e.UserId, e.ConsumedAt });
+            entity.HasIndex(e => e.FamilyId);
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

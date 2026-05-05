@@ -1,6 +1,6 @@
-﻿namespace AuthenticationService.Settings;
+namespace AuthenticationService.Settings;
 
-public class RevokedTokenSettings
+public class DataRetentionSettings
 {
     public double CleanupIntervalInHours { get; set; } = 12;
     public double AccessRecordsTTLInDays { get; set; } = 90;
