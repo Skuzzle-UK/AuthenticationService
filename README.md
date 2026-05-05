@@ -317,16 +317,34 @@ EmailServerSettings__Password=<smtp-secret>
 DataProtectionSettings__Certificate__PfxPath=/run/secrets/data-protection.pfx
 DataProtectionSettings__Certificate__PfxPassword=<from-secret-store>
 ForwardedHeadersSettings__KnownNetworks__0=10.0.0.0/8
+RunMigrationsAtStartup=false
 ```
 
 ### 7. Database migrations
 
-Migrations run automatically at startup. If you'd rather run them out-of-band:
+Migrations are applied at startup in Development (so a fresh `dotnet run` Just Works) but should be applied **out-of-band** in production by the deploy pipeline. Set:
+
+```bash
+RunMigrationsAtStartup=false
+```
+
+…in the production environment. With this flag off, the application **does not** run `Database.Migrate()` on startup — it just logs a message and continues. The deploy pipeline (init container / K8s Job / Helm hook / CI step) is expected to run:
 
 ```bash
 cd AuthenticationService
 dotnet ef database update
 ```
+
+…against the production DB before the new replicas roll out.
+
+**Why opt out in production:**
+
+- **Avoids multi-replica startup races.** N replicas all calling `Database.Migrate()` simultaneously serialize at the DB lock level, but produce deadlock noise in startup logs and occasional retry-storms.
+- **Failed migrations stay visible.** A pipeline-level migration failure stops the rollout cleanly. A startup-level migration failure looks like a generic pod crash that the orchestrator restarts in a loop.
+- **Lets you preview the SQL.** `dotnet ef migrations script` can be run in CI before the actual deploy, code-reviewed, and tested against a staging DB.
+- **Lets you roll back.** With out-of-band migrations the deploy pipeline can stop at the migration step if anything looks wrong, before the new app version actually goes live.
+
+In Development the default (`RunMigrationsAtStartup=true`) is preserved so devs don't have to remember a separate step.
 
 ### 8. HTTPS / hostname
 

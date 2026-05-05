@@ -20,7 +20,17 @@ public static class WebApplicationExtensions
             opt.SwaggerEndpoint("/swagger/v1/swagger.json", "Authentication API V1");
         });
 
-        app.RunMigrations();
+        if (app.Configuration.GetValue("RunMigrationsAtStartup", defaultValue: true))
+        {
+            app.RunMigrations();
+        }
+        else
+        {
+            app.Logger.LogInformation(
+                "Skipping startup migrations (RunMigrationsAtStartup=false). " +
+                "Ensure migrations are applied via the deploy pipeline before this replica serves traffic.");
+        }
+
         app.RuntimeDbSeed();
 
         if (!app.Environment.IsDevelopment())

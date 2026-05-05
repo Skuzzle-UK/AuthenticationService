@@ -177,11 +177,16 @@ up cold.
   throttled but DDoS abuse is still capped. Signing-key check skipped — startup fail-fast
   already catches that case before health checks matter.
 
-- [ ] **Migrations run unconditionally at startup.**
+- [x] ~~**Migrations run unconditionally at startup.**
   [WebApplicationExtensions.RunMigrations](AuthenticationService/Extensions/WebApplicationExtensions.cs:45-54).
   Multi-replica startup races. Move migrations to a separate `dotnet ef database update`
   step in the deploy pipeline (or an init-container / Job in K8s), and gate the runtime call
-  behind an env flag for local-dev only.
+  behind an env flag for local-dev only.~~ Done — `RunMigrationsAtStartup` config flag
+  (default `true`) gates the call. Dev keeps the "just works" startup-migrate behaviour;
+  production deploys set the flag to `false` and run `dotnet ef database update` from the
+  deploy pipeline. When skipped, the app logs an info message so it's clear the no-migrate
+  path was deliberate, not a bug. README's production-deployment section documents the
+  rationale and the pipeline expectation.
 
 - [ ] **CORS is not configured.**
   Browser-based clients can't call this. Add `services.AddCors(...)` with an explicit
