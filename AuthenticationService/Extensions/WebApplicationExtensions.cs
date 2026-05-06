@@ -19,7 +19,7 @@ public static class WebApplicationExtensions
     /// rate limiter, health-check endpoints, and finally controllers + Razor pages.
     /// Order matters — each step has a comment where it's not obvious.
     /// </summary>
-    public static WebApplication ConfigureApplication(this WebApplication app)
+    public static async Task<WebApplication> ConfigureApplicationAsync(this WebApplication app)
     {
         // Always keep UseForwardedHeaders at the top of the pipeline, before any middleware that might consume the forwarded header values (e.g. auth, rate-limiting).
         // Without this, the service won't respect X-Forwarded-For and all client IPs will be the load balancers — meaning audit logs and the rate-limiter's per-IP partitioning will both be wrong.
@@ -51,7 +51,7 @@ public static class WebApplicationExtensions
                 "Ensure migrations are applied via the deploy pipeline before this replica serves traffic.");
         }
 
-        app.RuntimeDbSeed();
+        await app.RuntimeDbSeedAsync();
 
         if (!app.Environment.IsDevelopment())
         {

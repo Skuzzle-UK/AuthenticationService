@@ -5,7 +5,7 @@ namespace AuthenticationService;
 
 public class Program
 {
-    public static void Main(string[] args)
+    public static async Task Main(string[] args)
     {
         Log.Logger = new LoggerConfiguration()
             .WriteTo.Console()
@@ -31,8 +31,8 @@ public class Program
 
             var app = builder.Build();
 
-            app.ConfigureApplication();
-            app.Run();
+            await app.ConfigureApplicationAsync();
+            await app.RunAsync();
         }
         catch (Exception ex) when (ex is not HostAbortedException)
         {

@@ -306,10 +306,16 @@ up cold.
 
 ## Smaller corrections worth bundling
 
-- [ ] Sync-over-async in
+- [x] ~~Sync-over-async in
   [RuntimeDbSeeders](AuthenticationService/Storage/Seed/RuntimeDbSeeders.cs:25) (`.Result`,
   `.Wait()`). Make `SeedAdministratorAccount` async and `await` the calls from
-  `RuntimeDbSeed` (which can be made `async Task` and awaited at startup).
+  `RuntimeDbSeed` (which can be made `async Task` and awaited at startup).~~ Done — full
+  async chain: `Main` → `ConfigureApplicationAsync` → `RuntimeDbSeedAsync` →
+  `SeedAdministratorAccountAsync`. Every `.Result` and `.Wait()` replaced with `await`.
+  Methods that return `Task` now carry the conventional `Async` suffix. `app.Run()` swapped
+  for `await app.RunAsync()` to keep the chain awaitable through to process exit.
+  `RunMigrations` left sync — `dbContext.Database.Migrate()` is genuinely synchronous, not
+  sync-over-async.
 
 - [x] ~~**`Token` class has four constructor overloads** for the same fields
   ([Token.cs](AuthenticationService.Shared/Models/Token.cs)). Collapse to one constructor or

@@ -1,4 +1,4 @@
-﻿using AuthenticationService.Constants;
+using AuthenticationService.Constants;
 using AuthenticationService.Entities;
 using AuthenticationService.Settings;
 using AuthenticationService.Shared.Constants;
@@ -15,9 +15,9 @@ namespace AuthenticationService.Storage.Seed;
 public static class RuntimeDbSeeders
 {
     /// <summary>Runs every runtime seeder. Called once at startup.</summary>
-    public static WebApplication RuntimeDbSeed(this WebApplication app)
+    public static async Task<WebApplication> RuntimeDbSeedAsync(this WebApplication app)
     {
-        app.SeedAdministratorAccount();
+        await app.SeedAdministratorAccountAsync();
         return app;
     }
 
@@ -26,52 +26,52 @@ public static class RuntimeDbSeeders
     /// exist. Credentials come from <see cref="AdminAccountSeedSettings"/> — the password
     /// is required (validated at startup) outside Development.
     /// </summary>
-    public static WebApplication SeedAdministratorAccount(this WebApplication app)
+    public static async Task<WebApplication> SeedAdministratorAccountAsync(this WebApplication app)
     {
-        using (var scope = app.Services.CreateScope())
+        using var scope = app.Services.CreateScope();
+
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+        var settings = scope.ServiceProvider.GetRequiredService<IOptions<AdminAccountSeedSettings>>().Value;
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("RuntimeDbSeeders");
+
+        if (await userManager.FindByNameAsync(UserConstants.Admin) is not null)
         {
-            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
-            var settings = scope.ServiceProvider.GetRequiredService<IOptions<AdminAccountSeedSettings>>().Value;
-            var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("RuntimeDbSeeders");
-
-            if (userManager.FindByNameAsync(UserConstants.Admin).Result == null)
-            {
-                var result = userManager.CreateAsync(
-                    new User
-                    {
-                        UserName = UserConstants.Admin,
-                        FirstName = settings.FirstName,
-                        LastName = settings.LastName,
-                        Email = settings.Email,
-                        EmailConfirmed = true,
-                        PhoneNumber = settings.PhoneNumber,
-                        PhoneNumberConfirmed = settings.PhoneNumberConfirmed,
-                        Country = settings.Country,
-                    },
-                    settings.Password
-                ).Result;
-
-                if (!result.Succeeded)
-                {
-                    var exceptionMessage = $"AdminAccountSeedSettings is configured incorrectly: ";
-                    foreach (var error in result.Errors)
-                    {
-                        exceptionMessage += $"{error.Description} ";
-                    }
-
-                    throw new ArgumentException(exceptionMessage);
-                }
-
-                var user = userManager.FindByEmailAsync(settings.Email).Result;
-                userManager.AddToRoleAsync(user!, RolesConstants.Admin).Wait();
-                userManager.AddToRoleAsync(user!, RolesConstants.DefaultUser).Wait();
-
-                logger.LogInformation(
-                    "Seeded administrator account {UserName} ({UserId}).",
-                    UserConstants.Admin,
-                    user!.Id);
-            }
+            return app;
         }
+
+        var result = await userManager.CreateAsync(
+            new User
+            {
+                UserName = UserConstants.Admin,
+                FirstName = settings.FirstName,
+                LastName = settings.LastName,
+                Email = settings.Email,
+                EmailConfirmed = true,
+                PhoneNumber = settings.PhoneNumber,
+                PhoneNumberConfirmed = settings.PhoneNumberConfirmed,
+                Country = settings.Country,
+            },
+            settings.Password);
+
+        if (!result.Succeeded)
+        {
+            var exceptionMessage = $"AdminAccountSeedSettings is configured incorrectly: ";
+            foreach (var error in result.Errors)
+            {
+                exceptionMessage += $"{error.Description} ";
+            }
+
+            throw new ArgumentException(exceptionMessage);
+        }
+
+        var user = await userManager.FindByEmailAsync(settings.Email);
+        await userManager.AddToRoleAsync(user!, RolesConstants.Admin);
+        await userManager.AddToRoleAsync(user!, RolesConstants.DefaultUser);
+
+        logger.LogInformation(
+            "Seeded administrator account {UserName} ({UserId}).",
+            UserConstants.Admin,
+            user!.Id);
 
         return app;
     }
