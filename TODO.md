@@ -227,13 +227,21 @@ up cold.
   PII control: `UserId` (the `sub` claim) is logged for forensic correlation; email
   addresses are not in event payloads.
 
-- [ ] **Single signing key, no rotation.**
+- [x] ~~**Single signing key, no rotation.**
   [EcdsaKeyProvider](AuthenticationService/Services/EcdsaKeyProvider.cs) holds one key; the
   JWKS endpoint exposes one. Add `IReadOnlyList<EcdsaKey>` keys, with one designated as
   active for signing; publish all of them in the JWKS response so consumers can validate
   during overlap windows. Add a runbook for rotation: introduce new key, wait one
   cache-refresh cycle, switch active, wait until the longest-lived old token expires, drop
-  the old key.
+  the old key.~~ Done — `EcdsaKeyProvider` now scans `JWTSettings:PrivateKeyDirectory` for
+  every `*.pem` file and holds them all in memory. `ActiveKeyId` config picks the signer
+  (`"auto"` = first key found, deterministic during single-key operation; explicit thumbprint
+  during rotation cutover). JwtBearer validation and `JWTService.ValidateExpiredTokenAsync`
+  use `IssuerSigningKeys` (plural) so tokens signed by any loaded key still validate during
+  the overlap window. The JWKS endpoint enumerates every loaded key. Dev convenience preserved:
+  empty directory in Development auto-generates a single PEM on first run; outside Development
+  startup fails fast if the directory is empty (operator-provisioned only). Operator runbook
+  is in README under "Key rotation".
 
 - [ ] **No tests, no CI.**
   No `*Test*.csproj`, no GitHub Actions / Azure Pipelines yaml. At minimum:

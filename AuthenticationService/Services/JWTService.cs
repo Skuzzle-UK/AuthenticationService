@@ -176,7 +176,7 @@ public class JWTService : ITokenService
             ValidateLifetime = false,
             ValidIssuer = _jwtSettings.ValidIssuer,
             ValidAudience = _jwtSettings.ValidAudience,
-            IssuerSigningKey = _keyProvider.PublicSecurityKey,
+            IssuerSigningKeys = _keyProvider.PublicSecurityKeys,
             ValidAlgorithms = [SecurityAlgorithms.EcdsaSha256]
         };
 

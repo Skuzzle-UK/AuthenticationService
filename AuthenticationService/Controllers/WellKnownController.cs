@@ -26,24 +26,25 @@ public class WellKnownController : ControllerBase
     }
 
     /// <summary>
-    /// Returns the public signing keys used to verify access tokens issued by this service.
+    /// Returns every public signing key the service currently knows about. During key
+    /// rotation the active key plus any predecessors are all published here so consumers
+    /// can validate tokens issued by any of them — the JWT's <c>kid</c> header tells
+    /// JwtBearer which to use.
     /// </summary>
     [HttpGet(WellKnownPaths.Jwks)]
     public IActionResult Jwks()
     {
-        var keys = new[]
+        var keys = _keyProvider.PublicJsonWebKeys.Select(jwk => new
         {
-            new
-            {
-                kty = _keyProvider.PublicJsonWebKey.Kty,
-                crv = _keyProvider.PublicJsonWebKey.Crv,
-                x   = _keyProvider.PublicJsonWebKey.X,
-                y   = _keyProvider.PublicJsonWebKey.Y,
-                use = _keyProvider.PublicJsonWebKey.Use,
-                alg = _keyProvider.PublicJsonWebKey.Alg,
-                kid = _keyProvider.PublicJsonWebKey.Kid,
-            }
-        };
+            kty = jwk.Kty,
+            crv = jwk.Crv,
+            x   = jwk.X,
+            y   = jwk.Y,
+            use = jwk.Use,
+            alg = jwk.Alg,
+            kid = jwk.Kid,
+        });
+
         return Ok(new { keys });
     }
 

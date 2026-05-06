@@ -73,15 +73,15 @@ On the first run you should see:
 
 ```
 warn: AuthenticationService.Services.EcdsaKeyProvider[0]
-      No signing key found at 'keys/jwt-signing.pem'. Generating a new ES256 key
-      for Development. DO NOT use this key in production.
+      No signing keys found in 'keys'. Generating a new ES256 key for Development.
+      DO NOT use this key in production.
 info: ...
       Application started. Listening on: https://localhost:53217
 ```
 
-A new `keys/jwt-signing.pem` is created next to the project. **It is gitignored**; do not commit it. Each developer gets their own local key — tokens you issue locally only validate against your own auth service.
+A new `keys/jwt-signing.pem` is created next to the project. **The whole `keys/` directory is gitignored**; do not commit it. Each developer gets their own local key — tokens you issue locally only validate against your own auth service.
 
-If you ever want to invalidate every dev token, delete the file and restart. Tokens expire in 5 minutes anyway.
+If you ever want to invalidate every dev token, delete the directory contents and restart. Tokens expire in 5 minutes anyway.
 
 Database migrations run automatically on startup (`app.RunMigrations()`).
 
@@ -177,8 +177,8 @@ All settings are bound from `appsettings.json` and validated at startup.
 
 | Key | Description |
 |---|---|
-| `PrivateKeyPath` | Path to the ECDSA private key in PEM format. Relative paths resolve against the content root. **Must exist in non-Development environments** (no auto-generation). |
-| `KeyId` | `"auto"` (default) computes the JWK thumbprint of the public point. Override with a fixed string only if you have a specific `kid` rotation strategy. |
+| `PrivateKeyDirectory` | Directory containing one or more ECDSA private keys in PEM format (`*.pem`). Relative paths resolve against the content root. Every key in the directory is loaded; all are published in the JWKS so consumers can validate tokens signed by any of them. **Must contain at least one key in non-Development environments** (no auto-generation). In Development, an empty directory triggers a one-time auto-generated key so `dotnet run` works first time. |
+| `ActiveKeyId` | The `kid` (JWK thumbprint) of the key used to sign newly-issued tokens. `"auto"` (default) picks the first key found — fine for single-key operation; set explicitly during a rotation cutover so the active signer is unambiguous. |
 | `ValidIssuer` | Stamped into the `iss` claim. Consumers validate against this. |
 | `ValidAudience` | Stamped into the `aud` claim. Currently `"platform-api"` — every consuming microservice must use the same value. |
 | `ExpiryInMinutes` | Access token TTL. Short by design. |
@@ -268,14 +268,14 @@ MHcCAQEEIBl...
 
 ### 2. Inject the key
 
-The app just reads a file at the configured `PrivateKeyPath`. Pick whichever delivery mechanism your platform offers:
+The app reads every `*.pem` file in the configured `PrivateKeyDirectory`. Pick whichever delivery mechanism your platform offers — the directory mount + file naming is the only contract:
 
-- **Docker:** `-v /host/secrets/jwt-signing.pem:/app/keys/jwt-signing.pem:ro`
-- **Docker Compose secrets:** mount at `/run/secrets/jwt-signing` and set `JWTSettings__PrivateKeyPath=/run/secrets/jwt-signing`.
-- **Kubernetes:** create a `Secret` containing the PEM, mount it as a file via `volumes` + `volumeMounts`.
-- **Azure / AWS:** Key Vault / Secrets Manager → init-container or sidecar writes it to a `tmpfs` volume the app reads.
+- **Docker:** `-v /host/secrets/auth-keys:/app/keys:ro`
+- **Docker Compose secrets:** mount each PEM under `/run/secrets/` and project them into `/app/keys/` via a tmpfs.
+- **Kubernetes:** create a `Secret` containing one or more PEM keys, mount it as a directory via `volumes` + `volumeMounts.mountPath`.
+- **Azure / AWS:** Key Vault / Secrets Manager → init-container writes each PEM into a shared `tmpfs` volume the app reads.
 
-If the file is missing in non-Development environments the service refuses to start with a clear error.
+If the directory is empty in non-Development environments the service refuses to start with a clear error. The filename itself is irrelevant — the `kid` is computed from the public-key thumbprint, not the filename.
 
 ### 3. Provision Redis
 
@@ -321,7 +321,7 @@ The middleware also uses `X-Forwarded-Proto` to detect TLS-terminated-at-the-LB 
 ASP.NET Core's standard double-underscore mapping applies:
 
 ```bash
-JWTSettings__PrivateKeyPath=/run/secrets/jwt-signing
+JWTSettings__PrivateKeyDirectory=/run/secrets/auth-keys
 JWTSettings__ValidIssuer=https://auth.example.com
 JWTSettings__ValidAudience=platform-api
 ConnectionStrings__MySQL=server=...
@@ -409,14 +409,19 @@ PascalCase, same name = same meaning across every event.
 
 ### 10. Key rotation (when needed)
 
-The current implementation serves a single key. To rotate:
+`EcdsaKeyProvider` loads every `*.pem` in `PrivateKeyDirectory` and publishes them all in JWKS, so multiple keys can co-exist during a rotation overlap. `JWTSettings:ActiveKeyId` (the JWK thumbprint) picks which one signs new tokens.
 
-1. Generate a new keypair.
-2. Modify `EcdsaKeyProvider` to load both old + new and publish both in the JWKS response.
-3. Sign new tokens with the new key (set its `kid` as the active one).
-4. After all old tokens have expired (5 minutes + safety margin), drop the old key.
+**Rotation runbook (zero-downtime):**
 
-Consumers using `Authority`-based JwtBearer auto-refresh JWKS every 24 hours by default, so they pick up new keys without redeployment. Tighten that interval if your rotation cadence is faster.
+1. **Stage the new key.** Generate a fresh ES256 PEM (see step 1 of the deployment guide) and drop it into `PrivateKeyDirectory` alongside the existing one. Restart / rolling-restart the auth service. Both keys are now loaded; the JWKS endpoint returns both. **The old key is still active** — `ActiveKeyId` hasn't changed yet, so new tokens are still signed with it. The new key sits idle, advertised but unused.
+2. **Wait for consumer JWKS caches to refresh.** JwtBearer's default JWKS cache TTL is 24h. Either wait that out, or — if your rotation needs to be faster — tighten `BackchannelTimeout` / `RefreshInterval` on consumers, or trigger a manual re-fetch by recycling them. Until every consumer has the new key in their cache, the cutover in step 3 will reject tokens at validation.
+3. **Cut over.** Set `JWTSettings:ActiveKeyId` to the new key's `kid` and restart. New tokens are now signed with the new key; existing in-flight tokens (signed by the old key) still validate because the old key is still loaded and still in JWKS.
+4. **Drain.** Wait at least `JWTSettings:ExpiryInMinutes` (default 5) plus `RefreshTokenExpiryInDays` if you also want refresh tokens issued under the old key to drain, then a small safety margin. After that, no token signed by the old key is still valid.
+5. **Decommission the old key.** Remove the old PEM from `PrivateKeyDirectory` and restart. The JWKS endpoint stops advertising it. Move the file to long-term cold storage (or destroy, per your key-management policy) — it should never be possible to re-introduce a retired key by accident.
+
+The `kid` you publish to operations for step 3 is the value visible in the JWKS endpoint's `kid` field (also logged at startup: `Loaded ES256 signing key {KeyId} from '{Path}'`).
+
+Consumers using `Authority`-based JwtBearer auto-refresh JWKS every 24 hours by default, so they pick up new keys without redeployment. Tighten that interval if your rotation cadence is faster than 24 hours.
 
 ---
 
@@ -560,7 +565,6 @@ Issued access tokens carry the following claims (consumers can rely on all of th
 ## Open items / future work
 
 - **Service-to-service tokens (client credentials).** Currently consumers forward the user's JWT for downstream calls. A "service identity" flow (each service authenticates to get its own token) is on the roadmap but not implemented.
-- **Key rotation tooling.** The `EcdsaKeyProvider` serves one key; rotation requires a code change. Consider implementing dual-key support before first production rotation.
 - **Cross-service revocation latency.** Refresh-token revocation (logout, password change, reuse detection) is instant — the next refresh fails. Access-token revocation has a window equal to the access-token TTL (5 min): the auth service's deny-list catches replays at its own ingress, but other microservices accept tokens until natural `exp`. Acceptable for a 5-min TTL; if instant cross-service revocation is needed, add a token-introspection endpoint or pub/sub.
 - **Threshold escalation on revoked-token replay.** Today a stolen access token replayed against the deny-list returns 401 and writes an `AccessRecord` row, but nothing escalates if the same `jti` is hammered repeatedly. Tracked as a TODO; pairs with the SIEM-forwarding story.
 

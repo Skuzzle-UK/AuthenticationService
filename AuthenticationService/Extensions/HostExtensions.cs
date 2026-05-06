@@ -138,7 +138,7 @@ public static class HostExtensions
                     ValidateIssuerSigningKey = true,
                     ValidIssuer = jwt.ValidIssuer,
                     ValidAudience = jwt.ValidAudience,
-                    IssuerSigningKey = keyProvider.PublicSecurityKey,
+                    IssuerSigningKeys = keyProvider.PublicSecurityKeys,
                     ValidAlgorithms = [SecurityAlgorithms.EcdsaSha256],
                     NameClaimType = ClaimConstants.Name,
                     RoleClaimType = ClaimConstants.Role
@@ -262,6 +262,7 @@ public static class HostExtensions
     /// that blocks all cross-origin traffic. Methods and headers are pinned to what the API
     /// actually uses; <c>AllowCredentials</c> is intentionally off because JWT bearer tokens
     /// travel in the Authorization header, not in cookies.
+    /// </summary>
     public static IServiceCollection AddCorsConfiguration(
         this IServiceCollection services,
         HostBuilderContext context)
