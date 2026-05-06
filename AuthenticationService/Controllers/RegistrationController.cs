@@ -1,5 +1,6 @@
 ﻿using AuthenticationService.Constants;
 using AuthenticationService.Entities;
+using AuthenticationService.Extensions;
 using AuthenticationService.Services;
 using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Dtos;
@@ -19,17 +20,20 @@ public class RegistrationController : ControllerBase
     private readonly IEmailService _emailService;
     private readonly IMapper _mapper;
     private readonly DatabaseContext _dbContext;
+    private readonly ILogger<RegistrationController> _logger;
 
     public RegistrationController(
         IUserService userService,
         IEmailService emailService,
         IMapper mapper,
-        DatabaseContext dbContext)
+        DatabaseContext dbContext,
+        ILogger<RegistrationController> logger)
     {
         _userService = userService;
         _emailService = emailService;
         _mapper = mapper;
         _dbContext = dbContext;
+        _logger = logger;
     }
 
     /// <summary>
@@ -70,12 +74,24 @@ public class RegistrationController : ControllerBase
 
             await transaction.CommitAsync();
 
+            _logger.LogInformation(
+                SecurityEventIdConstants.RegistrationCompleted,
+                "Registration completed for {UserId}",
+                user.Id);
+
             return Created();
         }
         catch (Exception ex)
         {
+            var correlationId = Guid.NewGuid();
+            _logger.LogError(ex,
+                "Registration failed (correlation {CorrelationId})",
+                correlationId);
+
             await transaction.RollbackAsync();
-            return StatusCode(500, ex.Message);
+            return StatusCode(500, new ApiResponse().AddError(
+                "RegistrationFailed",
+                $"An unexpected error occurred. Please contact support with reference {correlationId}."));
         }
     }
 
@@ -99,8 +115,20 @@ public class RegistrationController : ControllerBase
         var confirmationResult = await _userService.ConfirmEmailAsync(user, token);
         if (!confirmationResult.Succeeded)
         {
+            _logger.LogWarning(
+                SecurityEventIdConstants.EmailConfirmationFailed,
+                "Email confirmation failed for {UserId} from {IpAddress}",
+                user.Id,
+                Request.GetRemoteIpAddress());
             return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidEmailConfirmationRequest));
         }
+
+        await _userService.UpdateSecurityStampAsync(user);
+
+        _logger.LogInformation(
+            SecurityEventIdConstants.EmailConfirmed,
+            "Email confirmed for {UserId}",
+            user.Id);
 
         return string.IsNullOrWhiteSpace(callbackUri)
             ? Ok(new ApiResponse())

@@ -66,7 +66,7 @@ public class UserService : IUserService
 
     public async Task InvalidateUserTokensAsync(User user, string ipAddress, string reason, string? token = null)
     {
-        await _userManager.UpdateSecurityStampAsync(user);
+        await UpdateSecurityStampAsync(user);
         await _tokenService.RevokeAllRefreshTokenFamiliesAsync(user.Id, reason);
 
         if (!string.IsNullOrEmpty(token))
@@ -101,6 +101,9 @@ public class UserService : IUserService
 
     public async Task UpdateAsync(User user) =>
         await _userManager.UpdateAsync(user);
+
+    public async Task UpdateSecurityStampAsync(User user) =>
+        await _userManager.UpdateSecurityStampAsync(user);
 
     public async Task<bool> VerifyTwoFactorTokenAsync(User user, string tokenProvider, string token) =>
         await _userManager.VerifyTwoFactorTokenAsync(user, tokenProvider, token);

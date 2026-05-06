@@ -33,4 +33,5 @@ public interface IUserService
     Task<bool> CheckPasswordAsync(User user, string password);
     Task AccessFailedAsync(User user);
     Task InvalidateUserTokensAsync(User user, string ipAddress, string reason, string? token = null);
+    Task UpdateSecurityStampAsync(User user);
 }

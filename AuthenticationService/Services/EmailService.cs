@@ -8,10 +8,12 @@ namespace AuthenticationService.Services;
 public class EmailService : IEmailService
 {
     private readonly EmailServerSettings _settings;
+    private readonly ILogger<EmailService> _logger;
 
-    public EmailService(IOptions<EmailServerSettings> settings)
+    public EmailService(IOptions<EmailServerSettings> settings, ILogger<EmailService> logger)
     {
         _settings = settings.Value;
+        _logger = logger;
     }
 
     public async Task SendEmailAsync(string toEmail, string subject, string body)
@@ -32,6 +34,24 @@ public class EmailService : IEmailService
         };
         mailMessage.To.Add(toEmail);
 
-        await smtpClient.SendMailAsync(mailMessage);
+        try
+        {
+            await smtpClient.SendMailAsync(mailMessage);
+
+            _logger.LogInformation(
+                "Sent email {Subject} to {Recipient}",
+                subject,
+                toEmail);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to send email {Subject} to {Recipient} via {SmtpServer}:{SmtpPort}",
+                subject,
+                toEmail,
+                _settings.SmtpServer,
+                _settings.Port);
+            throw;
+        }
     }
 }

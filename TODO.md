@@ -126,10 +126,12 @@ up cold.
   list. Add a check (case-insensitive) for `admin`, `administrator`, `root`, `system`,
   `support`, `security`, `null`, etc. before `CreateAsync`.
 
-- [ ] **`RegistrationController` returns `ex.Message` on 500.**
+- [x] ~~**`RegistrationController` returns `ex.Message` on 500.**
   [RegistrationController.cs:78](AuthenticationService/Controllers/RegistrationController.cs:78).
   Leaks DB / framework details. Log the exception with a correlation id, return a generic
-  500 with that id.
+  500 with that id.~~ Done — exception now logged via `_logger.LogError` with a fresh
+  correlation Guid; response is a generic `ApiResponse` carrying the correlation ID for
+  support to look up, no `ex.Message` exposed.
 
 - [ ] **Default admin password shipped in `appsettings.json`.**
   [appsettings.json:13](AuthenticationService/appsettings.json:13) — `Pa5$word123`. Remove
@@ -193,13 +195,24 @@ up cold.
   origin allow-list bound from configuration; apply the policy via `app.UseCors(...)` between
   `UseRouting` and `UseAuthentication`.
 
-- [ ] **Structured logging / security events are absent.**
+- [x] ~~**Structured logging / security events are absent.**
   Two `_logger` calls in the entire codebase. Wire Serilog (or whatever the platform
   standard is) and emit structured events for: registration, registration-confirmed,
   login-success, login-failure, lockout-triggered, password-reset-requested,
   password-reset-completed, password-changed, refresh-issued, logout, token-revoked,
   recovery-attempt, MFA-enabled, MFA-failed. Tag with `userId`, `jti`, `ip`, `userAgent`.
-  Pipe to whatever SIEM the corporate platform uses.
+  Pipe to whatever SIEM the corporate platform uses.~~ Done — Serilog wired up with the
+  two-stage init pattern in `Program.Main`; `UseSerilogRequestLogging` filters health-check
+  noise to Verbose. `Constants/SecurityEventIds.cs` defines the 20-event taxonomy across
+  four EventId ranges (1000s auth, 2000s registration, 3000s account, 4000s token). Inline
+  `_logger.LogX(SecurityEventIds.X, "Message {UserId} {IpAddress} ...", ...)` calls at every
+  flow point — login (success/failure with reason), MFA (challenge/verified/failed),
+  refresh (rotated/reuse-detected at Critical), logout (per-device/all), password
+  (changed/reset-requested/reset-completed), MFA enabled, account locked by user, email
+  confirmation success/failure, token revoked, revoked-token replay. Field shape is
+  consistent across events (`UserId`, `IpAddress`, `Jti`, `FamilyId`, `Reason`, `Severity`).
+  PII control: `UserId` (the `sub` claim) is logged for forensic correlation; email
+  addresses are not in event payloads.
 
 - [ ] **Single signing key, no rotation.**
   [EcdsaKeyProvider](AuthenticationService/Services/EcdsaKeyProvider.cs) holds one key; the

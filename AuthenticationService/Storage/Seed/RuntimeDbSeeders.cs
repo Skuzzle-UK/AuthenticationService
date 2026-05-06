@@ -21,6 +21,7 @@ public static class RuntimeDbSeeders
         {
             var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
             var settings = scope.ServiceProvider.GetRequiredService<IOptions<AdminAccountSeedSettings>>().Value;
+            var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("RuntimeDbSeeders");
 
             if (userManager.FindByNameAsync(UserConstants.Admin).Result == null)
             {
@@ -53,6 +54,13 @@ public static class RuntimeDbSeeders
                 var user = userManager.FindByEmailAsync(settings.Email).Result;
                 userManager.AddToRoleAsync(user!, RolesConstants.Admin).Wait();
                 userManager.AddToRoleAsync(user!, RolesConstants.DefaultUser).Wait();
+
+                logger.LogWarning(
+                    "Seeded administrator account {UserName} ({UserId}). " +
+                    "If AdminAccountSeedSettings:Password was not overridden via user-secrets / env-var / vault, " +
+                    "the default password is in use — change it before exposing the service to anyone.",
+                    UserConstants.Admin,
+                    user!.Id);
             }
         }
 

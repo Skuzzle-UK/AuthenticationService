@@ -352,7 +352,47 @@ Production must be HTTPS. Consumers configured with `RequireHttpsMetadata = true
 
 The **public hostname of the auth service is the contract** — this is the `Authority` URL every consuming microservice points at. Pick it deliberately and avoid changing it (e.g. `https://auth.example.com`, not the load-balancer's hostname).
 
-### 9. Key rotation (when needed)
+### 9. Structured logging / SIEM contract
+
+
+The service emits structured logs via Serilog. In production, point the platform's log aggregator at the container's stdout — output is JSON-line when the `Compact` formatter is active. Every log line carries:
+
+- `RequestId` / `TraceId` — request correlation. When OpenTelemetry tracing lands, `TraceId` is also the join key against trace spans.
+- `EventId.Id` and `EventId.Name` — for security-relevant events, taken from `SecurityEventIds`. SIEM rules match on these IDs rather than message strings, so values are stable across deploys.
+
+Security events span four numeric ranges:
+
+| Range | Category | Examples |
+|---|---|---|
+| 1000s | Authentication | `LoginSucceeded` (1001), `LoginFailed` (1002), `MfaChallengeIssued` (1003), `MfaVerified` (1004), `MfaFailed` (1005), `FailedLoginLockoutTriggered` (1006), `RefreshTokenRotated` (1007), `RefreshTokenReuseDetected` (1008, **Critical**), `LogoutPerDevice` (1009), `LogoutAllDevices` (1010) |
+| 2000s | Registration | `RegistrationCompleted` (2001), `EmailConfirmed` (2002), `EmailConfirmationFailed` (2003) |
+| 3000s | Account management | `PasswordChanged` (3001), `PasswordResetRequested` (3002), `PasswordResetCompleted` (3003), `AccountLockedByUser` (3004), `MfaEnabled` (3005) |
+| 4000s | Token state | `TokenRevoked` (4001), `RevokedTokenReplayAttempt` (4002) |
+
+**Field-shape contract:**
+
+- `UserId` — always the `sub` claim / `User.Id`. Empty string when the target user doesn't exist (failed login on unknown email).
+- `IpAddress` — caller's IP, post-`UseForwardedHeaders` so it's the real client.
+- `Jti` — access-token jti claim.
+- `FamilyId` — refresh-token family / `sid` claim.
+- `Reason` — `LoginFailureReason` or `RevocationReasons` value.
+- `Provider` — `MfaProviders` enum.
+- `Severity` — `Severity` enum (used on revoked-token replay attempts).
+
+PascalCase, same name = same meaning across every event.
+
+**PII posture:**
+- `UserId` is logged for forensic correlation.
+- **Email addresses, passwords, tokens, refresh-token values, and authenticator secrets are never logged.** If an investigator needs to map `UserId` to email, they go to the auth DB (which has its own retention policy).
+
+**Recommended SIEM detections to wire up first:**
+- `EventId = 1008` (RefreshTokenReuseDetected) — page on every occurrence. High-confidence theft signal.
+- `EventId = 1002 GROUP BY UserId` with count > N in 60 seconds — credential stuffing against a known user.
+- `EventId = 1002 WHERE UserId IS EMPTY GROUP BY IpAddress` — credential scanning against unknown emails from one source.
+- `EventId = 1006` (FailedLoginLockoutTriggered) — informational, useful to see in dashboards.
+- `EventId = 4002 GROUP BY Jti` with count > 5 — automated replay of a revoked token.
+
+### 10. Key rotation (when needed)
 
 The current implementation serves a single key. To rotate:
 

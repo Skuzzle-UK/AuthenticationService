@@ -22,15 +22,18 @@ public class AccountController : ControllerBase
     private readonly IEmailService _emailService;
     private readonly ITokenService _tokenService;
     private readonly IUserService _userService;
+    private readonly ILogger<AccountController> _logger;
 
     public AccountController(
         IEmailService emailService,
         ITokenService tokenService,
-        IUserService userService)
+        IUserService userService,
+        ILogger<AccountController> logger)
     {
         _emailService = emailService;
         _tokenService = tokenService;
         _userService = userService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -92,6 +95,12 @@ public class AccountController : ControllerBase
                 break;
         }
 
+        _logger.LogInformation(
+            SecurityEventIdConstants.MfaEnabled,
+            "MFA enabled for {UserId} via {Provider}",
+            user.Id,
+            user.Preferred2FAProvider);
+
         return Ok(response);
     }
 
@@ -123,6 +132,12 @@ public class AccountController : ControllerBase
             user.Email!,
             EmailSubjectConstants.PasswordReset,
             $"To reset your password, please click the following link: {resetPasswordUri}. If you didn't make this request please contact a system administrator.");
+
+        _logger.LogInformation(
+            SecurityEventIdConstants.PasswordResetRequested,
+            "Password reset requested for {UserId} from {IpAddress}",
+            user.Id,
+            Request.GetRemoteIpAddress());
 
         return Ok(new ApiResponse());
     }
@@ -170,6 +185,12 @@ public class AccountController : ControllerBase
         await _userService.UpdateAsync(user);
 
         await _userService.ResetAccessFailedCountAsync(user);
+
+        _logger.LogInformation(
+            SecurityEventIdConstants.PasswordResetCompleted,
+            "Password reset completed for {UserId} from {IpAddress}",
+            user.Id,
+            Request.GetRemoteIpAddress());
 
         return Ok(new ApiResponse());
     }
@@ -228,7 +249,13 @@ public class AccountController : ControllerBase
         await _userService.UpdateAsync(user);
 
         await _userService.ResetAccessFailedCountAsync(user);
-        
+
+        _logger.LogInformation(
+            SecurityEventIdConstants.PasswordChanged,
+            "Password changed for {UserId} from {IpAddress}",
+            user.Id,
+            Request.GetRemoteIpAddress());
+
         return Ok(new ApiResponse());
     }
 
@@ -270,6 +297,12 @@ public class AccountController : ControllerBase
             user.Email!,
             EmailSubjectConstants.AccountLocked,
             $"Your account was locked at {DateTime.UtcNow} UTC. If you didn't make this request please contact a system administrator. To unlock your account you need to reset your password via the following link. {resetPasswordUri}");
+
+        _logger.LogWarning(
+            SecurityEventIdConstants.AccountLockedByUser,
+            "Account locked by user via email link for {UserId} from {IpAddress}",
+            user.Id,
+            Request.GetRemoteIpAddress());
 
         return Ok(new ApiResponse());
     }

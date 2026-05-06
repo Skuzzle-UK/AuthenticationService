@@ -22,17 +22,20 @@ public class JWTService : ITokenService
     private readonly UserManager<User> _userManager;
     private readonly DatabaseContext _context;
     private readonly IEcdsaKeyProvider _keyProvider;
+    private readonly ILogger<JWTService> _logger;
 
     public JWTService(
         IOptions<JWTSettings> jwtSettings,
         UserManager<User> userManager,
         DatabaseContext context,
-        IEcdsaKeyProvider keyProvider)
+        IEcdsaKeyProvider keyProvider,
+        ILogger<JWTService> logger)
     {
         _jwtSettings = jwtSettings.Value;
         _userManager = userManager;
         _context = context;
         _keyProvider = keyProvider;
+        _logger = logger;
     }
 
     public async Task<Token> CreateTokenAsync(User user, IList<string> roles, Guid? familyId = null, string? ipAddress = null)
@@ -184,12 +187,13 @@ public class JWTService : ITokenService
     public async Task RevokeTokenAsync(string token, string ipAddress, string reason)
     {
         var jti = GetJtiFromToken(token);
+        var userId = GetUserId(token);
 
         var revokedToken = new RevokedToken()
         {
             TokenJti = jti,
             ExpiresAt = GetExpiryDateTime(token),
-            UserId = GetUserId(token),
+            UserId = userId,
             RevokedFromIp = ipAddress,
             RevokedAt = DateTime.UtcNow,
             RevocationReason = reason,
@@ -197,6 +201,14 @@ public class JWTService : ITokenService
 
         await _context.RevokedTokens.AddAsync(revokedToken);
         await _context.SaveChangesAsync();
+
+        _logger.LogInformation(
+            SecurityEventIdConstants.TokenRevoked,
+            "Access token {Jti} revoked for {UserId} from {IpAddress} ({Reason})",
+            jti,
+            userId,
+            ipAddress,
+            reason);
     }
 
     public async Task<bool> IsRevokedAsync(string token)
@@ -208,6 +220,7 @@ public class JWTService : ITokenService
     public async Task RecordAccessAttemptAsync(string token, string ipAddress)
     {
         var jti = GetJtiFromToken(token);
+        var userId = GetUserId(token);
         var severity = Severity.Low;
         var isRevoked = false;
 
@@ -221,12 +234,23 @@ public class JWTService : ITokenService
                 : Severity.Medium;
         }
 
+        if (isRevoked)
+        {
+            _logger.LogWarning(
+                SecurityEventIdConstants.RevokedTokenReplayAttempt,
+                "Revoked token replay for {UserId} jti {Jti} from {IpAddress} (severity: {Severity})",
+                userId,
+                jti,
+                ipAddress,
+                severity);
+        }
+
         var accessRecord = new AccessRecord()
         {
             TokenJti = jti,
             IpAddress = ipAddress,
             CreatedAt = DateTime.UtcNow,
-            UserId = GetUserId(token),
+            UserId = userId,
             Revoked = isRevoked,
             Severity = severity
         };

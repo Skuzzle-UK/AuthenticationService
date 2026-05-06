@@ -1,7 +1,6 @@
 using AuthenticationService.Settings;
 using AuthenticationService.Storage;
 using Microsoft.Extensions.Options;
-using Serilog;
 
 namespace AuthenticationService.Services.Hosted;
 
