@@ -46,19 +46,19 @@ public class AuthenticationController : ControllerBase
         if (user is null)
         {
             _logger.LogWarning(
-                SecurityEventIdConstants.LoginFailed,
+                SecurityEventIds.LoginFailed,
                 "Login failed for {UserId} from {IpAddress} ({Reason})",
                 string.Empty,
                 Request.GetRemoteIpAddress(),
                 LoginFailureReason.BadCredentials);
 
-            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
+            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidRequest));
         }
 
         if (!await _userService.IsEmailConfirmedAsync(user))
         {
             _logger.LogWarning(
-                SecurityEventIdConstants.LoginFailed,
+                SecurityEventIds.LoginFailed,
                 "Login failed for {UserId} from {IpAddress} ({Reason})",
                 user.Id,
                 Request.GetRemoteIpAddress(),
@@ -70,19 +70,19 @@ public class AuthenticationController : ControllerBase
         if (await _userService.IsLockedOutAsync(user))
         {
             _logger.LogWarning(
-                SecurityEventIdConstants.LoginFailed,
+                SecurityEventIds.LoginFailed,
                 "Login failed for {UserId} from {IpAddress} ({Reason})",
                 user.Id,
                 Request.GetRemoteIpAddress(),
                 LoginFailureReason.AccountLocked);
 
-            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.AccountLockedFailedAttempts));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.AccountLockedFailedAttempts));
         }
 
         if (!await _userService.CheckPasswordAsync(user, request.Password!))
         {
             _logger.LogWarning(
-                SecurityEventIdConstants.LoginFailed,
+                SecurityEventIds.LoginFailed,
                 "Login failed for {UserId} from {IpAddress} ({Reason})",
                 user.Id,
                 Request.GetRemoteIpAddress(),
@@ -98,7 +98,7 @@ public class AuthenticationController : ControllerBase
             var providers = await _userService.GetValidTwoFactorProvidersAsync(user);
             if (!providers.Contains(request.MfaProvider.ToString()!))
             {
-                return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.InvalidMfaProvider));
+                return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidMfaProvider));
             }
 
             switch (request.MfaProvider)
@@ -107,17 +107,17 @@ public class AuthenticationController : ControllerBase
                     var mfaToken = await _userService.GenerateTwoFactorTokenAsync(user, TokenOptions.DefaultEmailProvider);
                     await _emailService.SendEmailAsync(
                         user.Email!,
-                        EmailSubjectConstants.MfaAuthenticationToken,
+                        EmailSubjects.MfaAuthenticationToken,
                         $"Your token is: {mfaToken}");
                     break;
                 case MfaProviders.Phone:
-                    return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.PhoneMfaNotSupported));
+                    return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.PhoneMfaNotSupported));
                 case MfaProviders.Authenticator:
                     break;
             }
 
             _logger.LogInformation(
-                SecurityEventIdConstants.MfaChallengeIssued,
+                SecurityEventIds.MfaChallengeIssued,
                 "MFA challenge issued for {UserId} via {Provider}",
                 user.Id,
                 request.MfaProvider);
@@ -135,7 +135,7 @@ public class AuthenticationController : ControllerBase
         await _userService.ResetAccessFailedCountAsync(user);
 
         _logger.LogInformation(
-            SecurityEventIdConstants.LoginSucceeded,
+            SecurityEventIds.LoginSucceeded,
             "Login succeeded for {UserId} from {IpAddress}",
             user.Id,
             ipAddress);
@@ -156,36 +156,36 @@ public class AuthenticationController : ControllerBase
         if (user is null)
         {
             _logger.LogWarning(
-                SecurityEventIdConstants.LoginFailed,
+                SecurityEventIds.LoginFailed,
                 "Login failed for {UserId} from {IpAddress} ({Reason})",
                 string.Empty,
                 Request.GetRemoteIpAddress(),
                 LoginFailureReason.BadCredentials);
 
-            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
+            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidRequest));
         }
 
         if (!user.WaitingForTwoFactorAuthentication)
         {
-            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
+            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidRequest));
         }
 
         if (await _userService.IsLockedOutAsync(user))
         {
             _logger.LogWarning(
-                SecurityEventIdConstants.LoginFailed,
+                SecurityEventIds.LoginFailed,
                 "Login failed for {UserId} from {IpAddress} ({Reason})",
                 user.Id,
                 Request.GetRemoteIpAddress(),
                 LoginFailureReason.AccountLocked);
 
-            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.AccountLockedFailedAttempts));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.AccountLockedFailedAttempts));
         }
 
         if (!await _userService.VerifyTwoFactorTokenAsync(user, request.MfaProvider.ToString()!, request.Token!))
         {
             _logger.LogWarning(
-                SecurityEventIdConstants.MfaFailed,
+                SecurityEventIds.MfaFailed,
                 "MFA verification failed for {UserId} from {IpAddress}",
                 user.Id,
                 Request.GetRemoteIpAddress());
@@ -194,7 +194,7 @@ public class AuthenticationController : ControllerBase
         }
 
         _logger.LogInformation(
-            SecurityEventIdConstants.MfaVerified,
+            SecurityEventIds.MfaVerified,
             "MFA verified for {UserId} from {IpAddress}",
             user.Id,
             Request.GetRemoteIpAddress());
@@ -209,7 +209,7 @@ public class AuthenticationController : ControllerBase
         await _userService.UpdateAsync(user);
 
         _logger.LogInformation(
-            SecurityEventIdConstants.LoginSucceeded,
+            SecurityEventIds.LoginSucceeded,
             "Login succeeded for {UserId} from {IpAddress}",
             user.Id,
             ipAddress);
@@ -228,7 +228,7 @@ public class AuthenticationController : ControllerBase
         var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
         if (!await _tokenService.ValidateExpiredTokenAsync(token))
         {
-            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.InvalidToken));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidToken));
         }
 
         var ipAddress = Request.GetRemoteIpAddress();
@@ -240,13 +240,13 @@ public class AuthenticationController : ControllerBase
             // stamp rotated). Notify the user out-of-band, emit a security event, and respond
             // with a generic 401 so the attacker can't tell they've been caught.
             await HandleReuseDetectedAsync(token, reused.FamilyId, ipAddress);
-            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.InvalidRefreshToken));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidRefreshToken));
         }
 
         if (result is RefreshResult.Success success)
         {
             _logger.LogInformation(
-                SecurityEventIdConstants.RefreshTokenRotated,
+                SecurityEventIds.RefreshTokenRotated,
                 "Refresh token rotated for {UserId} from {IpAddress}",
                 _tokenService.GetUserId(token),
                 ipAddress);
@@ -256,8 +256,8 @@ public class AuthenticationController : ControllerBase
 
         return result switch
         {
-            RefreshResult.Expired => Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.ExpiredRefreshToken)),
-            _ => Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.InvalidRefreshToken)),
+            RefreshResult.Expired => Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.ExpiredRefreshToken)),
+            _ => Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidRefreshToken)),
         };
     }
 
@@ -267,7 +267,7 @@ public class AuthenticationController : ControllerBase
         var compromisedUser = await _userService.FindByIdAsync(userId);
 
         _logger.LogCritical(
-            SecurityEventIdConstants.RefreshTokenReuseDetected,
+            SecurityEventIds.RefreshTokenReuseDetected,
             "Refresh token reuse detected for {UserId} family {FamilyId} from {IpAddress}",
             userId,
             familyId,
@@ -282,7 +282,7 @@ public class AuthenticationController : ControllerBase
         {
             await _emailService.SendEmailAsync(
                 compromisedUser.Email,
-                EmailSubjectConstants.SuspiciousActivity,
+                EmailSubjects.SuspiciousActivity,
                 $"We detected suspicious activity on your account at {DateTime.UtcNow:u} UTC from IP {ipAddress}. " +
                 "As a precaution, all your sessions have been signed out and you'll need to sign in again. " +
                 "If this wasn't you, please change your password immediately.");
@@ -309,7 +309,7 @@ public class AuthenticationController : ControllerBase
         var sidStr = User.FindFirst(ClaimConstants.Sid)?.Value;
         if (!Guid.TryParse(sidStr, out var familyId))
         {
-            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.InvalidToken));
+            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidToken));
         }
 
         var sub = User.FindFirst(ClaimConstants.Sub)?.Value ?? string.Empty;
@@ -320,7 +320,7 @@ public class AuthenticationController : ControllerBase
         await _tokenService.RevokeTokenAsync(token, ipAddress, RevocationReasons.Logout);
 
         _logger.LogInformation(
-            SecurityEventIdConstants.LogoutPerDevice,
+            SecurityEventIds.LogoutPerDevice,
             "Per-device logout for {UserId} family {FamilyId} from {IpAddress}",
             sub,
             familyId,
@@ -342,7 +342,7 @@ public class AuthenticationController : ControllerBase
         var sub = User.FindFirst(ClaimConstants.Sub)?.Value;
         if (string.IsNullOrEmpty(sub))
         {
-            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.InvalidToken));
+            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidToken));
         }
 
         var user = await _userService.FindByIdAsync(sub);
@@ -357,7 +357,7 @@ public class AuthenticationController : ControllerBase
         await _userService.InvalidateUserTokensAsync(user, ipAddress, RevocationReasons.LogoutAll, token);
 
         _logger.LogInformation(
-            SecurityEventIdConstants.LogoutAllDevices,
+            SecurityEventIds.LogoutAllDevices,
             "Log-out-all-devices for {UserId} from {IpAddress}",
             sub,
             ipAddress);
@@ -372,8 +372,8 @@ public class AuthenticationController : ControllerBase
         {
                 await _emailService.SendEmailAsync(
                 user.Email!,
-                EmailSubjectConstants.LockedAccountInfo,
-                ErrorMessageConstants.AccountLockedFailedAttempts);
+                EmailSubjects.LockedAccountInfo,
+                ErrorMessages.AccountLockedFailedAttempts);
 
             user.WaitingForTwoFactorAuthentication = false;
             await _userService.UpdateAsync(user);
@@ -381,12 +381,12 @@ public class AuthenticationController : ControllerBase
             await _userService.InvalidateUserTokensAsync(user, Request.GetRemoteIpAddress(), RevocationReasons.FailedLoginLockout);
 
             _logger.LogWarning(
-                SecurityEventIdConstants.FailedLoginLockoutTriggered,
+                SecurityEventIds.FailedLoginLockoutTriggered,
                 "Account locked due to failed-login threshold for {UserId} from {IpAddress}",
                 user.Id,
                 Request.GetRemoteIpAddress());
 
-            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessageConstants.AccountLockedFailedAttempts));
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.AccountLockedFailedAttempts));
         }
 
         return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Authentication failed."));

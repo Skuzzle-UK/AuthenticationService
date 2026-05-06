@@ -75,7 +75,7 @@ public class RegistrationController : ControllerBase
             await transaction.CommitAsync();
 
             _logger.LogInformation(
-                SecurityEventIdConstants.RegistrationCompleted,
+                SecurityEventIds.RegistrationCompleted,
                 "Registration completed for {UserId}",
                 user.Id);
 
@@ -109,24 +109,24 @@ public class RegistrationController : ControllerBase
         var user = await _userService.FindByEmailAsync(email);
         if (user is null)
         {
-            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidEmailConfirmationRequest));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidEmailConfirmationRequest));
         }
 
         var confirmationResult = await _userService.ConfirmEmailAsync(user, token);
         if (!confirmationResult.Succeeded)
         {
             _logger.LogWarning(
-                SecurityEventIdConstants.EmailConfirmationFailed,
+                SecurityEventIds.EmailConfirmationFailed,
                 "Email confirmation failed for {UserId} from {IpAddress}",
                 user.Id,
                 Request.GetRemoteIpAddress());
-            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidEmailConfirmationRequest));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidEmailConfirmationRequest));
         }
 
         await _userService.UpdateSecurityStampAsync(user);
 
         _logger.LogInformation(
-            SecurityEventIdConstants.EmailConfirmed,
+            SecurityEventIds.EmailConfirmed,
             "Email confirmed for {UserId}",
             user.Id);
 
@@ -146,7 +146,7 @@ public class RegistrationController : ControllerBase
         var user = await _userService.FindByEmailAsync(request.Email!);
         if (user is null)
         {
-            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessageConstants.InvalidRequest));
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidRequest));
         }
 
         if (await _userService.IsEmailConfirmedAsync(user))
@@ -163,7 +163,7 @@ public class RegistrationController : ControllerBase
     {
         var host = $"{Request.Scheme}://{Request.Host}";
         var controllerPath = $"/api/{ControllerContext.ActionDescriptor.ControllerName.ToLower()}";
-        var confirmEmailPath = $"{host}{controllerPath}{ApiRouteConstants.ConfirmEmail}";
+        var confirmEmailPath = $"{host}{controllerPath}{ApiRoutes.ConfirmEmail}";
 
         var token = await _userService.GenerateEmailConfirmationTokenAsync(user);
 
@@ -171,14 +171,14 @@ public class RegistrationController : ControllerBase
         {
             { UriConstants.Token, token },
             { UriConstants.Email, user.Email! },
-            { UriConstants.CallBackUri, callbackUri ?? $"{Request.Scheme}://{Request.Host}{Request.PathBase}{ApiRouteConstants.ConfirmEmail}?callbackUri={{Request.Scheme}}://{{Request.Host}}{{Request.PathBase}}{RouteConstants.ActionComplete}" }
+            { UriConstants.CallBackUri, callbackUri ?? $"{Request.Scheme}://{Request.Host}{Request.PathBase}{ApiRoutes.ConfirmEmail}?callbackUri={{Request.Scheme}}://{{Request.Host}}{{Request.PathBase}}{RouteConstants.ActionComplete}" }
         };
 
         var confirmEmailUri = QueryHelpers.AddQueryString(confirmEmailPath, confirmEmailParams!);
 
         await _emailService.SendEmailAsync(
             user.Email!,
-            EmailSubjectConstants.EmailConfirmation,
+            EmailSubjects.EmailConfirmation,
             $"To confirm your email address please click the following link: {confirmEmailUri}");
     }
 }

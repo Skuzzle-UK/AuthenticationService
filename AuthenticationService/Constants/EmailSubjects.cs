@@ -1,6 +1,6 @@
 namespace AuthenticationService.Constants;
 
-public class EmailSubjectConstants
+public class EmailSubjects
 {
     public const string PasswordReset = "Password Reset";
     public const string PasswordChanged = "Password Changed";

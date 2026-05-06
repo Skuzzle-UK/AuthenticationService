@@ -32,7 +32,7 @@ namespace AuthenticationService.Constants;
 ///   <item><description><b>4000s</b> — Token state</description></item>
 /// </list>
 /// </summary>
-public static class SecurityEventIdConstants
+public static class SecurityEventIds
 {
     // 1000s — Authentication
     public static readonly EventId LoginSucceeded = new(1001, nameof(LoginSucceeded));

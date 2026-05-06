@@ -203,7 +203,7 @@ public class JWTService : ITokenService
         await _context.SaveChangesAsync();
 
         _logger.LogInformation(
-            SecurityEventIdConstants.TokenRevoked,
+            SecurityEventIds.TokenRevoked,
             "Access token {Jti} revoked for {UserId} from {IpAddress} ({Reason})",
             jti,
             userId,
@@ -237,7 +237,7 @@ public class JWTService : ITokenService
         if (isRevoked)
         {
             _logger.LogWarning(
-                SecurityEventIdConstants.RevokedTokenReplayAttempt,
+                SecurityEventIds.RevokedTokenReplayAttempt,
                 "Revoked token replay for {UserId} jti {Jti} from {IpAddress} (severity: {Severity})",
                 userId,
                 jti,
@@ -273,13 +273,13 @@ public class JWTService : ITokenService
 
         if (tokenHandler.ReadToken(token) is not JwtSecurityToken jwtToken)
         {
-            throw new UnauthorizedAccessException(ErrorMessageConstants.InvalidToken);
+            throw new UnauthorizedAccessException(ErrorMessages.InvalidToken);
         }
 
         var jti = jwtToken.Claims.FirstOrDefault(claim => claim.Type == ClaimConstants.Jti)?.Value;
         
         return jti
-            ?? throw new UnauthorizedAccessException(ErrorMessageConstants.MissingJtiClaim);
+            ?? throw new UnauthorizedAccessException(ErrorMessages.MissingJtiClaim);
     }
 
     private static string GenerateRefreshToken()

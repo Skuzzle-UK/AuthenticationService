@@ -1,6 +1,6 @@
 namespace AuthenticationService.Constants;
 
-public class TokenPurposeConstants
+public class TokenPurposes
 {
     public const string Lockout = "Lockout";
 }

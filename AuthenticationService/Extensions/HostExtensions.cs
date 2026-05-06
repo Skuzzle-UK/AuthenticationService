@@ -110,6 +110,7 @@ public static class HostExtensions
         })
            .AddEntityFrameworkStores<DatabaseContext>()
            .AddPasswordValidator<CustomPasswordValidator<User>>()
+           .AddUserValidator<ReservedUserNameValidator>()
            .AddDefaultTokenProviders();
 
         services.AddAuthentication(opt =>

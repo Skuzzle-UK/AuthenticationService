@@ -1,6 +1,6 @@
 namespace AuthenticationService.Constants;
 
-public class ErrorMessageConstants
+public class ErrorMessages
 {
     public const string InvalidRequest = "Invalid request.";
     public const string InvalidToken = "Token is invalid.";
