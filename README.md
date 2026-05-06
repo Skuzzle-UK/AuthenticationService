@@ -87,16 +87,22 @@ Database migrations run automatically on startup (`app.RunMigrations()`).
 
 ### 4. Seeded admin account
 
-A default admin is seeded on first run. Credentials come from `AdminAccountSeedSettings` in config:
+A default admin is seeded on first run. Most fields come from `appsettings.json`:
 
-| Field | Default in `appsettings.json` |
-|---|---|
-| Email | `email@email.com` |
-| Password | `Pa5$word123` |
-| First name | `Administrator` |
-| Country | `United Kingdom` |
+| Field | Default | Source |
+|---|---|---|
+| Email | `email@email.com` | `appsettings.json` |
+| First name | `Administrator` | `appsettings.json` |
+| Country | `United Kingdom` | `appsettings.json` |
+| **Password** | `Pa5$word123` | **`appsettings.Development.json` (dev only)** |
 
-**Change the password via user-secrets before exposing the service to anyone.**
+The password lives in `appsettings.Development.json` deliberately so `dotnet run` works first time without anyone having to think about credentials. **Outside Development the service refuses to start unless `AdminAccountSeedSettings:Password` is supplied via env var, user-secrets, or a secret store** — and it rejects the dev default verbatim, so a copy-pasted dev config can't accidentally reach prod. See the production-deployment section for the override mechanism.
+
+If you'd rather not use the dev default even locally, override it via user-secrets:
+
+```bash
+dotnet user-secrets set "AdminAccountSeedSettings:Password" "<your-strong-password>"
+```
 
 ### 5. Try it out via Swagger
 
@@ -326,7 +332,7 @@ JWTSettings__ValidIssuer=https://auth.example.com
 JWTSettings__ValidAudience=platform-api
 ConnectionStrings__MySQL=server=...
 ConnectionStrings__Redis=redis.internal:6379
-AdminAccountSeedSettings__Password=<one-time-bootstrap-password>
+AdminAccountSeedSettings__Password=<one-time-bootstrap-password>   # REQUIRED outside Development; service refuses to start if missing or set to the dev default
 EmailServerSettings__Password=<smtp-secret>
 DataProtectionSettings__Certificate__PfxPath=/run/secrets/data-protection.pfx
 DataProtectionSettings__Certificate__PfxPassword=<from-secret-store>

@@ -32,6 +32,7 @@ public static class HostExtensions
         host.ConfigureServices((context, services) =>
         {
             services.AddValidatedSettings(context);
+            services.AddValidators();
             services.AddAutoMapper(cfg => { }, typeof(Program));
             services.AddDatabase(context);
             services.AddSecurity();
@@ -83,6 +84,24 @@ public static class HostExtensions
             .Bind(context.Configuration.GetSection(nameof(EmailServerSettings)))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers freestanding <c>IValidateOptions&lt;T&gt;</c> implementations that go
+    /// beyond the data-annotations validation wired up in <see cref="AddValidatedSettings"/>.
+    /// These run at startup via the <c>ValidateOnStart()</c> chain on each settings
+    /// registration, so any failure here surfaces as a startup exception with a clear
+    /// message rather than a runtime surprise.
+    ///
+    /// <para>Identity-pipeline validators (<c>IUserValidator&lt;User&gt;</c>,
+    /// <c>IPasswordValidator&lt;User&gt;</c>) are not registered here — they live in
+    /// <see cref="AddSecurity"/> because they hang off the <c>AddIdentity</c> builder.</para>
+    /// </summary>
+    public static IServiceCollection AddValidators(this IServiceCollection services)
+    {
+        services.AddSingleton<IValidateOptions<AdminAccountSeedSettings>, AdminAccountSeedSettingsValidator>();
 
         return services;
     }

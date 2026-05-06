@@ -140,10 +140,16 @@ up cold.
   correlation Guid; response is a generic `ApiResponse` carrying the correlation ID for
   support to look up, no `ex.Message` exposed.
 
-- [ ] **Default admin password shipped in `appsettings.json`.**
+- [x] ~~**Default admin password shipped in `appsettings.json`.**
   [appsettings.json:13](AuthenticationService/appsettings.json:13) — `Pa5$word123`. Remove
   the default and require `AdminAccountSeedSettings:Password` to be supplied via env var /
-  user-secrets / vault. Fail startup if it's still the placeholder.
+  user-secrets / vault. Fail startup if it's still the placeholder.~~ Done — `Password`
+  removed from `appsettings.json`; the dev-only default lives in `appsettings.Development.json`
+  so `dotnet run` still Just Works for devs. New `Validators/AdminAccountSeedSettingsValidator`
+  (registered as `IValidateOptions<AdminAccountSeedSettings>`) rejects the dev default in
+  non-Development environments at startup — operators must supply a real value via env var /
+  user-secrets / secret store. README's quick-start and production-deployment sections updated
+  with the override mechanism + the explicit "REQUIRED outside Development" note.
 
 ---
 
@@ -355,23 +361,24 @@ up cold.
 ## Recommended fix order
 
 1. ~~**Bugs first** — `Logout` HTTP method/auth.~~ All headline bugs in this bucket closed.
-   Remaining items in the security-correctness section are feature gaps (refresh-token
-   hashing/rotation, anomaly detection, reserved-username deny-list, admin-password
-   bootstrap) rather than active vulnerabilities.
-2. **Multi-replica blockers** — data-protection key persistence, forwarded-headers,
-   migrations-out-of-startup, health checks.
-3. **Observability** — structured logging, security events, OpenTelemetry. Without these,
-   #1 is much harder to verify in prod.
-4. **Key rotation** — dual-key support before the first real production rotation is needed.
+   The security-correctness section is now complete bar one feature item (threshold
+   escalation on revoked-token replay) and one explicitly-deferred-to-SIEM item
+   (behavioural anomaly detection).
+2. ~~**Multi-replica blockers**~~ — data-protection key persistence, forwarded-headers,
+   migrations-out-of-startup, health checks. All done.
+3. **Observability** — structured logging + security events done; OpenTelemetry pending.
+4. ~~**Key rotation**~~ — multi-key loader + JWKS + ActiveKeyId + rotation runbook landed.
 5. ~~**Recovery redesign** — email-link with single-use stamp-rotating token; rate-limit the
-   endpoints.~~ Done — recover endpoint merged into the existing reset-password flow. (Rate
-   limiting still pending under the rate-limiter entry.)
+   endpoints.~~ Done — recover endpoint merged into the existing reset-password flow. Rate
+   limiting also done as part of the per-endpoint policies sweep.
 6. ~~**Refresh-token hashing + rotation-on-use.**~~ Done — full chain landed (hashed
    storage, family-scoped rotation, reuse detection cascade, per-device + everywhere
    logout, cleanup sweep, suspicious-activity email + security event).
-7. **Tests + CI** — should ideally happen alongside #1 so the bug fixes have regression
-   coverage.
-8. **CORS + standards cleanups + smaller corrections.**
+7. **Tests + CI** — the next big item. No regression coverage exists for any of the work
+   done above.
+8. ~~**CORS + standards cleanups**~~ — CORS done; OIDC discovery doc trimmed; RFC 7638
+   `kid` thumbprint landed; per-endpoint rate-limit policies in place. **Smaller
+   corrections** still open (see section above).
 
 Rough effort estimate to reach "I'd put this in a production gate review with a straight
 face": ~2-4 weeks of focused work.

@@ -55,10 +55,8 @@ public static class RuntimeDbSeeders
                 userManager.AddToRoleAsync(user!, RolesConstants.Admin).Wait();
                 userManager.AddToRoleAsync(user!, RolesConstants.DefaultUser).Wait();
 
-                logger.LogWarning(
-                    "Seeded administrator account {UserName} ({UserId}). " +
-                    "If AdminAccountSeedSettings:Password was not overridden via user-secrets / env-var / vault, " +
-                    "the default password is in use — change it before exposing the service to anyone.",
+                logger.LogInformation(
+                    "Seeded administrator account {UserName} ({UserId}).",
                     UserConstants.Admin,
                     user!.Id);
             }
