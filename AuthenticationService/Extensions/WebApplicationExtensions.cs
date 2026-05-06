@@ -3,6 +3,7 @@ using AuthenticationService.Storage;
 using AuthenticationService.Storage.Seed;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
 
 namespace AuthenticationService.Extensions;
 
@@ -13,6 +14,15 @@ public static class WebApplicationExtensions
         // Always keep UseForwardedHeaders at the top of the pipeline, before any middleware that might consume the forwarded header values (e.g. auth, rate-limiting).
         // Without this, the service won't respect X-Forwarded-For and all client IPs will be the load balancers — meaning audit logs and the rate-limiter's per-IP partitioning will both be wrong.
         app.UseForwardedHeaders();
+
+        app.UseSerilogRequestLogging(options =>
+        {
+            options.GetLevel = (httpContext, elapsed, ex) =>
+                httpContext.Request.Path.StartsWithSegments("/healthz")
+                || httpContext.Request.Path.StartsWithSegments("/readyz")
+                    ? Serilog.Events.LogEventLevel.Verbose
+                    : Serilog.Events.LogEventLevel.Information;
+        });
 
         app.UseSwagger();
         app.UseSwaggerUI(opt =>

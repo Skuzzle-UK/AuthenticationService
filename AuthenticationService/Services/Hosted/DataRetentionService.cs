@@ -1,6 +1,7 @@
 using AuthenticationService.Settings;
 using AuthenticationService.Storage;
 using Microsoft.Extensions.Options;
+using Serilog;
 
 namespace AuthenticationService.Services.Hosted;
 
@@ -14,31 +15,66 @@ namespace AuthenticationService.Services.Hosted;
 /// </summary>
 public class DataRetentionService : BackgroundService
 {
+    private readonly ILogger<DataRetentionService> _logger;
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly DataRetentionSettings _settings;
+    private readonly PeriodicTimer _periodicTimer;
 
     public DataRetentionService(
+        ILogger<DataRetentionService> logger,
         IServiceScopeFactory serviceScopeFactory,
         IOptions<DataRetentionSettings> settings)
     {
+        _logger = logger;
         _serviceScopeFactory = serviceScopeFactory;
         _settings = settings.Value;
+
+        _periodicTimer = new PeriodicTimer(TimeSpan.FromHours(_settings.CleanupIntervalInHours));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            using var scope = _serviceScopeFactory.CreateScope();
-            {
-                var context = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
-                context.AccessRecords.RemoveRange(context.AccessRecords.Where(x => x.CreatedAt.AddDays(_settings.AccessRecordsTTLInDays) < DateTime.UtcNow));
-                context.RevokedTokens.RemoveRange(context.RevokedTokens.Where(x => x.ExpiresAt < DateTime.UtcNow));
-                context.RefreshTokens.RemoveRange(context.RefreshTokens.Where(x => x.ExpiresAt < DateTime.UtcNow));
+        _logger.LogInformation(
+            "Data retention service started with cleanup interval of {Interval} hours and access record TTL of {TTL} days.",
+            _settings.CleanupIntervalInHours,
+            _settings.AccessRecordsTTLInDays);
 
-                await context.SaveChangesAsync(stoppingToken);
+        try
+        {
+            await RunCleanupAsync(stoppingToken);
+            while (await _periodicTimer.WaitForNextTickAsync(stoppingToken))
+            {
+                await RunCleanupAsync(stoppingToken);
             }
-            await Task.Delay(TimeSpan.FromHours(_settings.CleanupIntervalInHours), stoppingToken);
         }
+        catch (OperationCanceledException)
+        {
+            // Expected during shutdown, no action needed.
+            _logger.LogInformation("Data retention service cancellation requested.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Data retention service terminated unexpectedly with error: {ErrorMsg}.",
+                ex.Message);
+        }
+        finally
+        {
+            _periodicTimer.Dispose();
+            _logger.LogInformation("Data retention service stopped.");
+        }
+    }
+
+    private async Task RunCleanupAsync(CancellationToken stoppingToken)
+    {
+        using var scope = _serviceScopeFactory.CreateScope();
+
+        var context = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+        context.AccessRecords.RemoveRange(context.AccessRecords.Where(x => x.CreatedAt.AddDays(_settings.AccessRecordsTTLInDays) < DateTime.UtcNow));
+        context.RevokedTokens.RemoveRange(context.RevokedTokens.Where(x => x.ExpiresAt < DateTime.UtcNow));
+        context.RefreshTokens.RemoveRange(context.RefreshTokens.Where(x => x.ExpiresAt < DateTime.UtcNow));
+
+        await context.SaveChangesAsync(stoppingToken);
     }
 }
