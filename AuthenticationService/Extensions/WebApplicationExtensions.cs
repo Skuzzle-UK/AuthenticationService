@@ -7,8 +7,18 @@ using Serilog;
 
 namespace AuthenticationService.Extensions;
 
+/// <summary>
+/// Builds the HTTP request pipeline. The companion to <see cref="HostExtensions"/> —
+/// services are registered there, the pipeline is wired up here.
+/// </summary>
 public static class WebApplicationExtensions
 {
+    /// <summary>
+    /// Wires up the full request pipeline: forwarded headers, request logging, Swagger,
+    /// (optional) startup migrations + seed, HTTPS, CORS, auth, custom middleware, the
+    /// rate limiter, health-check endpoints, and finally controllers + Razor pages.
+    /// Order matters — each step has a comment where it's not obvious.
+    /// </summary>
     public static WebApplication ConfigureApplication(this WebApplication app)
     {
         // Always keep UseForwardedHeaders at the top of the pipeline, before any middleware that might consume the forwarded header values (e.g. auth, rate-limiting).
@@ -79,13 +89,13 @@ public static class WebApplicationExtensions
         return app;
     }
 
-    public static WebApplication UseApplicationMiddleware(this WebApplication app)
+    private static WebApplication UseApplicationMiddleware(this WebApplication app)
     {
         app.UseMiddleware<RevokedTokenMiddleware>();
         return app;
     }
 
-    public static WebApplication RunMigrations(this WebApplication app)
+    private static WebApplication RunMigrations(this WebApplication app)
     {
         using (var scope = app.Services.CreateScope())
         {

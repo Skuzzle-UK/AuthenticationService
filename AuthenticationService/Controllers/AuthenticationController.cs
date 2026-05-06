@@ -36,10 +36,10 @@ public class AuthenticationController : ControllerBase
     }
 
     /// <summary>
-    /// Endpoint for users to authenticate. This is the login endpoint which returns a token if not using 2FA or triggers a 2FA process.
+    /// Login. Returns an access + refresh token pair on success, or — if the user has MFA
+    /// enabled — kicks off the MFA challenge instead and returns which method was used so
+    /// the client knows what to prompt for.
     /// </summary>
-    /// <param name="request">AuthenticationDto type</param>
-    /// <returns>AuthenticationResult with token if not using 2FA or 2FA method used if using 2FA</returns>
     [HttpPost("authenticate")]
     [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
     public async Task<IActionResult> AuthenticateAsync([FromBody] AuthenticationDto request)
@@ -146,11 +146,10 @@ public class AuthenticationController : ControllerBase
     }
 
     /// <summary>
-    /// Endpoint for users to authenticate using 2FA. This is the endpoint that should be called after the user has received the 2FA token.
-    /// This is step 2 of the login process which follows the AuthenticateAsync method if 2FA is enabled for the user.
+    /// Step 2 of login when MFA is enabled. The client calls this with the code the user
+    /// just typed in (from their authenticator app or email). On success, returns the
+    /// access + refresh token pair just like a non-MFA login would have.
     /// </summary>
-    /// <param name="request">MfaAuthenticationDto</param>
-    /// <returns>AuthenticationResponse with valid token if successful</returns>
     [HttpPost("mfa")]
     [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
     public async Task<IActionResult> MfaAuthenticateAsync([FromBody] MfaAuthenticationDto request)
@@ -221,9 +220,13 @@ public class AuthenticationController : ControllerBase
     }
 
     /// <summary>
-    /// Refresh token endpoint. Requires bearer token in header as it checks the token claims
+    /// Swaps an expired access token + its refresh token for a fresh pair. The expired
+    /// access token must still be in the Authorization header — its claims are read
+    /// (signature still validated, expiry skipped) to know which user is refreshing.
+    ///
+    /// <para>If the supplied refresh token has already been used, this is treated as theft:
+    /// every active session for the user is revoked and the request returns 401.</para>
     /// </summary>
-    /// <param name="request">RefreshTokenDto</param>
     /// <returns>AuthenticationResponse with valid token if successful</returns>
     [HttpPost("refresh")]
     public async Task<IActionResult> RefreshTokenAsync([FromBody] RefreshTokenDto request)

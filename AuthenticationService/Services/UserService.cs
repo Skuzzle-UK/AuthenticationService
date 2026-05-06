@@ -3,6 +3,12 @@ using Microsoft.AspNetCore.Identity;
 
 namespace AuthenticationService.Services;
 
+/// <summary>
+/// Default <see cref="IUserService"/>. Most methods are direct pass-throughs to
+/// <see cref="UserManager{User}"/>; <see cref="InvalidateUserTokensAsync"/> is the
+/// non-trivial one — it composes the security-stamp rotation, refresh-token revoke, and
+/// access-token revoke into a single "log this user out everywhere" operation.
+/// </summary>
 public class UserService : IUserService
 {
     private readonly UserManager<User> _userManager;

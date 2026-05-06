@@ -5,11 +5,12 @@ using Microsoft.Extensions.Options;
 namespace AuthenticationService.Services.Hosted;
 
 /// <summary>
-/// Background service that enforces retention policies. Periodically prunes:
+/// Background sweep that deletes old rows so the database doesn't grow forever. Runs on a
+/// timer (interval is configurable) and prunes:
 /// <list type="bullet">
-///   <item><description><c>AccessRecords</c> past their TTL (security event log retention).</description></item>
-///   <item><description><c>RevokedTokens</c> past their natural expiry (deny-list rows the underlying token can no longer pass lifetime validation against).</description></item>
-///   <item><description><c>RefreshTokens</c> past their natural expiry (consumed or otherwise, can no longer be rotated).</description></item>
+///   <item><description><c>AccessRecords</c> older than the configured retention window.</description></item>
+///   <item><description><c>RevokedTokens</c> whose underlying token would already have expired naturally — keeping them on the deny-list past that point adds no value.</description></item>
+///   <item><description><c>RefreshTokens</c> whose expiry has passed — they couldn't be used to refresh anyway.</description></item>
 /// </list>
 /// </summary>
 public class DataRetentionService : BackgroundService

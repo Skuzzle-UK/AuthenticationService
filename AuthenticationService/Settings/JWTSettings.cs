@@ -3,6 +3,10 @@ using System.ComponentModel.DataAnnotations;
 
 namespace AuthenticationService.Settings;
 
+/// <summary>
+/// Configuration for JWT signing and validation. Bound from the <c>JWTSettings</c> section
+/// of <c>appsettings.json</c> (or env vars / user-secrets in dev / a secret store in prod).
+/// </summary>
 public class JWTSettings
 {
     /// <summary>
@@ -28,15 +32,22 @@ public class JWTSettings
     /// </summary>
     public string ActiveKeyId { get; set; } = "auto";
 
+    /// <summary>The <c>iss</c> claim stamped onto issued tokens. Consumers validate against this.</summary>
     [Required]
     public string ValidIssuer { get; set; }
 
+    /// <summary>
+    /// The <c>aud</c> claim stamped onto issued tokens. Every consuming microservice must be
+    /// configured with the same value or its JwtBearer middleware will reject the token.
+    /// </summary>
     [Required]
     public string ValidAudience { get; set; }
 
+    /// <summary>How long an access token is valid for, in minutes. Short by design — the refresh flow rolls fresh ones quickly.</summary>
     [Required]
     public double ExpiryInMinutes { get; set; }
 
+    /// <summary>How long a refresh token is valid for, in days. After this they're pruned by the cleanup sweep.</summary>
     [Required]
     public double RefreshTokenExpiryInDays { get; set; }
 }

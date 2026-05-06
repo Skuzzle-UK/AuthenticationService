@@ -4,6 +4,12 @@ using System.ComponentModel.DataAnnotations;
 
 namespace AuthenticationService.Entities;
 
+/// <summary>
+/// One row per access-token <c>jti</c> that's been revoked before its natural expiry.
+/// Acts as the deny-list <see cref="Middleware.RevokedTokenMiddleware"/> consults on
+/// every request. Rows are pruned by <c>DataRetentionService</c> once the underlying
+/// token's own expiry has passed (the JwtBearer expiry check would reject it anyway).
+/// </summary>
 public class RevokedToken
 {
     [Required]

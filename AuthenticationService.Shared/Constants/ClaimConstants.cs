@@ -7,7 +7,7 @@
 public static class ClaimConstants
 {
     /// <summary>
-    /// Subject. Whoe the token is about. Stable user ID. Standard JWT claim.
+    /// Subject — who the token is about. The user's stable id. Standard JWT claim.
     /// </summary>
     public const string Sub = "sub";
 

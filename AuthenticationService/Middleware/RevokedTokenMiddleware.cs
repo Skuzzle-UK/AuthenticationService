@@ -5,6 +5,13 @@ using Microsoft.Net.Http.Headers;
 
 namespace AuthenticationService.Middleware;
 
+/// <summary>
+/// Rejects access tokens that were valid when issued but have since been revoked
+/// (logout, password change, refresh-token theft, etc.). Sits between JwtBearer's
+/// signature/expiry check and the controller — JwtBearer says "this token is properly
+/// signed and not expired", we add "...and we haven't blacklisted it." Replays of
+/// revoked tokens are recorded for SIEM forwarding.
+/// </summary>
 public class RevokedTokenMiddleware
 {
     private readonly RequestDelegate _next;

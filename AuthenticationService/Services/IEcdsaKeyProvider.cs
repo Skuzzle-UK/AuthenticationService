@@ -2,25 +2,29 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace AuthenticationService.Services;
 
+/// <summary>
+/// Holds the ES256 signing keys the service uses to sign and validate JWTs. Exposes one
+/// "active" key for signing new tokens and the full set of public keys for validation,
+/// so tokens issued by older keys still validate during a rotation overlap window.
+/// </summary>
 public interface IEcdsaKeyProvider
 {
-    /// <summary>Thumbprint of the active signing key.</summary>
+    /// <summary>The <c>kid</c> (RFC 7638 thumbprint) of the key currently being used to sign new tokens.</summary>
     string KeyId { get; }
 
-    /// <summary>Credentials for signing newly-issued tokens. Always uses the active key.</summary>
+    /// <summary>Signing credentials for newly-issued tokens. Always references the active key.</summary>
     SigningCredentials SigningCredentials { get; }
 
     /// <summary>
-    /// Every loaded public key — active and any other keys present in the directory.
-    /// JwtBearer uses the full set for validation so tokens signed by any present key
-    /// (e.g. just-rotated-out predecessors) still validate during the overlap window.
+    /// Every public key currently loaded — the active one plus any predecessors still being
+    /// honoured. JwtBearer uses the whole list to validate, so a token signed by a
+    /// just-rotated-out key still verifies until it's explicitly removed.
     /// </summary>
     IReadOnlyList<SecurityKey> PublicSecurityKeys { get; }
 
     /// <summary>
-    /// JWK representation of every loaded key. The <c>/.well-known/jwks.json</c> endpoint
-    /// returns this list verbatim so consumers can validate against any active or
-    /// recently-rotated-out key.
+    /// Same set of public keys but as JWKs — what <c>/.well-known/jwks.json</c> serves to
+    /// consumers so they can validate tokens signed by any active or recently-rotated-out key.
     /// </summary>
     IReadOnlyList<JsonWebKey> PublicJsonWebKeys { get; }
 }

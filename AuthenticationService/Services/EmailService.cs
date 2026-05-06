@@ -5,6 +5,11 @@ using System.Net;
 
 namespace AuthenticationService.Services;
 
+/// <summary>
+/// SMTP-backed implementation of <see cref="IEmailService"/>. Reads server config from
+/// <see cref="EmailServerSettings"/>, sends HTML emails over TLS, logs success and
+/// rethrows on failure so the caller can react.
+/// </summary>
 public class EmailService : IEmailService
 {
     private readonly EmailServerSettings _settings;

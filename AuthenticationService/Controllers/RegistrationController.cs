@@ -38,10 +38,9 @@ public class RegistrationController : ControllerBase
     }
 
     /// <summary>
-    /// Registration endpoint for new users. Step 1 of the registration process.
+    /// Creates a new user account and emails them a confirmation link. The account exists
+    /// after this call but can't log in until the email link is clicked.
     /// </summary>
-    /// <param name="request">Should be of type RegistrationDto</param>
-    /// <returns>Created response if all has gone well</returns>
     [HttpPost("register")]
     [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
     public async Task<IActionResult> RegisterUserAsync([FromBody] RegistrationDto request)
@@ -98,8 +97,9 @@ public class RegistrationController : ControllerBase
     }
 
     /// <summary>
-    /// Endpoint for users to confirm their email address. Step 2 of the registration process.
-    /// Usually reached from email link sent in step 1.
+    /// Lands here when the user clicks the confirmation link in their registration email.
+    /// Marks the email as confirmed and rotates the user's security stamp so the link
+    /// can't be reused.
     /// </summary>
     /// <param name="email">Requires valid email address</param>
     /// <param name="token">Token generated and sent to email in step 1</param>
@@ -138,10 +138,10 @@ public class RegistrationController : ControllerBase
     }
 
     /// <summary>
-    /// Resends the email confirmation email.
+    /// Resends the email-confirmation link if the user lost the original (e.g. it landed
+    /// in spam). Returns 200 even when the email isn't recognised — we don't leak which
+    /// addresses are registered.
     /// </summary>
-    /// <param name="request">ResendConfirmEmailAsync</param>
-    /// <returns>ApiResponse</returns>
     [HttpPost("confirm/email")]
     [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
     public async Task<IActionResult> ResendConfirmEmailAsync([FromBody] ResendEmailConfirmationDto request)

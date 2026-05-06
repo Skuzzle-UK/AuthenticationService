@@ -2,6 +2,11 @@
 
 namespace AuthenticationService.Validators;
 
+/// <summary>
+/// Plugged into Identity's password-validator chain to reject passwords that match the
+/// user's own username or email — a common dictionary-attack starting point. Identity's
+/// built-in length / complexity rules still apply on top.
+/// </summary>
 public class CustomPasswordValidator<TUser> : IPasswordValidator<TUser> where TUser : class
 {
     public async Task<IdentityResult> ValidateAsync(UserManager<TUser> manager, TUser user, string? password)

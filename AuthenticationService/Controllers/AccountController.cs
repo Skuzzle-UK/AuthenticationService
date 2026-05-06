@@ -38,8 +38,9 @@ public class AccountController : ControllerBase
     }
 
     /// <summary>
-    /// Endpoint to enable 2FA for a user. This endpoint should be called after the user has logged in and is setting up 2FA for the first time.
-    /// Requires a valid auth token to reach this endpoint which should be gained from the AuthenticateAsync endpoint.
+    /// Starts MFA enrolment for the logged-in user. Returns the shared secret and a QR code
+    /// the user can scan into an authenticator app, or the verification details for the
+    /// chosen non-app provider (e.g. email).
     /// </summary>
     /// <param name="request">EnableMfaRequest</param>
     /// <returns>EnableMfaResponse which contains a valid QrCode if requesting to use authenticator app</returns>
@@ -107,10 +108,10 @@ public class AccountController : ControllerBase
     }
 
     /// <summary>
-    /// Endpoint to initiate the forgot password process. Generates a password reset token and sends an email with the reset link.
+    /// Kicks off the "I forgot my password" flow. Sends an email with a single-use reset
+    /// link. Returns 200 even when the email isn't recognised — we don't leak which
+    /// addresses are registered.
     /// </summary>
-    /// <param name="request">ForgotPasswordDto type</param>
-    /// <returns>ApiResponse indicating the result of the operation</returns>
     [HttpPost("forgotpassword")]
     [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
     public async Task<IActionResult> ForgotPasswordAsync([FromBody] ForgotPasswordDto request)
@@ -146,10 +147,9 @@ public class AccountController : ControllerBase
     }
 
     /// <summary>
-    /// Endpoint to reset the user's password using the provided token when forgotten.
+    /// Sets a new password using the single-use token from a forgot-password email. Also
+    /// clears any active lockout — this endpoint doubles as the account-recovery path.
     /// </summary>
-    /// <param name="request">ResetForgottenPasswordDto type</param>
-    /// <returns>ApiResponse indicating the result of the operation</returns>
     [HttpPost("forgotpassword/reset")]
     [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
     public async Task<IActionResult> ResetForgottenPasswordAsync([FromBody] ResetForgottenPasswordDto request)
@@ -200,10 +200,10 @@ public class AccountController : ControllerBase
     }
 
     /// <summary>
-    /// Endpoint to change the user's password.
+    /// Changes the logged-in user's password. The user is identified from the token's
+    /// <c>sub</c> claim — a user can never change anyone else's password through here, even
+    /// if they pass a different email in the request body.
     /// </summary>
-    /// <param name="request">ChangePasswordDto type</param>
-    /// <returns>ApiResponse indicating the result of the operation</returns>
     [HttpPost("changepassword")]
     [Authorize]
     [EnableRateLimiting(RateLimitPolicies.AuthSensitive)]
@@ -265,10 +265,9 @@ public class AccountController : ControllerBase
     }
 
     /// <summary>
-    /// Enables user to follow email link to lock out an account if password was changed without user consent
+    /// "Wasn't me!" — the link in the password-changed email lands here. Locks the account
+    /// and sends the real owner a password-reset email so they can recover it.
     /// </summary>
-    /// <param name="request">LockAccountDto</param>
-    /// <returns>ApiResponse</returns>
     [HttpPost("lock")]
     [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
     public async Task<IActionResult> LockAccountAsync(LockAccountDto request)

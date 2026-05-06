@@ -16,6 +16,12 @@ using System.Text;
 
 namespace AuthenticationService.Services;
 
+/// <summary>
+/// The default <see cref="ITokenService"/>. Owns everything to do with JWT lifecycle —
+/// signing access tokens, hashing and tracking refresh tokens, the rotate-with-reuse-detection
+/// refresh flow, the revoked-token deny-list, and the access-attempt audit trail. Sees
+/// the database directly via <see cref="DatabaseContext"/>; doesn't go through Identity.
+/// </summary>
 public class JWTService : ITokenService
 {
     private readonly JWTSettings _jwtSettings;
