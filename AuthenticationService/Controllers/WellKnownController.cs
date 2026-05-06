@@ -62,8 +62,6 @@ public class WellKnownController : ControllerBase
             issuer,
             jwks_uri = jwksUri,
             id_token_signing_alg_values_supported = new[] { SecurityAlgorithms.EcdsaSha256 },
-            response_types_supported = new[] { "token" },
-            subject_types_supported = new[] { "public" },
         });
     }
 }

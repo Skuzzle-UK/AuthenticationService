@@ -259,17 +259,26 @@ up cold.
 
 ## Standards / interop
 
-- [ ] **`OpenIdConfiguration` advertises capabilities the service doesn't have.**
+- [x] ~~**`OpenIdConfiguration` advertises capabilities the service doesn't have.**
   [WellKnownController.cs:65](AuthenticationService/Controllers/WellKnownController.cs:65)
   declares `response_types_supported = ["token"]` without an `/authorize` or `/token`
   endpoint. Either implement OAuth2 / OIDC properly (preferred long-term — switch to
   Duende IdentityServer or OpenIddict) or trim the discovery doc to the minimum JwtBearer
-  needs (`issuer`, `jwks_uri`, `id_token_signing_alg_values_supported`).
+  needs (`issuer`, `jwks_uri`, `id_token_signing_alg_values_supported`).~~ Done — trimmed to
+  the three fields JwtBearer actually consumes. `response_types_supported` and
+  `subject_types_supported` removed. If a full OIDC surface is needed in future, switch to
+  Duende IdentityServer or OpenIddict rather than re-extending this doc.
 
-- [ ] **`kid` is not the RFC 7638 JWK thumbprint.**
+- [x] ~~**`kid` is not the RFC 7638 JWK thumbprint.**
   [EcdsaKeyProvider.ComputeThumbprint](AuthenticationService/Services/EcdsaKeyProvider.cs:89)
   computes `SHA256(X || Y)`. Replace with the canonical-JSON form: `SHA256(`
-  `{"crv":"P-256","kty":"EC","x":"<x>","y":"<y>"}` `)` with members in lexical order.
+  `{"crv":"P-256","kty":"EC","x":"<x>","y":"<y>"}` `)` with members in lexical order.~~ Done
+  — `LoadedKey.FromPemFile` now builds the JWK first then derives `kid` via
+  `JsonWebKey.ComputeJwkThumbprint()` (the framework's RFC 7638 implementation), avoiding any
+  hand-rolled canonicalisation. The bespoke `ComputeThumbprint` helper is gone. **Note:** this
+  changes the `kid` value emitted for every key, so any existing dev keys produce a new `kid`
+  on next startup. Operators with `JWTSettings:ActiveKeyId` pinned to an explicit thumbprint
+  must recompute and update it; `"auto"` callers are unaffected.
 
 - [x] ~~**Issued JWTs lack `sub`.**
   [JWTService.GetClaims](AuthenticationService/Services/JWTService.cs:199-213) emits only
@@ -305,12 +314,21 @@ up cold.
   every access (not just revoked-token attempts) or drop the column and rename the table to
   `RevokedTokenAccessAttempts`.
 
-- [ ] **Rate-limiter is one global partition.**
+- [x] ~~**Rate-limiter is one global partition.**
   [HostExtensions.AddRateLimiting](AuthenticationService/Extensions/HostExtensions.cs:167) —
   4 req / 10s. Tighten on `/authenticate`, `/forgotpassword`, `/forgotpassword/reset`, `/mfa`,
   and `/lock`; relax on `/me`-style reads. Use named policies +
   `[EnableRateLimiting("auth-strict")]` per endpoint. (`/forgotpassword` is now also the
-  unlock path post-merge, so the per-email partition matters more than it used to.)
+  unlock path post-merge, so the per-email partition matters more than it used to.)~~ Done
+  — two named policies in `Constants/RateLimitPolicies.cs` registered alongside the global
+  default. `AuthStrict` (10/min per IP) tags `authenticate`, `mfa`, `forgotpassword`,
+  `forgotpassword/reset`, `lock`, `register`, `confirm/email` (resend) — credential-stuffing
+  defense at the per-IP layer that doesn't rely on the user being authenticated. `AuthSensitive`
+  (10/min per user) tags `changepassword` and `enablemfa` — tighter than the global default
+  for authenticated state-changing endpoints. Global limiter (4/10s) still applies to
+  everything as a backstop; named policies stack on top, most-restrictive wins. Health
+  endpoints unchanged at their permissive 30/10s. `/refresh`, `/logout`, `/logoutall` left on
+  global default — frequent legitimate use, the per-user 4/10s is fine.
 
 - [ ] **`LockoutEnd = UtcNow.AddYears(100)`** in
   [AccountController.LockAccountAsync](AuthenticationService/Controllers/AccountController.cs:255).

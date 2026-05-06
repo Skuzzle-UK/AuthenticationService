@@ -10,6 +10,7 @@ using AuthenticationService.Shared.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AuthenticationService.Controllers;
 
@@ -40,6 +41,7 @@ public class AuthenticationController : ControllerBase
     /// <param name="request">AuthenticationDto type</param>
     /// <returns>AuthenticationResult with token if not using 2FA or 2FA method used if using 2FA</returns>
     [HttpPost("authenticate")]
+    [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
     public async Task<IActionResult> AuthenticateAsync([FromBody] AuthenticationDto request)
     {
         var user = await _userService.FindByEmailAsync(request.Email!);
@@ -150,6 +152,7 @@ public class AuthenticationController : ControllerBase
     /// <param name="request">MfaAuthenticationDto</param>
     /// <returns>AuthenticationResponse with valid token if successful</returns>
     [HttpPost("mfa")]
+    [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
     public async Task<IActionResult> MfaAuthenticateAsync([FromBody] MfaAuthenticationDto request)
     {
         var user = await _userService.FindByEmailAsync(request.Email!);

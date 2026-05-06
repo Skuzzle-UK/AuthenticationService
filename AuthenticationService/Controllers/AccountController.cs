@@ -8,6 +8,7 @@ using AuthenticationService.Shared.Dtos.Response;
 using AuthenticationService.Shared.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
 using System.Text;
 
@@ -44,6 +45,7 @@ public class AccountController : ControllerBase
     /// <returns>EnableMfaResponse which contains a valid QrCode if requesting to use authenticator app</returns>
     [HttpGet("enablemfa")]
     [Authorize]
+    [EnableRateLimiting(RateLimitPolicies.AuthSensitive)]
     public async Task<IActionResult> EnableMfaAsync(EnableMfaRequest request)
     {
         var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
@@ -110,6 +112,7 @@ public class AccountController : ControllerBase
     /// <param name="request">ForgotPasswordDto type</param>
     /// <returns>ApiResponse indicating the result of the operation</returns>
     [HttpPost("forgotpassword")]
+    [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
     public async Task<IActionResult> ForgotPasswordAsync([FromBody] ForgotPasswordDto request)
     {
         var user = await _userService.FindByEmailAsync(request.Email!);
@@ -148,6 +151,7 @@ public class AccountController : ControllerBase
     /// <param name="request">ResetForgottenPasswordDto type</param>
     /// <returns>ApiResponse indicating the result of the operation</returns>
     [HttpPost("forgotpassword/reset")]
+    [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
     public async Task<IActionResult> ResetForgottenPasswordAsync([FromBody] ResetForgottenPasswordDto request)
     {
         var user = await _userService.FindByEmailAsync(request.Email!);
@@ -202,6 +206,7 @@ public class AccountController : ControllerBase
     /// <returns>ApiResponse indicating the result of the operation</returns>
     [HttpPost("changepassword")]
     [Authorize]
+    [EnableRateLimiting(RateLimitPolicies.AuthSensitive)]
     public async Task<IActionResult> ChangePasswordAsync([FromBody] ChangePasswordDto request)
     {
         var sub = User.FindFirst("sub")?.Value;
@@ -265,6 +270,7 @@ public class AccountController : ControllerBase
     /// <param name="request">LockAccountDto</param>
     /// <returns>ApiResponse</returns>
     [HttpPost("lock")]
+    [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
     public async Task<IActionResult> LockAccountAsync(LockAccountDto request)
     {
         var user = await _userService.FindByEmailAsync(request.Email!);

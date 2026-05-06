@@ -1,4 +1,5 @@
-﻿using AuthenticationService.Entities;
+﻿using AuthenticationService.Constants;
+using AuthenticationService.Entities;
 using AuthenticationService.Services;
 using AuthenticationService.Services.HealthChecks;
 using AuthenticationService.Services.Hosted;
@@ -337,6 +338,9 @@ public static class HostExtensions
     public static IServiceCollection AddRateLimiting(this IServiceCollection services) =>
             services.AddRateLimiter(opt =>
             {
+                // Global limiter applies to every request and acts as the catch-all default.
+                // Endpoints with a stricter named policy attached are subject to BOTH limiters
+                // (most-restrictive wins).
                 opt.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
                 {
                     // Health-check endpoints get a permissive bucket — orchestrator + monitoring
@@ -358,17 +362,57 @@ public static class HostExtensions
                             });
                     }
 
-                    // Will check token for name first and then IP address, finally fallback to "anonymous" to decide if same user.
-                    var userId = context.User?.FindFirst(ClaimConstants.Sub)?.Value ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+                    // Default partition: per-user once authenticated, per-IP otherwise.
+                    var userId = context.User?.FindFirst(ClaimConstants.Sub)?.Value
+                                 ?? context.Connection.RemoteIpAddress?.ToString()
+                                 ?? "anonymous";
+
                     return RateLimitPartition.GetFixedWindowLimiter(
-                    partitionKey: userId,
-                    factory: _ => new FixedWindowRateLimiterOptions
-                    {
-                        Window = TimeSpan.FromSeconds(10),
-                        PermitLimit = 4,
-                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                        QueueLimit = 2
-                    });
+                        partitionKey: userId,
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            Window = TimeSpan.FromSeconds(10),
+                            PermitLimit = 4,
+                            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                            QueueLimit = 2
+                        });
                 });
+
+                // Strict per-IP cap for unauthenticated credential/link endpoints.
+                // 10/minute leaves headroom for shared NAT (corporate / family) but pins
+                // automated credential stuffing well below useful throughput.
+                opt.AddPolicy(RateLimitPolicies.AuthStrict, context =>
+                {
+                    var ip = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+                    return RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey: $"auth-strict:{ip}",
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            Window = TimeSpan.FromMinutes(1),
+                            PermitLimit = 10,
+                            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                            QueueLimit = 0
+                        });
+                });
+
+                // Per-user cap for authenticated state-changing endpoints.
+                opt.AddPolicy(RateLimitPolicies.AuthSensitive, context =>
+                {
+                    var key = context.User?.FindFirst(ClaimConstants.Sub)?.Value
+                              ?? context.Connection.RemoteIpAddress?.ToString()
+                              ?? "anonymous";
+                    return RateLimitPartition.GetFixedWindowLimiter(
+                        partitionKey: $"auth-sensitive:{key}",
+                        factory: _ => new FixedWindowRateLimiterOptions
+                        {
+                            Window = TimeSpan.FromMinutes(1),
+                            PermitLimit = 10,
+                            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                            QueueLimit = 0
+                        });
+                });
+
+                // Reject with 429 and a hint, rather than letting requests pile up silently.
+                opt.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             });
 }

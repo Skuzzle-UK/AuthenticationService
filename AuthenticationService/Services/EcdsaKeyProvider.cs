@@ -124,15 +124,6 @@ public sealed class EcdsaKeyProvider : IEcdsaKeyProvider, IDisposable
         return match;
     }
 
-    private static string ComputeThumbprint(ECParameters parameters)
-    {
-        var raw = new byte[parameters.Q.X!.Length + parameters.Q.Y!.Length];
-        Buffer.BlockCopy(parameters.Q.X, 0, raw, 0, parameters.Q.X.Length);
-        Buffer.BlockCopy(parameters.Q.Y, 0, raw, parameters.Q.X.Length, parameters.Q.Y.Length);
-        var hash = SHA256.HashData(raw);
-        return Base64UrlEncoder.Encode(hash);
-    }
-
     private sealed class LoadedKey : IDisposable
     {
         public required ECDsa Ecdsa { get; init; }
@@ -148,11 +139,6 @@ public sealed class EcdsaKeyProvider : IEcdsaKeyProvider, IDisposable
             ecdsa.ImportFromPem(pem);
 
             var parameters = ecdsa.ExportParameters(includePrivateParameters: false);
-            var keyId = ComputeThumbprint(parameters);
-
-            var publicEcdsa = ECDsa.Create();
-            publicEcdsa.ImportParameters(parameters);
-            var publicKey = new ECDsaSecurityKey(publicEcdsa) { KeyId = keyId };
 
             var jwk = new JsonWebKey
             {
@@ -162,8 +148,14 @@ public sealed class EcdsaKeyProvider : IEcdsaKeyProvider, IDisposable
                 Y = Base64UrlEncoder.Encode(parameters.Q.Y),
                 Use = "sig",
                 Alg = SecurityAlgorithms.EcdsaSha256,
-                Kid = keyId,
             };
+
+            var keyId = Base64UrlEncoder.Encode(jwk.ComputeJwkThumbprint());
+            jwk.Kid = keyId;
+
+            var publicEcdsa = ECDsa.Create();
+            publicEcdsa.ImportParameters(parameters);
+            var publicKey = new ECDsaSecurityKey(publicEcdsa) { KeyId = keyId };
 
             return new LoadedKey
             {

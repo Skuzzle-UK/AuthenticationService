@@ -8,6 +8,7 @@ using AuthenticationService.Shared.Dtos.Response;
 using AuthenticationService.Storage;
 using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
 
 namespace AuthenticationService.Controllers;
@@ -42,6 +43,7 @@ public class RegistrationController : ControllerBase
     /// <param name="request">Should be of type RegistrationDto</param>
     /// <returns>Created response if all has gone well</returns>
     [HttpPost("register")]
+    [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
     public async Task<IActionResult> RegisterUserAsync([FromBody] RegistrationDto request)
     {
         if (request is null)
@@ -141,6 +143,7 @@ public class RegistrationController : ControllerBase
     /// <param name="request">ResendConfirmEmailAsync</param>
     /// <returns>ApiResponse</returns>
     [HttpPost("confirm/email")]
+    [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
     public async Task<IActionResult> ResendConfirmEmailAsync([FromBody] ResendEmailConfirmationDto request)
     {
         var user = await _userService.FindByEmailAsync(request.Email!);
