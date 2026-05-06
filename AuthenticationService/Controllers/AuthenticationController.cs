@@ -19,17 +19,20 @@ namespace AuthenticationService.Controllers;
 public class AuthenticationController : ControllerBase
 {
     private readonly IEmailService _emailService;
+    private readonly ISmsService _smsService;
     private readonly ITokenService _tokenService;
     private readonly IUserService _userService;
     private readonly ILogger<AuthenticationController> _logger;
 
     public AuthenticationController(
         IEmailService emailService,
+        ISmsService smsService,
         ITokenService tokenService,
         IUserService userService,
         ILogger<AuthenticationController> logger)
     {
         _emailService = emailService;
+        _smsService = smsService;
         _tokenService = tokenService;
         _userService = userService;
         _logger = logger;
@@ -106,14 +109,24 @@ public class AuthenticationController : ControllerBase
             switch (request.MfaProvider)
             {
                 case MfaProviders.Email:
-                    var mfaToken = await _userService.GenerateMfaTokenAsync(user, TokenOptions.DefaultEmailProvider);
+                    var emailMfaToken = await _userService.GenerateMfaTokenAsync(user, TokenOptions.DefaultEmailProvider);
                     await _emailService.SendEmailAsync(
                         user.Email!,
                         EmailSubjects.MfaAuthenticationToken,
-                        $"Your token is: {mfaToken}");
+                        $"Your token is: {emailMfaToken}");
                     break;
                 case MfaProviders.Phone:
-                    return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.PhoneMfaNotSupported));
+                    if (!_smsService.IsConfigured)
+                    {
+                        return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.PhoneMfaNotConfigured));
+                    }
+                    if (string.IsNullOrEmpty(user.PhoneNumber) || !user.PhoneNumberConfirmed)
+                    {
+                        return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.PhoneNumberNotConfirmed));
+                    }
+                    var smsMfaToken = await _userService.GenerateMfaTokenAsync(user, TokenOptions.DefaultPhoneProvider);
+                    await _smsService.SendAsync(user.PhoneNumber, $"Your authentication code is: {smsMfaToken}");
+                    break;
                 case MfaProviders.Authenticator:
                     break;
             }

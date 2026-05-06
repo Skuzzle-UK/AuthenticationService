@@ -21,17 +21,20 @@ namespace AuthenticationService.Controllers;
 public class AccountController : ControllerBase
 {
     private readonly IEmailService _emailService;
+    private readonly ISmsService _smsService;
     private readonly ITokenService _tokenService;
     private readonly IUserService _userService;
     private readonly ILogger<AccountController> _logger;
 
     public AccountController(
         IEmailService emailService,
+        ISmsService smsService,
         ITokenService tokenService,
         IUserService userService,
         ILogger<AccountController> logger)
     {
         _emailService = emailService;
+        _smsService = smsService;
         _tokenService = tokenService;
         _userService = userService;
         _logger = logger;
@@ -144,8 +147,19 @@ public class AccountController : ControllerBase
                 response = new EnableMfaResponse(MfaProviders.Email);
                 break;
             case MfaProviders.Phone:
-                await _userService.SetMfaEnabledAsync(user, currentMfaStatus);
-                return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.PhoneMfaNotSupported));
+                if (!_smsService.IsConfigured)
+                {
+                    // The user picked a provider this deployment can't actually deliver to.
+                    await _userService.SetMfaEnabledAsync(user, currentMfaStatus);
+                    return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.PhoneMfaNotConfigured));
+                }
+                if (string.IsNullOrEmpty(user.PhoneNumber) || !user.PhoneNumberConfirmed)
+                {
+                    await _userService.SetMfaEnabledAsync(user, currentMfaStatus);
+                    return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.PhoneNumberNotConfirmed));
+                }
+                response = new EnableMfaResponse(MfaProviders.Phone);
+                break;
             case MfaProviders.Authenticator:
                 response = new EnableMfaResponse(
                     MfaProviders.Authenticator,

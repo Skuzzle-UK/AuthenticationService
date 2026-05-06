@@ -111,7 +111,11 @@ public static class HostExtensions
             .AddSingleton<IEcdsaKeyProvider, EcdsaKeyProvider>()
             .AddScoped<ITokenService, JWTService>()
             .AddScoped<IUserService, UserService>()
-            .AddSingleton<IEmailService, EmailService>();
+            .AddSingleton<IEmailService, EmailService>()
+            // TODO: Replace this with a real ISmsService implementation (Twilio, AWS SNS, etc.)
+            // to enable phone MFA. SmsService reports IsConfigured = false so
+            // the MFA endpoints return a clean BadRequest until a provider is wired.
+            .AddSingleton<ISmsService, SmsService>();
 
     public static IServiceCollection AddHostedServices(this IServiceCollection services) =>
         services

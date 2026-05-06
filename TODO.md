@@ -360,11 +360,20 @@ up cold.
   arithmetic risks `DateTime` overflow on quirky host clocks.~~ Done — using
   `DateTimeOffset.MaxValue`.
 
-- [ ] **Phone MFA is half-built.**
+- [x] ~~**Phone MFA is half-built.**
   [AuthenticationController.cs:84](AuthenticationService/Controllers/AuthenticationController.cs:84)
   and [AccountController.cs:84](AuthenticationService/Controllers/AccountController.cs:84)
   return BadRequest "PhoneMfaNotSupported". Either implement (SMS provider integration) or
-  remove the enum value so it can't be selected.
+  remove the enum value so it can't be selected.~~ Done — landed the wiring stub:
+  `ISmsService` interface + `NotConfiguredSmsService` default registration in
+  `HostExtensions.AddServices`. The Phone case in both controllers (`AuthenticateAsync`,
+  `EnableMfaAsync`) checks `_smsService.IsConfigured` and `user.PhoneNumberConfirmed`
+  before sending; failures return clear `PhoneMfaNotConfigured` / `PhoneNumberNotConfirmed`
+  errors. Identity's built-in `TokenOptions.DefaultPhoneProvider` handles token gen/verify.
+  When a real provider arrives (Twilio, AWS SNS, etc.), implementing `ISmsService` and
+  swapping the registration is a one-line change — controllers don't move. README's "Open
+  items" notes that a phone-number confirmation flow (mirror of email confirmation) also
+  needs building before phone MFA is end-to-end usable.
 
 - [x] ~~**No `/me` introspection endpoint.**
   Useful for consumers debugging "is the token I have actually any good?". Add

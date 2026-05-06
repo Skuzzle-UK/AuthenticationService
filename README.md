@@ -572,7 +572,8 @@ Issued access tokens carry the following claims (consumers can rely on all of th
 
 - **Service-to-service tokens (client credentials).** Currently consumers forward the user's JWT for downstream calls. A "service identity" flow (each service authenticates to get its own token) is on the roadmap but not implemented.
 - **Cross-service revocation latency.** Refresh-token revocation (logout, password change, reuse detection) is instant — the next refresh fails. Access-token revocation has a window equal to the access-token TTL (5 min): the auth service's deny-list catches replays at its own ingress, but other microservices accept tokens until natural `exp`. Acceptable for a 5-min TTL; if instant cross-service revocation is needed, add a token-introspection endpoint or pub/sub.
-- **Threshold escalation on revoked-token replay.** Today a stolen access token replayed against the deny-list returns 401 and writes an `AccessRecord` row, but nothing escalates if the same `jti` is hammered repeatedly. Tracked as a TODO; pairs with the SIEM-forwarding story.
+- **Threshold escalation on revoked-token replay.** Today a stolen access token replayed against the deny-list returns 401 and writes a `RevokedTokenAccessAttempt` row, but nothing escalates if the same `jti` is hammered repeatedly. Tracked as a TODO; pairs with the SIEM-forwarding story.
+- **Phone MFA: SMS provider not configured.** The MFA flow understands `Phone` as an option, but the default `ISmsService` registration (`NotConfiguredSmsService`) reports `IsConfigured = false` and the endpoints return a clean `BadRequest` if the user picks Phone. To enable it, implement `ISmsService` against your SMS provider (Twilio, AWS SNS, MessageBird, etc.) and replace the registration in `HostExtensions.AddServices` — no controller changes needed. A phone-number confirmation flow (mirror of the email-confirmation flow) also needs building before phone MFA is usable end-to-end.
 
 ---
 
