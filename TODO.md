@@ -311,9 +311,13 @@ up cold.
   `.Wait()`). Make `SeedAdministratorAccount` async and `await` the calls from
   `RuntimeDbSeed` (which can be made `async Task` and awaited at startup).
 
-- [ ] **`Token` class has four constructor overloads** for the same fields
+- [x] ~~**`Token` class has four constructor overloads** for the same fields
   ([Token.cs](AuthenticationService.Shared/Models/Token.cs)). Collapse to one constructor or
-  use an init-only record with required members.
+  use an init-only record with required members.~~ Done — converted to init-only properties
+  with `required` on `Type` and `Value`. Construction is now via object initializer at the
+  one call site in `JWTService`, which makes the field names visible at the call site and
+  removes the positional-order risk. Stayed a `class` rather than going to `record` to
+  avoid record's auto-generated `ToString()` printing the JWT into any log it ends up in.
 
 - [ ] **`AccessRecord.Revoked` is hardcoded `true`.**
   [JWTService.cs:89,119](AuthenticationService/Services/JWTService.cs:89). Either capture
@@ -336,10 +340,11 @@ up cold.
   endpoints unchanged at their permissive 30/10s. `/refresh`, `/logout`, `/logoutall` left on
   global default — frequent legitimate use, the per-user 4/10s is fine.
 
-- [ ] **`LockoutEnd = UtcNow.AddYears(100)`** in
+- [x] ~~**`LockoutEnd = UtcNow.AddYears(100)`** in
   [AccountController.LockAccountAsync](AuthenticationService/Controllers/AccountController.cs:255).
   Replace with `DateTimeOffset.MaxValue` or a separate `IsHardLocked` flag — far-future
-  arithmetic risks `DateTime` overflow on quirky host clocks.
+  arithmetic risks `DateTime` overflow on quirky host clocks.~~ Done — using
+  `DateTimeOffset.MaxValue`.
 
 - [ ] **Phone MFA is half-built.**
   [AuthenticationController.cs:84](AuthenticationService/Controllers/AuthenticationController.cs:84)
@@ -352,9 +357,12 @@ up cold.
   `GET /api/Account/me` returning the resolved `User` snapshot (without sensitive fields)
   for the bearer.
 
-- [ ] **`UserConstants.Admin = "admin"`** is referenced as a username only by the seeder.
+- [x] ~~**`UserConstants.Admin = "admin"`** is referenced as a username only by the seeder.
   Worth dropping the constant once the seeder is removed (see admin-password TODO above)
-  and using `AdminAccountSeedSettings.UserName` instead.
+  and using `AdminAccountSeedSettings.UserName` instead.~~ Won't fix — the seeder isn't
+  going away. Dev still gets a default admin via the seeder for "Just Works" first-run; prod
+  uses the same seeder with the password pulled from env var / secret store. The constant
+  is still actively consumed, so it's not dead code.
 
 ---
 

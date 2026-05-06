@@ -286,7 +286,7 @@ public class AccountController : ControllerBase
         await _userService.InvalidateUserTokensAsync(user, Request.GetRemoteIpAddress(), RevocationReasons.AccountLock);
 
         await _userService.SetLockoutEnabledAsync(user, true);
-        await _userService.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
+        await _userService.SetLockoutEndDateAsync(user, DateTimeOffset.MaxValue);
 
         var token = await _userService.GeneratePasswordResetTokenAsync(user);
         var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));

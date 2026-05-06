@@ -67,12 +67,14 @@ public class JWTService : ITokenService
 
         await _context.SaveChangesAsync();
 
-        return new Token(
-            AuthSchemeConstants.Bearer,
-            new JwtSecurityTokenHandler().WriteToken(tokenOptions),
-            tokenOptions.ValidTo,
-            rawRefreshToken,
-            refreshTokenEntity.ExpiresAt);
+        return new Token
+        {
+            Type = AuthSchemeConstants.Bearer,
+            Value = new JwtSecurityTokenHandler().WriteToken(tokenOptions),
+            Expires = tokenOptions.ValidTo,
+            RefreshToken = rawRefreshToken,
+            RefreshTokenExpiresAt = refreshTokenEntity.ExpiresAt,
+        };
     }
 
     public async Task<RefreshResult> RotateRefreshTokenAsync(string accessToken, string rawRefreshToken, string ipAddress)
