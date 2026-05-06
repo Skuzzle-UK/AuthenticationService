@@ -1,5 +1,6 @@
 ﻿using AuthenticationService.Constants;
 using AuthenticationService.Entities;
+using AuthenticationService.Logging;
 using AuthenticationService.Services;
 using AuthenticationService.Services.HealthChecks;
 using AuthenticationService.Services.Hosted;
@@ -16,6 +17,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
+using Serilog.Core;
 using System.Net;
 using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
@@ -125,7 +127,9 @@ public static class HostExtensions
             // TODO: Replace this with a real ISmsService implementation (Twilio, AWS SNS, etc.)
             // to enable phone MFA. SmsService reports IsConfigured = false so
             // the MFA endpoints return a clean BadRequest until a provider is wired.
-            .AddSingleton<ISmsService, SmsService>();
+            .AddSingleton<ISmsService, SmsService>()
+            .AddHttpContextAccessor()
+            .AddSingleton<ILogEventEnricher, HttpContextLogEnricher>();
 
     public static IServiceCollection AddHostedServices(this IServiceCollection services) =>
         services

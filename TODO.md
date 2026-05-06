@@ -113,7 +113,7 @@ up cold.
   Warning, 4005 Critical. README has a dedicated §9a section explaining the worker plus
   config reference and SIEM detection rule.
 
-- [ ] **Behavioural anomaly detection on token use (defer to SIEM, do not build inline).**
+- [x] ~~**Behavioural anomaly detection on token use (defer to SIEM, do not build inline).**
   Real-world token-theft detection looks for: same `jti` used from geographically impossible
   IPs within minutes (impossible travel), sudden user-agent change, token used from an IP
   block on a known-bad list, etc. This is product territory — Auth0 / Okta / Entra Identity
@@ -122,7 +122,15 @@ up cold.
   structured security events emitted by the threshold escalator above to the platform's
   existing SIEM / fraud-detection team and let their rules engine handle it. Flagged here
   so we don't reinvent it; **the implementation work is "wire up a log sink", not "build
-  detection."**
+  detection."**~~ Closed as a deliberate non-feature. The auth service emits the structured
+  security-event taxonomy that a SIEM / fraud-detection team needs to write rules against;
+  detection itself is the SIEM team's domain because it requires continuously-updated
+  threat intel feeds, geo-IP databases, and per-user behavioural baselines that don't fit
+  inside an auth service. To strengthen the SIEM hand-off, added `UserAgent` enrichment via
+  `HttpContextLogEnricher` so behavioural rules ("user's UA shifted from Chrome to curl")
+  have the data they need without code changes per event. Deployment-time work to actually
+  wire logs to a SIEM (Splunk HEC, Sentinel, OTLP, etc.) is in the operator's hands; the
+  README field-shape contract documents what the SIEM will see.
 
 - [x] ~~**No reuse defence on Identity-issued links (`ConfirmEmail`).**
   `LockAccount`, `ChangePassword`, and `ResetForgottenPassword` all call

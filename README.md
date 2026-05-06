@@ -427,6 +427,7 @@ Security events span four numeric ranges:
 
 - `UserId` — always the `sub` claim / `User.Id`. Empty string when the target user doesn't exist (failed login on unknown email).
 - `IpAddress` — caller's IP, post-`UseForwardedHeaders` so it's the real client.
+- `UserAgent` — auto-attached to every log event during an HTTP request via `HttpContextLogEnricher`. Comes from the request's `User-Agent` header verbatim; absent from worker-emitted events (threshold-escalation worker, data-retention sweep) which have no `HttpContext`.
 - `Jti` — access-token jti claim.
 - `FamilyId` — refresh-token family / `sid` claim.
 - `Reason` — `LoginFailureReason` or `RevocationReasons` value.
@@ -434,6 +435,11 @@ Security events span four numeric ranges:
 - `Severity` — `Severity` enum (used on revoked-token replay attempts).
 
 PascalCase, same name = same meaning across every event.
+
+**SIEM rules that benefit from `UserAgent`:**
+- `EventId = 1001` (LoginSucceeded) `GROUP BY UserId` — flag when a user's typical UA shifts (e.g. Chrome → curl, or browser → Python script). Behavioural signal of credential theft or account-sharing.
+- Same `Jti` seen with multiple distinct UAs in a short window — token-sharing or forwarded-credential signal.
+- Login UA vs refresh UA diff for the same `FamilyId` — suggests the refresh token left the original device/browser.
 
 **PII posture:**
 - `UserId` is logged for forensic correlation.
