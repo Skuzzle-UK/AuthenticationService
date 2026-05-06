@@ -296,11 +296,18 @@ up cold.
   to ID-based via `FindByIdAsync(GetUserId(...))`; legacy `GetUserName` / `FindByNameAsync`
   abstractions removed.
 
-- [ ] **`Authority` vs `Issuer` discrepancy is a footgun.**
+- [x] ~~**`Authority` vs `Issuer` discrepancy is a footgun.**
   In dev, `Authority = https://localhost:53217` but `Issuer = https://auth.example.com`.
   README explains it, but a corporate deploy should make these match by terminating TLS at
   a reverse proxy with the canonical hostname. Document the production network expectation
-  alongside the README's "HTTPS / hostname" section.
+  alongside the README's "HTTPS / hostname" section.~~ Done — README §8 now has an
+  "`Authority` and `Issuer` — make them match in production" subsection that frames the
+  two as routing-target vs logical-name, explains why they diverge in dev (no reverse proxy)
+  and converge in prod, names the specific failure mode (`IDX10205: Issuer validation
+  failed`) so an operator googling that error lands here, and tells deployments to
+  terminate TLS at a proxy with the canonical hostname matching `JWTSettings.ValidIssuer`.
+  The consumer-wiring chapter's existing callout box reworded to cross-reference §8 and
+  make the "set both explicitly" rationale concrete.
 
 ---
 

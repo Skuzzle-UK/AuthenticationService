@@ -373,6 +373,19 @@ Production must be HTTPS. Consumers configured with `RequireHttpsMetadata = true
 
 The **public hostname of the auth service is the contract** — this is the `Authority` URL every consuming microservice points at. Pick it deliberately and avoid changing it (e.g. `https://auth.example.com`, not the load-balancer's hostname).
 
+#### `Authority` and `Issuer` — make them match in production
+
+The auth service has two distinct settings that *look* similar:
+
+- **`JWTSettings.ValidIssuer`** — a *logical name* stamped into every token's `iss` claim. Consumers validate `iss` against this string. It's an identity, not an address.
+- **`Authority`** (consumer-side) — the *network URL* where consumers fetch the JWKS / OIDC discovery doc. It's a routing target.
+
+In dev these diverge: `ValidIssuer` is `https://auth.example.com` (a stable logical name), but consumers point `Authority` at `https://localhost:53217` (where the auth service actually runs). The `ExampleConsumer` config explicitly sets *both* `Authority` and `Issuer` so the divergence works — JwtBearer fetches keys from one URL and validates `iss` against the other.
+
+**In production, terminate TLS at a reverse proxy / load balancer with the canonical hostname that matches `JWTSettings.ValidIssuer`.** Once the network URL and the logical issuer are the same string (e.g. both `https://auth.example.com`), JwtBearer's defaults Just Work and consumers no longer need to override `ValidIssuer` separately — they can just set `Authority` and let the issuer be inferred from the discovery doc.
+
+If a consumer's `Authority` and the token's `iss` diverge and the consumer hasn't set an explicit `ValidIssuer`, validation fails with `IDX10205: Issuer validation failed`. That's the symptom of a misconfigured consumer in a deployment that didn't make the two values match — re-check the proxy / DNS so the auth service is reachable at the canonical hostname.
+
 ### 9. Structured logging / SIEM contract
 
 
@@ -455,7 +468,14 @@ Microservices that need to authenticate users by validating tokens issued here u
 }
 ```
 
-> **`Authority` vs `Issuer`:** `Authority` is the URL JwtBearer contacts to fetch the OIDC discovery doc and signing keys. `Issuer` is the string value that must appear in the `iss` claim of every token — it comes from `JWTSettings.ValidIssuer` in the auth service's `appsettings.json`. In production these are typically the same URL, but in development the auth service may advertise a canonical issuer URL (`https://auth.example.com`) while actually running on `https://localhost:53217`. Both fields must be set correctly or token validation will fail.
+> **Why both `Authority` *and* `Issuer`?** They're separate concerns that look like the same URL:
+>
+> - `Authority` is the *network URL* JwtBearer contacts to fetch the OIDC discovery doc and signing keys. It's a routing target.
+> - `Issuer` is the *logical name* that must appear in every token's `iss` claim, sourced from `JWTSettings.ValidIssuer` in the auth service. It's an identity, not an address.
+>
+> In production these are usually the same string (e.g. both `https://auth.example.com` once TLS terminates at a reverse proxy with the canonical hostname). In dev they diverge — the auth service advertises `iss: https://auth.example.com` but actually listens on `https://localhost:53217`, so consumers point `Authority` at the localhost URL while keeping `Issuer` as the canonical name.
+>
+> Setting both explicitly here makes the consumer work in both environments unchanged. If you ever omit `Issuer`, JwtBearer falls back to deriving it from `Authority` — fine in prod where they match, broken in dev where they don't (you'll see `IDX10205: Issuer validation failed`). Production-deployment §8 has the full story under "`Authority` and `Issuer` — make them match in production".
 
 ### 3. Wire it up
 
