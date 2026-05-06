@@ -212,6 +212,18 @@ ASP.NET Core's data-protection key ring is persisted to Redis (required) and opt
 | `Certificate.PfxPath` | (Optional) Path to a PFX file containing the cert + private key used to encrypt the key ring at rest. When absent, keys sit in Redis as readable XML — acceptable on a controlled network during initial rollout, but should be populated before the service is exposed broadly. |
 | `Certificate.PfxPassword` | (Optional) Password for the PFX. |
 
+### `CorsSettings`
+
+Browser-based clients running on a different origin from the auth service need explicit allow-listing.
+
+| Key | Description |
+|---|---|
+| `AllowedOrigins` | List of origins (scheme + host + port, no trailing slash) permitted to call the API. Empty list blocks all cross-origin traffic. Wildcards are not supported — explicit allow-list only. |
+
+The default policy pins HTTP methods to `GET / POST / OPTIONS` and headers to `Authorization / Content-Type / Accept`. `AllowCredentials` is intentionally off because JWT bearer tokens travel in the `Authorization` header, not in cookies — flipping it on would forbid wildcards we already don't allow and add a security trap.
+
+`appsettings.Development.json` ships with permissive defaults for common local-dev frontend ports (`http(s)://localhost:3000`, `:4200`, `:5173`) covering React, Angular, and Vite. Production `appsettings.json` ships empty — operators must explicitly override `CorsSettings:AllowedOrigins` for the platform's front-end origins.
+
 ### `ForwardedHeadersSettings`
 
 Trust list for the `UseForwardedHeaders` middleware. Behind a load balancer / reverse proxy these MUST be populated, otherwise audit IPs and the rate-limiter's IP partition will all be the proxy's IP rather than the real client. Local-dev with no proxy can leave both empty.
@@ -319,6 +331,7 @@ EmailServerSettings__Password=<smtp-secret>
 DataProtectionSettings__Certificate__PfxPath=/run/secrets/data-protection.pfx
 DataProtectionSettings__Certificate__PfxPassword=<from-secret-store>
 ForwardedHeadersSettings__KnownNetworks__0=10.0.0.0/8
+CorsSettings__AllowedOrigins__0=https://app.example.com
 RunMigrationsAtStartup=false
 ```
 

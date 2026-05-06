@@ -197,10 +197,16 @@ up cold.
   path was deliberate, not a bug. README's production-deployment section documents the
   rationale and the pipeline expectation.
 
-- [ ] **CORS is not configured.**
+- [x] ~~**CORS is not configured.**
   Browser-based clients can't call this. Add `services.AddCors(...)` with an explicit
   origin allow-list bound from configuration; apply the policy via `app.UseCors(...)` between
-  `UseRouting` and `UseAuthentication`.
+  `UseRouting` and `UseAuthentication`.~~ Done — `CorsSettings.AllowedOrigins` drives an
+  explicit allow-list (empty = no cross-origin access; fail-closed). Methods pinned to
+  `GET/POST/OPTIONS`, headers to `Authorization/Content-Type/Accept`, `AllowCredentials`
+  off (JWT in header, not cookies). `app.UseCors()` placed before `UseAuthentication` so
+  preflight OPTIONS isn't auth-challenged. `appsettings.Development.json` carries
+  permissive defaults for common dev frontend ports (3000, 4200, 5173); production
+  `appsettings.json` ships with empty list — explicit override required.
 
 - [x] ~~**Structured logging / security events are absent.**
   Two `_logger` calls in the entire codebase. Wire Serilog (or whatever the platform

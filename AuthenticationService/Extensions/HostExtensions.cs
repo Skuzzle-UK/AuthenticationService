@@ -36,6 +36,7 @@ public static class HostExtensions
             services.AddSecurity();
             services.AddDataProtectionConfiguration(context);
             services.AddForwardedHeadersConfiguration(context);
+            services.AddCorsConfiguration(context);
             services.AddHealthChecksConfiguration();
             services.AddServices();
             services.AddHostedServices();
@@ -69,6 +70,11 @@ public static class HostExtensions
 
         services.AddOptions<ForwardedHeadersSettings>()
             .Bind(context.Configuration.GetSection(nameof(ForwardedHeadersSettings)))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<CorsSettings>()
+            .Bind(context.Configuration.GetSection(nameof(CorsSettings)))
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
@@ -246,6 +252,41 @@ public static class HostExtensions
             .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
             .AddDbContextCheck<DatabaseContext>("database", tags: ["ready"])
             .AddCheck<RedisHealthCheck>("redis", tags: ["ready"]);
+
+        return services;
+    }
+
+    /// <summary>
+    /// Configures the default CORS policy from <see cref="CorsSettings"/>. Origins must be
+    /// explicitly allow-listed; an empty <c>AllowedOrigins</c> list yields a default policy
+    /// that blocks all cross-origin traffic. Methods and headers are pinned to what the API
+    /// actually uses; <c>AllowCredentials</c> is intentionally off because JWT bearer tokens
+    /// travel in the Authorization header, not in cookies.
+    public static IServiceCollection AddCorsConfiguration(
+        this IServiceCollection services,
+        HostBuilderContext context)
+    {
+        var settings = context.Configuration
+            .GetSection(nameof(CorsSettings))
+            .Get<CorsSettings>() ?? new CorsSettings();
+
+        services.AddCors(options =>
+        {
+            options.AddDefaultPolicy(builder =>
+            {
+                if (settings.AllowedOrigins.Count == 0)
+                {
+                    // No origins configured — leave the policy empty, which blocks all
+                    // cross-origin traffic. Fail-closed, not fail-open.
+                    return;
+                }
+
+                builder
+                    .WithOrigins([.. settings.AllowedOrigins])
+                    .WithMethods("GET", "POST", "OPTIONS")
+                    .WithHeaders("Authorization", "Content-Type", "Accept");
+            });
+        });
 
         return services;
     }

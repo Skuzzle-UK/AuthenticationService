@@ -51,6 +51,10 @@ public static class WebApplicationExtensions
 
         app.UseHttpsRedirection();
         app.UseStaticFiles();
+
+        // Must run before UseAuthentication
+        app.UseCors();
+
         app.UseApplicationMiddleware();
         app.UseAuthentication();
         app.UseAuthorization();
