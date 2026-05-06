@@ -7,7 +7,8 @@
     <UserSecretsId>91cc10f6-4a39-4677-a724-4ed7b5daca9e</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
 	<GenerateDocumentationFile>true</GenerateDocumentationFile>
-	<NoWarn>$(NoWarn);1591</NoWarn>
+	<!-- 1591: missing XML doc comment. CA1873: avoid potentially expensive logging — pragmatic noise for a service whose log paths aren't on hot loops. Re-enable if a future hot-path warrants source-generated LoggerMessage. -->
+	<NoWarn>$(NoWarn);1591;CA1873</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
