@@ -62,4 +62,6 @@ public static class SecurityEventIds
     public static readonly EventId TokenRevoked = new(4001, nameof(TokenRevoked));
     public static readonly EventId RevokedTokenReplayAttempt = new(4002, nameof(RevokedTokenReplayAttempt));
     public static readonly EventId OrphanedTokenRevoked = new(4003, nameof(OrphanedTokenRevoked));
+    public static readonly EventId RevokedTokenReplayThresholdWarned = new(4004, nameof(RevokedTokenReplayThresholdWarned));
+    public static readonly EventId RevokedTokenReplayThresholdLocked = new(4005, nameof(RevokedTokenReplayThresholdLocked));
 }

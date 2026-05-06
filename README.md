@@ -205,7 +205,27 @@ Controls the `DataRetentionService` background sweep that prunes expired audit +
 | Key | Description |
 |---|---|
 | `CleanupIntervalInHours` | How often the sweep runs. Default 12. |
-| `AccessRecordsTTLInDays` | How long `AccessRecord` audit rows are retained after creation. Default 90. `RevokedTokens` and `RefreshTokens` are pruned by their own natural `ExpiresAt`, no separate TTL. |
+| `RevokedReplayTTLInDays` | How long `RevokedTokenAccessAttempt` audit rows are retained after creation. Default 90. `RevokedTokens` and `RefreshTokens` are pruned by their own natural `ExpiresAt`, no separate TTL. |
+
+### `PublicUrlSettings`
+
+Where this service is publicly reachable. Used by background workers (e.g. the threshold-escalation lock email) to build links — they have no `HttpContext` to derive the URL from.
+
+| Key | Description |
+|---|---|
+| `BaseUrl` | Scheme + host (+ optional port) of the auth service from a user's browser. No trailing slash. Required outside Development; the dev-only default in `appsettings.Development.json` is `https://localhost:53217`. |
+
+### `ThresholdEscalationSettings`
+
+Tuning knobs for the `RevokedTokenReplayEscalationService` background worker. See [§9a — Threshold escalation on revoked-token replay](#9a-threshold-escalation-on-revoked-token-replay) for the full picture.
+
+| Key | Description |
+|---|---|
+| `Enabled` | Master kill switch. Default `true`. |
+| `SweepIntervalInMinutes` | How often the worker scans for replays. Default 1. |
+| `WindowInMinutes` | Sliding-window size for both thresholds. Default 5. |
+| `WarnThreshold` | Replay count that emits a Warning-level SIEM event. Default 2. |
+| `LockThreshold` | Replay count that locks the account + emails the user. Default 5. |
 
 ### `DataProtectionSettings`
 
@@ -401,7 +421,7 @@ Security events span four numeric ranges:
 | 1000s | Authentication | `LoginSucceeded` (1001), `LoginFailed` (1002), `MfaChallengeIssued` (1003), `MfaVerified` (1004), `MfaFailed` (1005), `FailedLoginLockoutTriggered` (1006), `RefreshTokenRotated` (1007), `RefreshTokenReuseDetected` (1008, **Critical**), `LogoutPerDevice` (1009), `LogoutAllDevices` (1010) |
 | 2000s | Registration | `RegistrationCompleted` (2001), `EmailConfirmed` (2002), `EmailConfirmationFailed` (2003) |
 | 3000s | Account management | `PasswordChanged` (3001), `PasswordResetRequested` (3002), `PasswordResetCompleted` (3003), `AccountLockedByUser` (3004), `MfaEnabled` (3005) |
-| 4000s | Token state | `TokenRevoked` (4001), `RevokedTokenReplayAttempt` (4002) |
+| 4000s | Token state | `TokenRevoked` (4001), `RevokedTokenReplayAttempt` (4002), `OrphanedTokenRevoked` (4003), `RevokedTokenReplayThresholdWarned` (4004), `RevokedTokenReplayThresholdLocked` (4005, **Critical**) |
 
 **Field-shape contract:**
 
@@ -421,10 +441,49 @@ PascalCase, same name = same meaning across every event.
 
 **Recommended SIEM detections to wire up first:**
 - `EventId = 1008` (RefreshTokenReuseDetected) — page on every occurrence. High-confidence theft signal.
+- `EventId = 4005` (RevokedTokenReplayThresholdLocked) — page on every occurrence. The threshold-escalation worker has just locked an account because someone hammered with a stolen access token.
 - `EventId = 1002 GROUP BY UserId` with count > N in 60 seconds — credential stuffing against a known user.
 - `EventId = 1002 WHERE UserId IS EMPTY GROUP BY IpAddress` — credential scanning against unknown emails from one source.
 - `EventId = 1006` (FailedLoginLockoutTriggered) — informational, useful to see in dashboards.
-- `EventId = 4002 GROUP BY Jti` with count > 5 — automated replay of a revoked token.
+- `EventId = 4002 GROUP BY Jti` with count > 5 — automated replay of a revoked token (the worker handles this for you, but the SIEM rule is a useful belt-and-braces if the worker is disabled).
+- `EventId = 4004` (RevokedTokenReplayThresholdWarned) — early-warning bug detection. A misbehaving SPA in a retry loop will fire this against a logged-out user; an attacker will progress past it to 4005 quickly.
+
+### 9a. Threshold escalation on revoked-token replay
+
+The `RevokedTokenReplayEscalationService` background worker watches `RevokedTokenAccessAttempts` for sustained replay of already-revoked tokens. Two thresholds, both within a sliding window:
+
+| Threshold | Default | What happens |
+|---|---|---|
+| **Warn** | 2 replays in 5 min | Emits `RevokedTokenReplayThresholdWarned` (4004, Warning). No user-facing impact. Useful for spotting buggy clients in retry loops. |
+| **Lock** | 5 replays in 5 min | Locks the account indefinitely (`LockoutEnd = MaxValue`), revokes every refresh-token family for the user, rotates the security stamp, emails the user a recovery link. Emits `RevokedTokenReplayThresholdLocked` (4005, Critical). |
+
+Idempotency: each escalation level stamps a column on the `RevokedToken` row (`WarnedAt`, `LockedAt`) so it fires once per incident, not once per sweep.
+
+User recovery follows the standard reset-password flow — see [§9b](#9b-lockout--recovery-contract). The lock-notification email includes a ready-made reset link built from `PublicUrlSettings:BaseUrl` + the reset-password route, so the user doesn't need their app's UI to surface a "forgot password" affordance.
+
+**Tuning** (`ThresholdEscalationSettings` in `appsettings.json`):
+
+| Key | Default | Notes |
+|---|---|---|
+| `Enabled` | `true` | Master kill switch. Set to `false` during automated load tests where you'd burn through these thresholds artificially. |
+| `SweepIntervalInMinutes` | 1 | How often the worker scans the audit table. |
+| `WindowInMinutes` | 5 | Sliding-window size used by both thresholds. |
+| `WarnThreshold` | 2 | Replays within window that emit the warn-level SIEM event. |
+| `LockThreshold` | 5 | Replays within window that lock the account. |
+
+Defaults are aggressive on purpose. Loosen them in deployments where retry-on-old-token churn is expected (e.g. integration tests against a single shared user).
+
+### 9b. Lockout & recovery contract
+
+Three different code paths can lock a user out. **All three converge on the same recovery flow** — `/ResetPassword` page → `POST /api/Account/forgotpassword/reset` → on success, `LockoutEnd` is cleared, the failed-attempt counter is reset, every refresh-token family is revoked, and the user is logged in fresh on next sign-in.
+
+| Lock cause | Trigger | How the user finds out | Recovery |
+|---|---|---|---|
+| **Failed-login lockout** | N consecutive bad passwords (Identity's `MaxFailedAccessAttempts`, default 3) | Email: "Account locked due to failed attempts" | User starts `/forgotpassword` themselves → email link → `/ResetPassword` |
+| **Panic-button lock** | User clicks "wasn't me!" link in the password-changed email (`AccountController.LockAccountAsync`) | The lock email tells them what just happened | User clicks the reset link in the *same* email → `/ResetPassword` |
+| **Threshold-escalation lock** (§9a) | Sustained replay of a revoked token | Email: "Suspicious activity, account locked, here's a reset link" | User clicks the link in the lock email → `/ResetPassword` |
+
+Why this matters: the `/ResetPassword` page is generic — it doesn't need to know *why* the user's there, and the controller endpoint behind it (`ResetForgottenPasswordAsync`) clears the lockout regardless of cause. So when a future lockout mechanism is added (e.g. an admin-initiated lock), the recovery story is already wired — emit a reset link in the notification email, point it at `/ResetPassword`, done. **Don't build per-cause recovery pages.**
 
 ### 10. Key rotation (when needed)
 
@@ -592,7 +651,6 @@ Issued access tokens carry the following claims (consumers can rely on all of th
 
 - **Service-to-service tokens (client credentials).** Currently consumers forward the user's JWT for downstream calls. A "service identity" flow (each service authenticates to get its own token) is on the roadmap but not implemented.
 - **Cross-service revocation latency.** Refresh-token revocation (logout, password change, reuse detection) is instant — the next refresh fails. Access-token revocation has a window equal to the access-token TTL (5 min): the auth service's deny-list catches replays at its own ingress, but other microservices accept tokens until natural `exp`. Acceptable for a 5-min TTL; if instant cross-service revocation is needed, add a token-introspection endpoint or pub/sub.
-- **Threshold escalation on revoked-token replay.** Today a stolen access token replayed against the deny-list returns 401 and writes a `RevokedTokenAccessAttempt` row, but nothing escalates if the same `jti` is hammered repeatedly. Tracked as a TODO; pairs with the SIEM-forwarding story.
 - **Phone MFA: SMS provider not configured.** The MFA flow understands `Phone` as an option, but the default `ISmsService` registration (`NotConfiguredSmsService`) reports `IsConfigured = false` and the endpoints return a clean `BadRequest` if the user picks Phone. To enable it, implement `ISmsService` against your SMS provider (Twilio, AWS SNS, MessageBird, etc.) and replace the registration in `HostExtensions.AddServices` — no controller changes needed. A phone-number confirmation flow (mirror of the email-confirmation flow) also needs building before phone MFA is usable end-to-end.
 
 ---

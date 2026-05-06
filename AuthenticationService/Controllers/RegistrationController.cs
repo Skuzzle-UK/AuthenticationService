@@ -2,6 +2,7 @@
 using AuthenticationService.Entities;
 using AuthenticationService.Extensions;
 using AuthenticationService.Services;
+using AuthenticationService.Settings;
 using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
@@ -10,6 +11,7 @@ using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Options;
 
 namespace AuthenticationService.Controllers;
 
@@ -21,6 +23,7 @@ public class RegistrationController : ControllerBase
     private readonly IEmailService _emailService;
     private readonly IMapper _mapper;
     private readonly DatabaseContext _dbContext;
+    private readonly PublicUrlSettings _publicUrlSettings;
     private readonly ILogger<RegistrationController> _logger;
 
     public RegistrationController(
@@ -28,12 +31,14 @@ public class RegistrationController : ControllerBase
         IEmailService emailService,
         IMapper mapper,
         DatabaseContext dbContext,
+        IOptions<PublicUrlSettings> publicUrlSettings,
         ILogger<RegistrationController> logger)
     {
         _userService = userService;
         _emailService = emailService;
         _mapper = mapper;
         _dbContext = dbContext;
+        _publicUrlSettings = publicUrlSettings.Value;
         _logger = logger;
     }
 
@@ -164,9 +169,8 @@ public class RegistrationController : ControllerBase
 
     private async Task SendConfirmEmailAsync(User user, string? callbackUri)
     {
-        var host = $"{Request.Scheme}://{Request.Host}";
         var controllerPath = $"/api/{ControllerContext.ActionDescriptor.ControllerName.ToLower()}";
-        var confirmEmailPath = $"{host}{controllerPath}{ApiRoutes.ConfirmEmail}";
+        var confirmEmailPath = $"{_publicUrlSettings.BaseUrl}{controllerPath}{ApiRoutes.ConfirmEmail}";
 
         var token = await _userService.GenerateEmailConfirmationTokenAsync(user);
 
@@ -174,7 +178,10 @@ public class RegistrationController : ControllerBase
         {
             { UriConstants.Token, token },
             { UriConstants.Email, user.Email! },
-            { UriConstants.CallBackUri, callbackUri ?? $"{Request.Scheme}://{Request.Host}{Request.PathBase}{ApiRoutes.ConfirmEmail}?callbackUri={{Request.Scheme}}://{{Request.Host}}{{Request.PathBase}}{RouteConstants.ActionComplete}" }
+            // After confirmation, redirect the user to the supplied callback if any,
+            // otherwise to the bundled ActionComplete Razor page so something sensible
+            // renders.
+            { UriConstants.CallBackUri, callbackUri ?? $"{_publicUrlSettings.BaseUrl}{RouteConstants.ActionComplete}" }
         };
 
         var confirmEmailUri = QueryHelpers.AddQueryString(confirmEmailPath, confirmEmailParams!);

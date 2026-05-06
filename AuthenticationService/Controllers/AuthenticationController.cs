@@ -2,7 +2,9 @@
 using AuthenticationService.Entities;
 using AuthenticationService.Enums;
 using AuthenticationService.Extensions;
+using AuthenticationService.Helpers;
 using AuthenticationService.Services;
+using AuthenticationService.Settings;
 using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
@@ -11,6 +13,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Options;
+using System.Text;
 
 namespace AuthenticationService.Controllers;
 
@@ -22,6 +27,7 @@ public class AuthenticationController : ControllerBase
     private readonly ISmsService _smsService;
     private readonly ITokenService _tokenService;
     private readonly IUserService _userService;
+    private readonly PublicUrlSettings _publicUrlSettings;
     private readonly ILogger<AuthenticationController> _logger;
 
     public AuthenticationController(
@@ -29,12 +35,14 @@ public class AuthenticationController : ControllerBase
         ISmsService smsService,
         ITokenService tokenService,
         IUserService userService,
+        IOptions<PublicUrlSettings> publicUrlSettings,
         ILogger<AuthenticationController> logger)
     {
         _emailService = emailService;
         _smsService = smsService;
         _tokenService = tokenService;
         _userService = userService;
+        _publicUrlSettings = publicUrlSettings.Value;
         _logger = logger;
     }
 
@@ -93,7 +101,7 @@ public class AuthenticationController : ControllerBase
                 Request.GetRemoteIpAddress(),
                 LoginFailureReason.BadCredentials);
 
-            return await RecordLoginFailedAttempt(user);
+            return await RecordLoginFailedAttempt(user, request.ResetPasswordUri);
         }
 
         if (await _userService.GetMfaEnabledAsync(user))
@@ -205,7 +213,7 @@ public class AuthenticationController : ControllerBase
                 user.Id,
                 Request.GetRemoteIpAddress());
 
-            return await RecordLoginFailedAttempt(user);
+            return await RecordLoginFailedAttempt(user, request.ResetPasswordUri);
         }
 
         _logger.LogInformation(
@@ -388,15 +396,12 @@ public class AuthenticationController : ControllerBase
         return Ok(new ApiResponse());
     }
 
-    private async Task<IActionResult> RecordLoginFailedAttempt(User user)
+    private async Task<IActionResult> RecordLoginFailedAttempt(User user, string? resetPasswordUri)
     {
         await _userService.AccessFailedAsync(user);
         if (await _userService.IsLockedOutAsync(user))
         {
-                await _emailService.SendEmailAsync(
-                user.Email!,
-                EmailSubjects.LockedAccountInfo,
-                ErrorMessages.AccountLockedFailedAttempts);
+            await SendFailedLoginLockoutEmailAsync(user, resetPasswordUri);
 
             user.WaitingForMfa = false;
             await _userService.UpdateAsync(user);
@@ -413,5 +418,46 @@ public class AuthenticationController : ControllerBase
         }
 
         return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Authentication failed."));
+    }
+
+    /// <summary>
+    /// Sends the failed-login lockout notification with a proactive reset-password link.
+    /// The link points at the consumer's UI if it supplied <paramref name="resetPasswordUri"/>
+    /// in the login DTO, otherwise at the auth service's bundled <c>/ResetPassword</c> page
+    /// via <see cref="PublicUrlSettings.BaseUrl"/>. Email send failures are logged but
+    /// don't block the lock — the security action has already happened by this point.
+    /// </summary>
+    private async Task SendFailedLoginLockoutEmailAsync(User user, string? resetPasswordUri)
+    {
+        if (string.IsNullOrEmpty(user.Email))
+        {
+            return;
+        }
+
+        try
+        {
+            var baseResetUri = string.IsNullOrWhiteSpace(resetPasswordUri)
+                ? $"{_publicUrlSettings.BaseUrl}{RouteConstants.ResetPassword}"
+                : resetPasswordUri;
+
+            var token = await _userService.GeneratePasswordResetTokenAsync(user);
+            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+            var resetUri = AccountHelpers.GenerateResetPasswordUri(user.Email, encodedToken, baseResetUri);
+
+            await _emailService.SendEmailAsync(
+                user.Email,
+                EmailSubjects.LockedAccountInfo,
+                "Your account has been locked because of too many failed login attempts. " +
+                "The lockout will clear automatically in a few minutes — you can simply wait and try again. " +
+                $"If you weren't the one trying to log in, please reset your password now using this link to lock the attacker out for good: {resetUri}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to send failed-login lockout email to {UserId}: {ErrorMsg}",
+                user.Id,
+                ex.Message);
+        }
     }
 }

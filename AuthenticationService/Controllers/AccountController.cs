@@ -2,6 +2,7 @@
 using AuthenticationService.Extensions;
 using AuthenticationService.Helpers;
 using AuthenticationService.Services;
+using AuthenticationService.Settings;
 using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Options;
 using System.Text;
 
 namespace AuthenticationService.Controllers;
@@ -24,6 +26,7 @@ public class AccountController : ControllerBase
     private readonly ISmsService _smsService;
     private readonly ITokenService _tokenService;
     private readonly IUserService _userService;
+    private readonly PublicUrlSettings _publicUrlSettings;
     private readonly ILogger<AccountController> _logger;
 
     public AccountController(
@@ -31,12 +34,14 @@ public class AccountController : ControllerBase
         ISmsService smsService,
         ITokenService tokenService,
         IUserService userService,
+        IOptions<PublicUrlSettings> publicUrlSettings,
         ILogger<AccountController> logger)
     {
         _emailService = emailService;
         _smsService = smsService;
         _tokenService = tokenService;
         _userService = userService;
+        _publicUrlSettings = publicUrlSettings.Value;
         _logger = logger;
     }
 
@@ -197,7 +202,7 @@ public class AccountController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(request.ResetPasswordUri))
         {
-            request.ResetPasswordUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}{RouteConstants.ResetPassword}";
+            request.ResetPasswordUri = $"{_publicUrlSettings.BaseUrl}{RouteConstants.ResetPassword}";
         }
 
         var resetPasswordUri = AccountHelpers.GenerateResetPasswordUri(user.Email!, encodedToken, request.ResetPasswordUri);
@@ -245,7 +250,7 @@ public class AccountController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(request.LockAccountUri))
         {
-            request.LockAccountUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}{RouteConstants.LockAccount}";
+            request.LockAccountUri = $"{_publicUrlSettings.BaseUrl}{RouteConstants.LockAccount}";
         }
 
         var lockAccountUri = AccountHelpers.GenerateLockoutUri(user.Email!, lockoutToken, request.LockAccountUri);
@@ -321,7 +326,7 @@ public class AccountController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(request.LockAccountUri))
         {
-            request.LockAccountUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}{RouteConstants.LockAccount}";
+            request.LockAccountUri = $"{_publicUrlSettings.BaseUrl}{RouteConstants.LockAccount}";
         }
 
         var lockAccountUri = AccountHelpers.GenerateLockoutUri(user.Email!, lockoutToken, request.LockAccountUri);
@@ -374,7 +379,7 @@ public class AccountController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(request.ResetPasswordUri))
         {
-            request.ResetPasswordUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}{RouteConstants.ResetPassword}";
+            request.ResetPasswordUri = $"{_publicUrlSettings.BaseUrl}{RouteConstants.ResetPassword}";
         }
 
         var resetPasswordUri = AccountHelpers.GenerateResetPasswordUri(user.Email!, encodedToken, request.ResetPasswordUri);

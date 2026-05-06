@@ -29,4 +29,18 @@ public class RevokedToken
     /// <summary>Why the token was revoked. See <c>RevocationReasons</c> for canonical values.</summary>
     [MaxLength(50)]
     public string? RevocationReason { get; set; }
+
+    /// <summary>
+    /// When the threshold-escalation worker first emitted the warn-level SIEM event for
+    /// repeated replay of this token. Null until the warn threshold is crossed; non-null
+    /// after, which prevents re-firing the warn event on every subsequent sweep.
+    /// </summary>
+    public DateTime? WarnedAt { get; set; }
+
+    /// <summary>
+    /// When the threshold-escalation worker locked the account due to sustained replay
+    /// of this token. Null until the lock threshold is crossed; non-null after, which
+    /// prevents re-locking and re-emailing on every subsequent sweep.
+    /// </summary>
+    public DateTime? LockedAt { get; set; }
 }

@@ -87,7 +87,7 @@ up cold.
   endpoint for the everywhere-out case. Cleanup service sweeps expired refresh-token rows
   alongside revoked tokens.
 
-- [ ] **No threshold escalation on revoked-token replay.**
+- [x] ~~**No threshold escalation on revoked-token replay.**
   Today [RevokedTokenMiddleware](AuthenticationService/Middleware/RevokedTokenMiddleware.cs)
   401s and writes an `AccessRecord` row when a revoked token is replayed, but nothing
   escalates if the same `jti` is hammered against the API many times (a stolen-token replay
@@ -99,7 +99,19 @@ up cold.
   Cheap to implement on top of the audit data already being collected (no new tables, no
   new endpoints — just a periodic query and a hosted worker). Pairs naturally with the
   cleanup service that already exists in
-  [Services/Hosted](AuthenticationService/Services/Hosted/RevokedTokenCleanupService.cs).
+  [Services/Hosted](AuthenticationService/Services/Hosted/RevokedTokenCleanupService.cs).~~
+  Done — `RevokedTokenReplayEscalationService` background worker scans
+  `RevokedTokenAccessAttempts` every minute, evaluates two thresholds in a sliding window
+  (defaults: warn at 2 replays in 5 min, lock at 5 in 5 min — tighter than the original
+  TODO suggested because legitimate retry-on-old-token traffic is bursty, not sustained).
+  Idempotency via two new nullable columns on `RevokedToken` (`WarnedAt`, `LockedAt`) so
+  each escalation level fires once per incident. Lock cascade matches the refresh-token
+  reuse pattern: `LockoutEnd = MaxValue`, revoke every refresh-token family, rotate the
+  security stamp, email the user with a ready-made reset link built from the new
+  `PublicUrlSettings:BaseUrl` (required outside Dev, dev default in
+  `appsettings.Development.json`). Two new SIEM event IDs in the 4000s range — 4004
+  Warning, 4005 Critical. README has a dedicated §9a section explaining the worker plus
+  config reference and SIEM detection rule.
 
 - [ ] **Behavioural anomaly detection on token use (defer to SIEM, do not build inline).**
   Real-world token-theft detection looks for: same `jti` used from geographically impossible

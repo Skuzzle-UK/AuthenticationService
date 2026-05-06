@@ -85,6 +85,16 @@ public static class HostExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<PublicUrlSettings>()
+            .Bind(context.Configuration.GetSection(nameof(PublicUrlSettings)))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<ThresholdEscalationSettings>()
+            .Bind(context.Configuration.GetSection(nameof(ThresholdEscalationSettings)))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         return services;
     }
 
@@ -119,7 +129,8 @@ public static class HostExtensions
 
     public static IServiceCollection AddHostedServices(this IServiceCollection services) =>
         services
-            .AddHostedService<DataRetentionCleanupService>();
+            .AddHostedService<DataRetentionCleanupService>()
+            .AddHostedService<RevokedTokenReplayEscalationService>();
 
     public static IServiceCollection AddDatabase(this IServiceCollection services, HostBuilderContext context) =>
         services
