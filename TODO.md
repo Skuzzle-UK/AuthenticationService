@@ -112,19 +112,26 @@ up cold.
   so we don't reinvent it; **the implementation work is "wire up a log sink", not "build
   detection."**
 
-- [ ] **No reuse defence on Identity-issued links (`ConfirmEmail`).**
+- [x] ~~**No reuse defence on Identity-issued links (`ConfirmEmail`).**
   `LockAccount`, `ChangePassword`, and `ResetForgottenPassword` all call
   `InvalidateUserTokensAsync` post-consumption (rotates the security stamp, so the issuing
   link can't be replayed). `ConfirmEmailAsync` in [RegistrationController](AuthenticationService/Controllers/RegistrationController.cs:91)
   doesn't — `_userManager.ConfirmEmailAsync` flips `EmailConfirmed = true` but doesn't rotate
-  the stamp. Replay isn't terribly exploitable today (re-confirming an already-confirmed
-  email is a no-op) but it's the only Identity-issued-link path not following the pattern,
-  so worth tightening for consistency.
+  the stamp.~~ Done — `IUserService` exposes a `UpdateSecurityStampAsync` passthrough;
+  `RegistrationController.ConfirmEmailAsync` calls it after the successful confirm. Brings
+  the email-confirm path into line with every other Identity-token consumption path.
 
-- [ ] **Reserved-username registration not blocked.**
+- [x] ~~**Reserved-username registration not blocked.**
   [RegistrationDto.cs:8](AuthenticationService.Shared/Dtos/RegistrationDto.cs:8) has no deny
   list. Add a check (case-insensitive) for `admin`, `administrator`, `root`, `system`,
-  `support`, `security`, `null`, etc. before `CreateAsync`.
+  `support`, `security`, `null`, etc. before `CreateAsync`.~~ Done — `Constants/ReservedUserNames.cs`
+  holds the deny-list; `Validators/ReservedUserNameValidator.cs` is registered as an
+  `IUserValidator<User>` via `AddUserValidator<...>` in `HostExtensions.AddSecurity`. Runs
+  automatically inside `UserManager.CreateAsync` (and any future `UpdateAsync` if a username
+  rename endpoint lands), returns an `IdentityResult` failure that flows through the
+  existing controller error path. `"admin"` is deliberately not in the list because the
+  seeded admin already holds that username — Identity's uniqueness constraint protects it
+  for now; add it when `RuntimeDbSeeders` goes away (separate TODO).
 
 - [x] ~~**`RegistrationController` returns `ex.Message` on 500.**
   [RegistrationController.cs:78](AuthenticationService/Controllers/RegistrationController.cs:78).
