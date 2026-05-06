@@ -52,7 +52,7 @@ public class UserService : IUserService
     public async Task<string> GeneratePasswordResetTokenAsync(User user) =>
         await _userManager.GeneratePasswordResetTokenAsync(user);
 
-    public async Task<string> GenerateTwoFactorTokenAsync(User user, string tokenProvider) =>
+    public async Task<string> GenerateMfaTokenAsync(User user, string tokenProvider) =>
         await _userManager.GenerateTwoFactorTokenAsync(user, tokenProvider);
 
     public async Task<string> GenerateUserTokenAsync(User user, string tokenProvider, string purpose) =>
@@ -64,10 +64,10 @@ public class UserService : IUserService
     public async Task<IList<string>> GetRolesAsync(User user) =>
         await _userManager.GetRolesAsync(user);
 
-    public async Task<bool> GetTwoFactorEnabledAsync(User user) =>
+    public async Task<bool> GetMfaEnabledAsync(User user) =>
         await _userManager.GetTwoFactorEnabledAsync(user);
 
-    public async Task<IList<string>> GetValidTwoFactorProvidersAsync(User user) =>
+    public async Task<IList<string>> GetValidMfaProvidersAsync(User user) =>
         await _userManager.GetValidTwoFactorProvidersAsync(user);
 
     public async Task InvalidateUserTokensAsync(User user, string ipAddress, string reason, string? token = null)
@@ -102,7 +102,7 @@ public class UserService : IUserService
     public async Task SetLockoutEndDateAsync(User user, DateTimeOffset? endDate) =>
         await _userManager.SetLockoutEndDateAsync(user, endDate);
 
-    public async Task SetTwoFactorEnabledAsync(User user, bool enabled) =>
+    public async Task SetMfaEnabledAsync(User user, bool enabled) =>
         await _userManager.SetTwoFactorEnabledAsync(user, enabled);
 
     public async Task UpdateAsync(User user) =>
@@ -111,7 +111,7 @@ public class UserService : IUserService
     public async Task UpdateSecurityStampAsync(User user) =>
         await _userManager.UpdateSecurityStampAsync(user);
 
-    public async Task<bool> VerifyTwoFactorTokenAsync(User user, string tokenProvider, string token) =>
+    public async Task<bool> VerifyMfaTokenAsync(User user, string tokenProvider, string token) =>
         await _userManager.VerifyTwoFactorTokenAsync(user, tokenProvider, token);
 
     public async Task<bool> VerifyUserTokenAsync(User user, string tokenProvider, string purpose, string token) =>

@@ -61,4 +61,5 @@ public static class SecurityEventIds
     // 4000s — Token state
     public static readonly EventId TokenRevoked = new(4001, nameof(TokenRevoked));
     public static readonly EventId RevokedTokenReplayAttempt = new(4002, nameof(RevokedTokenReplayAttempt));
+    public static readonly EventId OrphanedTokenRevoked = new(4003, nameof(OrphanedTokenRevoked));
 }

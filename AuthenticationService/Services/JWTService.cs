@@ -225,6 +225,17 @@ public class JWTService : ITokenService
         return await _context.RevokedTokens.FindAsync(jti);
     }
 
+    public async Task RevokeOrphanedTokenAsync(string token, string ipAddress)
+    {
+        await RevokeTokenAsync(token, ipAddress, RevocationReasons.UserNotFound);
+
+        _logger.LogWarning(
+            SecurityEventIds.OrphanedTokenRevoked,
+            "Orphaned token revoked for {UserId} from {IpAddress} — token referenced a user that no longer exists",
+            GetUserId(token),
+            ipAddress);
+    }
+
     public async Task RecordRevokedReplayAsync(RevokedToken revokedToken, string ipAddress)
     {
         // Severity distinguishes "still-live revoked token" (Medium — the deny-list is the

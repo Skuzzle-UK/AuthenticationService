@@ -590,6 +590,7 @@ Issued access tokens carry the following claims (consumers can rely on all of th
 | `POST /api/Authentication/logoutall` | Bearer | Revoke every session for the user + rotate the security stamp. |
 | `POST /api/Account/forgotpassword` | None | Request a password-reset email. Also clears any active lockout on successful reset. |
 | `POST /api/Account/forgotpassword/reset` | None | Apply the reset using the email-link token. |
+| `GET /api/Account/me` | Bearer | Current user's profile + roles, read live from the DB. Useful for SPA UI rendering and as a "is my token still good?" diagnostic. |
 | `POST /api/Account/changepassword` | Bearer | Change password while authenticated. Identity is read from the token's `sub`. |
 | `GET /api/Account/enablemfa` | Bearer | Begin MFA enrolment; returns a QR code for the authenticator app. |
 | `POST /api/Account/lock` | Email-link token | Triggered from the "wasn't you?" link in password-changed emails — locks the account and sends a reset link. |

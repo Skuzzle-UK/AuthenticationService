@@ -38,6 +38,58 @@ public class AccountController : ControllerBase
     }
 
     /// <summary>
+    /// Returns the current snapshot of the logged-in user's profile + roles. Useful for
+    /// SPAs that want to render user info without parsing the JWT, and for developers
+    /// debugging "is my token still valid?" — a 200 here means the token is signed,
+    /// unexpired, not revoked, and the user behind it still exists.
+    /// </summary>
+    [HttpGet("me")]
+    [Authorize]
+    public async Task<IActionResult> MeAsync()
+    {
+        var sub = User.FindFirst(ClaimConstants.Sub)?.Value;
+        if (string.IsNullOrEmpty(sub))
+        {
+            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidToken));
+        }
+
+        var user = await _userService.FindByIdAsync(sub);
+        if (user is null)
+        {
+            // Token references a user that no longer exists.
+            // Revoke it so this auth service rejects every subsequent hit
+            var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
+            await _tokenService.RevokeOrphanedTokenAsync(token, Request.GetRemoteIpAddress());
+
+            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidToken));
+        }
+
+        var roles = await _userService.GetRolesAsync(user);
+
+        return Ok(new MeResponse
+        {
+            Id = user.Id,
+            UserName = user.UserName!,
+            Email = user.Email!,
+            EmailConfirmed = user.EmailConfirmed,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            DateOfBirth = user.DateOfBirth,
+            PhoneNumber = user.PhoneNumber,
+            PhoneNumberConfirmed = user.PhoneNumberConfirmed,
+            Country = user.Country,
+            AddressLine1 = user.AddressLine1,
+            AddressLine2 = user.AddressLine2,
+            AddressLine3 = user.AddressLine3,
+            City = user.City,
+            Postcode = user.Postcode,
+            MfaEnabled = await _userService.GetMfaEnabledAsync(user),
+            PreferredMfaProvider = user.PreferredMfaProvider,
+            Roles = roles,
+        });
+    }
+
+    /// <summary>
     /// Starts MFA enrolment for the logged-in user. Returns the shared secret and a QR code
     /// the user can scan into an authenticator app, or the verification details for the
     /// chosen non-app provider (e.g. email).
@@ -50,11 +102,15 @@ public class AccountController : ControllerBase
     public async Task<IActionResult> EnableMfaAsync(EnableMfaRequest request)
     {
         var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
-        
+
         var user = await _userService.FindByIdAsync(_tokenService.GetUserId(token));
-        if(user is null)
+        if (user is null)
         {
-            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidRequest));
+            // Orphan token — user behind the sub claim is gone. Revoke it so the auth
+            // service rejects every subsequent hit; return 401 (Unauthorized) rather than
+            // the previous 400 since the failure is about the token, not the request body.
+            await _tokenService.RevokeOrphanedTokenAsync(token, Request.GetRemoteIpAddress());
+            return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidToken));
         }
 
         var key = await _userService.GetAuthenticatorKeyAsync(user);
@@ -64,31 +120,31 @@ public class AccountController : ControllerBase
             key = await _userService.GetAuthenticatorKeyAsync(user);
         }
 
-        var providers = await _userService.GetValidTwoFactorProvidersAsync(user);
-        if (!providers.Contains(request.Preferred2FAProvider.ToString()!))
+        var providers = await _userService.GetValidMfaProvidersAsync(user);
+        if (!providers.Contains(request.PreferredMfaProvider.ToString()!))
         {
             return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidMfaProvider));
         }
 
-        var current2fAStatus = await _userService.GetTwoFactorEnabledAsync(user);
+        var currentMfaStatus = await _userService.GetMfaEnabledAsync(user);
 
-        await _userService.SetTwoFactorEnabledAsync(user, true);
+        await _userService.SetMfaEnabledAsync(user, true);
 
-        if (request.Preferred2FAProvider is not null)
+        if (request.PreferredMfaProvider is not null)
         {
-            user.Preferred2FAProvider = request.Preferred2FAProvider.Value;
+            user.PreferredMfaProvider = request.PreferredMfaProvider.Value;
             await _userService.UpdateAsync(user);
         }
 
         var response = new EnableMfaResponse();
 
-        switch (user.Preferred2FAProvider)
+        switch (user.PreferredMfaProvider)
         {
             case MfaProviders.Email:
                 response = new EnableMfaResponse(MfaProviders.Email);
                 break;
             case MfaProviders.Phone:
-                await _userService.SetTwoFactorEnabledAsync(user, current2fAStatus);
+                await _userService.SetMfaEnabledAsync(user, currentMfaStatus);
                 return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.PhoneMfaNotSupported));
             case MfaProviders.Authenticator:
                 response = new EnableMfaResponse(
@@ -102,7 +158,7 @@ public class AccountController : ControllerBase
             SecurityEventIds.MfaEnabled,
             "MFA enabled for {UserId} via {Provider}",
             user.Id,
-            user.Preferred2FAProvider);
+            user.PreferredMfaProvider);
 
         return Ok(response);
     }
@@ -210,14 +266,26 @@ public class AccountController : ControllerBase
     public async Task<IActionResult> ChangePasswordAsync([FromBody] ChangePasswordDto request)
     {
         var sub = User.FindFirst("sub")?.Value;
-        if(string.IsNullOrEmpty(sub))
+        if (string.IsNullOrEmpty(sub))
         {
             return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidRequest));
         }
-        
+
+        var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
+
         var user = await _userService.FindByIdAsync(sub);
-        if (user is null || !await _userService.IsEmailConfirmedAsync(user))
+        if (user is null)
         {
+            // Orphan token — revoke it and 401. See MeAsync for the rationale.
+            await _tokenService.RevokeOrphanedTokenAsync(token, Request.GetRemoteIpAddress());
+            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidToken));
+        }
+
+        if (!await _userService.IsEmailConfirmedAsync(user))
+        {
+            // User exists but their email isn't confirmed. Anomalous (login already gates
+            // on this) but don't revoke — the user may legitimately be in mid-flow if
+            // some future feature changes their email and forces re-confirm.
             return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidRequest));
         }
 
@@ -233,7 +301,6 @@ public class AccountController : ControllerBase
             return BadRequest(new ApiResponse().AddErrors(errors));
         }
 
-        var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
         await _userService.InvalidateUserTokensAsync(user, Request.GetRemoteIpAddress(), RevocationReasons.PasswordChange, token);
 
         var lockoutToken = await _userService.GenerateUserTokenAsync(user, MfaProviders.Email.ToString(), TokenPurposes.Lockout);

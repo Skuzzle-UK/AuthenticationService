@@ -93,11 +93,11 @@ public class AuthenticationController : ControllerBase
             return await RecordLoginFailedAttempt(user);
         }
 
-        if (await _userService.GetTwoFactorEnabledAsync(user))
+        if (await _userService.GetMfaEnabledAsync(user))
         {
-            request.MfaProvider ??= user.Preferred2FAProvider;
+            request.MfaProvider ??= user.PreferredMfaProvider;
 
-            var providers = await _userService.GetValidTwoFactorProvidersAsync(user);
+            var providers = await _userService.GetValidMfaProvidersAsync(user);
             if (!providers.Contains(request.MfaProvider.ToString()!))
             {
                 return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidMfaProvider));
@@ -106,7 +106,7 @@ public class AuthenticationController : ControllerBase
             switch (request.MfaProvider)
             {
                 case MfaProviders.Email:
-                    var mfaToken = await _userService.GenerateTwoFactorTokenAsync(user, TokenOptions.DefaultEmailProvider);
+                    var mfaToken = await _userService.GenerateMfaTokenAsync(user, TokenOptions.DefaultEmailProvider);
                     await _emailService.SendEmailAsync(
                         user.Email!,
                         EmailSubjects.MfaAuthenticationToken,
@@ -124,7 +124,7 @@ public class AuthenticationController : ControllerBase
                 user.Id,
                 request.MfaProvider);
 
-            user.WaitingForTwoFactorAuthentication = true;
+            user.WaitingForMfa = true;
             await _userService.UpdateAsync(user);
 
             return Ok(AuthenticationResponse.WithMfaRequired(request.MfaProvider));
@@ -167,7 +167,7 @@ public class AuthenticationController : ControllerBase
             return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidRequest));
         }
 
-        if (!user.WaitingForTwoFactorAuthentication)
+        if (!user.WaitingForMfa)
         {
             return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidRequest));
         }
@@ -184,7 +184,7 @@ public class AuthenticationController : ControllerBase
             return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.AccountLockedFailedAttempts));
         }
 
-        if (!await _userService.VerifyTwoFactorTokenAsync(user, request.MfaProvider.ToString()!, request.Token!))
+        if (!await _userService.VerifyMfaTokenAsync(user, request.MfaProvider.ToString()!, request.Token!))
         {
             _logger.LogWarning(
                 SecurityEventIds.MfaFailed,
@@ -207,7 +207,7 @@ public class AuthenticationController : ControllerBase
 
         await _userService.ResetAccessFailedCountAsync(user);
 
-        user.WaitingForTwoFactorAuthentication = false;
+        user.WaitingForMfa = false;
         await _userService.UpdateAsync(user);
 
         _logger.LogInformation(
@@ -351,14 +351,18 @@ public class AuthenticationController : ControllerBase
             return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidToken));
         }
 
+        var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
+        var ipAddress = Request.GetRemoteIpAddress();
+
         var user = await _userService.FindByIdAsync(sub);
         if (user is null)
         {
+            // User behind the token is gone.
+            // Token presented is orphaned and shouldn't keep working — revoke it so the
+            // auth service rejects every subsequent hit.
+            await _tokenService.RevokeOrphanedTokenAsync(token, ipAddress);
             return Ok(new ApiResponse());
         }
-
-        var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
-        var ipAddress = Request.GetRemoteIpAddress();
 
         await _userService.InvalidateUserTokensAsync(user, ipAddress, RevocationReasons.LogoutAll, token);
 
@@ -381,7 +385,7 @@ public class AuthenticationController : ControllerBase
                 EmailSubjects.LockedAccountInfo,
                 ErrorMessages.AccountLockedFailedAttempts);
 
-            user.WaitingForTwoFactorAuthentication = false;
+            user.WaitingForMfa = false;
             await _userService.UpdateAsync(user);
 
             await _userService.InvalidateUserTokensAsync(user, Request.GetRemoteIpAddress(), RevocationReasons.FailedLoginLockout);

@@ -17,9 +17,9 @@ public class User : IdentityUser
     [MaxLength(60)]
     public string? Country { get; set; }
 
-    public bool WaitingForTwoFactorAuthentication { get; set; }
+    public bool WaitingForMfa { get; set; }
 
-    public MfaProviders Preferred2FAProvider { get; set; }
+    public MfaProviders PreferredMfaProvider { get; set; }
 
     [MaxLength(150)]
     public string? MothersMaidenName { get; set; }

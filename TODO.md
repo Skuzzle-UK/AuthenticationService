@@ -360,10 +360,27 @@ up cold.
   return BadRequest "PhoneMfaNotSupported". Either implement (SMS provider integration) or
   remove the enum value so it can't be selected.
 
-- [ ] **No `/me` introspection endpoint.**
+- [x] ~~**No `/me` introspection endpoint.**
   Useful for consumers debugging "is the token I have actually any good?". Add
   `GET /api/Account/me` returning the resolved `User` snapshot (without sensitive fields)
-  for the bearer.
+  for the bearer.~~ Done — `GET /api/Account/me` returns a live `MeResponse` (id, username,
+  email + confirmation flag, name, DOB, address, country, MFA state, roles). Identity comes
+  from the token's `sub` claim. Orphan-token defence rolled out across every Bearer endpoint
+  that looks up the user from the token (`MeAsync`, `EnableMfaAsync`, `ChangePasswordAsync`,
+  `LogoutAllAsync`): if the user is gone, revoke the access token via the new
+  `ITokenService.RevokeOrphanedTokenAsync` helper — which calls `RevokeTokenAsync` with
+  `RevocationReasons.UserNotFound` and emits a `LogWarning` on
+  `SecurityEventIds.OrphanedTokenRevoked` (4003). Every subsequent hit on this auth service
+  is then caught by `RevokedTokenMiddleware`. Logout-all keeps its idempotent 200 (the user
+  asked to be logged out, they are); the others return 401. Cross-service revocation is a
+  separate known limitation: other consumer services will keep accepting the token until
+  natural expiry. Internal Identity
+  state (lockout counters, security stamp, password hash) and token claims (`jti`/`sid`/`exp`
+  — client already has the JWT) are deliberately omitted. **Note on the wider design:** roles
+  are kept in the JWT itself for stateless authorization — every consumer would otherwise
+  have to call back on every request to make `[Authorize(Roles=...)]` work, which defeats
+  the JWT model. `/me` returning roles is a UI-rendering convenience, not a replacement for
+  the token claims.
 
 - [x] ~~**`UserConstants.Admin = "admin"`** is referenced as a username only by the seeder.
   Worth dropping the constant once the seeder is removed (see admin-password TODO above)

@@ -34,7 +34,7 @@ public class RegistrationDto
 
     public string? EmailConfirmationCallbackUri { get; set; }
 
-    public MfaProviders? Preferred2FAProvider { get; set; }
+    public MfaProviders? PreferredMfaProvider { get; set; }
 
     [MaxLength(150)]
     public string? MothersMaidenName { get; set; }

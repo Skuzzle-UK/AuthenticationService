@@ -4,5 +4,5 @@ namespace AuthenticationService.Shared.Dtos;
 
 public class EnableMfaRequest
 {
-    public MfaProviders? Preferred2FAProvider { get; set; }
+    public MfaProviders? PreferredMfaProvider { get; set; }
 }

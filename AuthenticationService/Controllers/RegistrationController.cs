@@ -63,9 +63,9 @@ public class RegistrationController : ControllerBase
                 return BadRequest(new ApiResponse().AddErrors(errors));
             }
 
-            if (request.Preferred2FAProvider is not null)
+            if (request.PreferredMfaProvider is not null)
             {
-                user.Preferred2FAProvider = request.Preferred2FAProvider.Value;
+                user.PreferredMfaProvider = request.PreferredMfaProvider.Value;
                 await _userService.UpdateAsync(user);
             }
 

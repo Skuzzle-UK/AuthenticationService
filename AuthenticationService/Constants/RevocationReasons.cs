@@ -27,4 +27,7 @@ public static class RevocationReasons
 
     /// <summary>Refresh-token reuse detected; cascade revoked all the user's tokens.</summary>
     public const string ReuseDetected = "reuse_detected";
+
+    /// <summary>Token presented for a user that no longer exists in the database.</summary>
+    public const string UserNotFound = "user_not_found";
 }

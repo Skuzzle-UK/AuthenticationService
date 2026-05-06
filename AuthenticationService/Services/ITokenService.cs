@@ -1,3 +1,4 @@
+using AuthenticationService.Constants;
 using AuthenticationService.Entities;
 using AuthenticationService.Shared.Models;
 
@@ -29,6 +30,13 @@ public interface ITokenService
     /// is rejected. <paramref name="reason"/> is stored for audit (see <c>RevocationReasons</c>).
     /// </summary>
     Task RevokeTokenAsync(string token, string ipAddress, string reason);
+
+    /// <summary>
+    /// Revokes a token that arrived for a user who no longer exists in the database
+    /// Emits a Warning-level <see cref="SecurityEventIds.OrphanedTokenRevoked"/>
+    /// alongside the standard revoke event so SIEM can flag it as an anomoly
+    /// </summary>
+    Task RevokeOrphanedTokenAsync(string token, string ipAddress);
 
     /// <summary>
     /// The refresh flow: validates the supplied refresh token, marks it consumed, and issues

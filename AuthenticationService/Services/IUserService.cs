@@ -60,17 +60,17 @@ public interface IUserService
     /// <summary>
     /// Returns the MFA token-provider names the user has enabled (e.g. <c>"Authenticator"</c>, <c>"Email"</c>).
     /// </summary>
-    Task<IList<string>> GetValidTwoFactorProvidersAsync(User user);
+    Task<IList<string>> GetValidMfaProvidersAsync(User user);
 
     /// <summary>
     /// True if the user has MFA enabled.
     /// </summary>
-    Task<bool> GetTwoFactorEnabledAsync(User user);
+    Task<bool> GetMfaEnabledAsync(User user);
 
     /// <summary>
     /// Turns MFA on or off for the user.
     /// </summary>
-    Task SetTwoFactorEnabledAsync(User user, bool enabled);
+    Task SetMfaEnabledAsync(User user, bool enabled);
 
     /// <summary>
     /// Persists changes to the user record.
@@ -95,7 +95,7 @@ public interface IUserService
     /// <summary>
     /// Generates an MFA challenge code (e.g. the 6-digit number sent over email).
     /// </summary>
-    Task<string> GenerateTwoFactorTokenAsync(User user, string tokenProvider);
+    Task<string> GenerateMfaTokenAsync(User user, string tokenProvider);
 
     /// <summary>
     /// Resets the failed-login counter back to zero — typically after a successful login.
@@ -120,7 +120,7 @@ public interface IUserService
     /// <summary>
     /// Verifies an MFA challenge code submitted by the user.
     /// </summary>
-    Task<bool> VerifyTwoFactorTokenAsync(User user, string tokenProvider, string token);
+    Task<bool> VerifyMfaTokenAsync(User user, string tokenProvider, string token);
 
     /// <summary>
     /// Enables or disables Identity's lockout machinery for this specific user.
