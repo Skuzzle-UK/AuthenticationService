@@ -319,10 +319,18 @@ up cold.
   removes the positional-order risk. Stayed a `class` rather than going to `record` to
   avoid record's auto-generated `ToString()` printing the JWT into any log it ends up in.
 
-- [ ] **`AccessRecord.Revoked` is hardcoded `true`.**
+- [x] ~~**`AccessRecord.Revoked` is hardcoded `true`.**
   [JWTService.cs:89,119](AuthenticationService/Services/JWTService.cs:89). Either capture
   every access (not just revoked-token attempts) or drop the column and rename the table to
-  `RevokedTokenAccessAttempts`.
+  `RevokedTokenAccessAttempts`.~~ Done — went with the rename + column-drop path. Entity
+  `AccessRecord` → `RevokedTokenAccessAttempt`; `DbSet` and table renamed; non-destructive
+  EF migration `RenameAccessRecordsToRevokedTokenAccessAttempts` ships the rename + column
+  drop without losing existing rows. While in there, killed the redundant DB lookup:
+  `ITokenService.IsRevokedAsync` (returned bool) replaced by `GetRevokedTokenAsync`
+  (returns `RevokedToken?`); the middleware now loads the row once and passes it to
+  `RecordRevokedReplayAsync`, so the recording path no longer re-queries `RevokedTokens`.
+  Also renamed the related setting `AccessRecordsTTLInDays` → `RevokedReplayTTLInDays` for
+  consistency (both `appsettings.json` and `DataRetentionSettings`).
 
 - [x] ~~**Rate-limiter is one global partition.**
   [HostExtensions.AddRateLimiting](AuthenticationService/Extensions/HostExtensions.cs:167) —

@@ -9,6 +9,6 @@ public class DataRetentionSettings
     /// <summary>How often the cleanup sweep runs.</summary>
     public double CleanupIntervalInHours { get; set; } = 12;
 
-    /// <summary>How long <c>AccessRecord</c> audit rows are kept before they're deleted.</summary>
-    public double AccessRecordsTTLInDays { get; set; } = 90;
+    /// <summary>How long <c>RevokedTokenAccessAttempt</c> audit rows are kept before they're deleted.</summary>
+    public double RevokedReplayTTLInDays { get; set; } = 90;
 }

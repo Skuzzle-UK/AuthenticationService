@@ -3,6 +3,7 @@ using AuthenticationService.Shared.Models;
 
 namespace AuthenticationService.Services;
 
+
 /// <summary>
 /// Issues, validates, rotates and revokes JWT access tokens and their paired refresh tokens.
 /// All token logic lives behind this interface — controllers never touch JWT plumbing directly.
@@ -66,13 +67,17 @@ public interface ITokenService
     string GetUserId(string token);
 
     /// <summary>
-    /// True if the token's <c>jti</c> appears in the revoked-token list.
+    /// Looks up the revocation row for a token's <c>jti</c>. Returns null if the token
+    /// hasn't been revoked. Caller can pass the returned row through to
+    /// <see cref="RecordRevokedReplayAsync"/> to avoid a second DB lookup.
     /// </summary>
-    Task<bool> IsRevokedAsync(string token);
+    Task<RevokedToken?> GetRevokedTokenAsync(string token);
 
     /// <summary>
-    /// Records that someone presented this token. Used by the revoked-token middleware to
-    /// log replay attempts of already-revoked tokens for SIEM forwarding.
+    /// Records that someone tried to use a token we'd already revoked. Writes one
+    /// <c>RevokedTokenAccessAttempt</c> row for the threshold-escalation worker and
+    /// SIEM forwarding to consume. The caller passes in the already-loaded
+    /// <see cref="RevokedToken"/> so we don't hit the DB twice.
     /// </summary>
-    Task RecordAccessAttemptAsync(string token, string ipAddress);
+    Task RecordRevokedReplayAsync(RevokedToken revokedToken, string ipAddress);
 }

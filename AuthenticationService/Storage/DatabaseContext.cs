@@ -13,7 +13,7 @@ public class DatabaseContext : IdentityDbContext<User, Role, string>
     }
 
     public DbSet<RevokedToken> RevokedTokens { get; set; }
-    public DbSet<AccessRecord> AccessRecords { get; set; }
+    public DbSet<RevokedTokenAccessAttempt> RevokedTokenAccessAttempts { get; set; }
     public DbSet<RefreshToken> RefreshTokens { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -27,7 +27,7 @@ public class DatabaseContext : IdentityDbContext<User, Role, string>
             entity.Property(e => e.TokenJti).IsRequired();
         });
 
-        builder.Entity<AccessRecord>(entity =>
+        builder.Entity<RevokedTokenAccessAttempt>(entity =>
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.TokenJti).IsRequired();

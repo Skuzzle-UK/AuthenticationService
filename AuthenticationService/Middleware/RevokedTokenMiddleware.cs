@@ -31,14 +31,18 @@ public class RevokedTokenMiddleware
         {
             var tokenService = scope.ServiceProvider.GetRequiredService<ITokenService>();
             var token = context.Request.Headers[HeaderNames.Authorization].ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
-            if (!string.IsNullOrEmpty(token) && await tokenService.IsRevokedAsync(token))
-            {
-                var ipaddress = context.GetRemoteIpAddress();
-                await tokenService.RecordAccessAttemptAsync(token, ipaddress);
 
-                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await context.Response.WriteAsync("Token has been revoked");
-                return;
+            if (!string.IsNullOrEmpty(token))
+            {
+                var revokedToken = await tokenService.GetRevokedTokenAsync(token);
+                if (revokedToken is not null)
+                {
+                    await tokenService.RecordRevokedReplayAsync(revokedToken, context.GetRemoteIpAddress());
+
+                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    await context.Response.WriteAsync("Token has been revoked");
+                    return;
+                }
             }
         }
         await _next(context);

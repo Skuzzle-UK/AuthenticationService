@@ -115,7 +115,7 @@ public static class HostExtensions
 
     public static IServiceCollection AddHostedServices(this IServiceCollection services) =>
         services
-            .AddHostedService<DataRetentionService>();
+            .AddHostedService<DataRetentionCleanupService>();
 
     public static IServiceCollection AddDatabase(this IServiceCollection services, HostBuilderContext context) =>
         services

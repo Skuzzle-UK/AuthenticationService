@@ -8,20 +8,20 @@ namespace AuthenticationService.Services.Hosted;
 /// Background sweep that deletes old rows so the database doesn't grow forever. Runs on a
 /// timer (interval is configurable) and prunes:
 /// <list type="bullet">
-///   <item><description><c>AccessRecords</c> older than the configured retention window.</description></item>
+///   <item><description><c>RevokedTokenAccessAttempts</c> older than the configured retention window.</description></item>
 ///   <item><description><c>RevokedTokens</c> whose underlying token would already have expired naturally — keeping them on the deny-list past that point adds no value.</description></item>
 ///   <item><description><c>RefreshTokens</c> whose expiry has passed — they couldn't be used to refresh anyway.</description></item>
 /// </list>
 /// </summary>
-public class DataRetentionService : BackgroundService
+public class DataRetentionCleanupService : BackgroundService
 {
-    private readonly ILogger<DataRetentionService> _logger;
+    private readonly ILogger<DataRetentionCleanupService> _logger;
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly DataRetentionSettings _settings;
     private readonly PeriodicTimer _periodicTimer;
 
-    public DataRetentionService(
-        ILogger<DataRetentionService> logger,
+    public DataRetentionCleanupService(
+        ILogger<DataRetentionCleanupService> logger,
         IServiceScopeFactory serviceScopeFactory,
         IOptions<DataRetentionSettings> settings)
     {
@@ -35,9 +35,9 @@ public class DataRetentionService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation(
-            "Data retention service started with cleanup interval of {Interval} hours and access record TTL of {TTL} days.",
+            "Data retention service started with cleanup interval of {Interval} hours and revoked-replay TTL of {TTL} days.",
             _settings.CleanupIntervalInHours,
-            _settings.AccessRecordsTTLInDays);
+            _settings.RevokedReplayTTLInDays);
 
         try
         {
@@ -71,7 +71,7 @@ public class DataRetentionService : BackgroundService
         using var scope = _serviceScopeFactory.CreateScope();
 
         var context = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
-        context.AccessRecords.RemoveRange(context.AccessRecords.Where(x => x.CreatedAt.AddDays(_settings.AccessRecordsTTLInDays) < DateTime.UtcNow));
+        context.RevokedTokenAccessAttempts.RemoveRange(context.RevokedTokenAccessAttempts.Where(x => x.CreatedAt.AddDays(_settings.RevokedReplayTTLInDays) < DateTime.UtcNow));
         context.RevokedTokens.RemoveRange(context.RevokedTokens.Where(x => x.ExpiresAt < DateTime.UtcNow));
         context.RefreshTokens.RemoveRange(context.RefreshTokens.Where(x => x.ExpiresAt < DateTime.UtcNow));
 

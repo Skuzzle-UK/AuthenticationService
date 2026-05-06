@@ -219,51 +219,39 @@ public class JWTService : ITokenService
             reason);
     }
 
-    public async Task<bool> IsRevokedAsync(string token)
+    public async Task<RevokedToken?> GetRevokedTokenAsync(string token)
     {
         var jti = GetJtiFromToken(token);
-        return await _context.RevokedTokens.AnyAsync(t => t.TokenJti == jti);
+        return await _context.RevokedTokens.FindAsync(jti);
     }
 
-    public async Task RecordAccessAttemptAsync(string token, string ipAddress)
+    public async Task RecordRevokedReplayAsync(RevokedToken revokedToken, string ipAddress)
     {
-        var jti = GetJtiFromToken(token);
-        var userId = GetUserId(token);
-        var severity = Severity.Low;
-        var isRevoked = false;
+        // Severity distinguishes "still-live revoked token" (Medium — the deny-list is the
+        // only thing stopping it) from "naturally-expired revoked token" (Low — JwtBearer's
+        // expiry check would have rejected it anyway).
+        var severity = revokedToken.ExpiresAt.HasValue && revokedToken.ExpiresAt.Value < DateTime.UtcNow
+            ? Severity.Low
+            : Severity.Medium;
 
-        var revokedToken = await _context.RevokedTokens.FindAsync(jti);
-        if (revokedToken is not null)
+        _logger.LogWarning(
+            SecurityEventIds.RevokedTokenReplayAttempt,
+            "Revoked token replay for {UserId} jti {Jti} from {IpAddress} (severity: {Severity})",
+            revokedToken.UserId,
+            revokedToken.TokenJti,
+            ipAddress,
+            severity);
+
+        var attempt = new RevokedTokenAccessAttempt
         {
-            isRevoked = true;
-
-            severity = revokedToken.ExpiresAt.HasValue && revokedToken.ExpiresAt.Value < DateTime.UtcNow
-                ? Severity.Low
-                : Severity.Medium;
-        }
-
-        if (isRevoked)
-        {
-            _logger.LogWarning(
-                SecurityEventIds.RevokedTokenReplayAttempt,
-                "Revoked token replay for {UserId} jti {Jti} from {IpAddress} (severity: {Severity})",
-                userId,
-                jti,
-                ipAddress,
-                severity);
-        }
-
-        var accessRecord = new AccessRecord()
-        {
-            TokenJti = jti,
+            TokenJti = revokedToken.TokenJti,
+            UserId = revokedToken.UserId,
             IpAddress = ipAddress,
             CreatedAt = DateTime.UtcNow,
-            UserId = userId,
-            Revoked = isRevoked,
-            Severity = severity
+            Severity = severity,
         };
 
-        await _context.AccessRecords.AddAsync(accessRecord);
+        await _context.RevokedTokenAccessAttempts.AddAsync(attempt);
         await _context.SaveChangesAsync();
     }
 
