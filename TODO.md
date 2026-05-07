@@ -25,14 +25,6 @@ replicas. Highest leverage for "production gate review with a straight face."
   - EF concurrency tokens on `WarnedAt`/`LockedAt` — doesn't stop duplicate work but stops
     duplicate writes.
 
-- [ ] **Seeder runs on every replica startup.**
-  [RuntimeDbSeeders.SeedAdministratorAccountAsync](AuthenticationService/Storage/Seed/RuntimeDbSeeders.cs).
-  Three replicas starting simultaneously → all three pass the `FindByNameAsync` null check
-  → two fail on `CreateAsync` with constraint violation → unhandled exception → restart
-  loop until one wins.
-  **Fix:** Catch the duplicate-key exception gracefully (treat as "already seeded"), OR
-  move seeding out of the API pod entirely (separate K8s Job, same pattern as the
-  migrations gating).
 
 - [ ] **Cleanup uses `RemoveRange` instead of `ExecuteDeleteAsync`.**
   [DataRetentionCleanupService.RunCleanupAsync:74-76](AuthenticationService/Services/Hosted/DataRetentionCleanupService.cs:74).

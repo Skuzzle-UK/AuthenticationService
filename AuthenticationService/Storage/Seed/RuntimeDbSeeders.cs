@@ -14,6 +14,9 @@ namespace AuthenticationService.Storage.Seed;
 /// </summary>
 public static class RuntimeDbSeeders
 {
+    private const string DuplicateUserNameErrorCode = "DuplicateUserName";
+    private const string DuplicateEmailErrorCode = "DuplicateEmail";
+
     /// <summary>Runs every runtime seeder. Called once at startup.</summary>
     public static async Task<WebApplication> RuntimeDbSeedAsync(this WebApplication app)
     {
@@ -55,7 +58,14 @@ public static class RuntimeDbSeeders
 
         if (!result.Succeeded)
         {
-            var exceptionMessage = $"AdminAccountSeedSettings is configured incorrectly: ";
+            if (IsSeederRaceLoss(result.Errors))
+            {
+                logger.LogInformation(
+                    "Administrator seeding skipped — another replica seeded the account first.");
+                return app;
+            }
+
+            var exceptionMessage = "AdminAccountSeedSettings is configured incorrectly: ";
             foreach (var error in result.Errors)
             {
                 exceptionMessage += $"{error.Description} ";
@@ -75,4 +85,7 @@ public static class RuntimeDbSeeders
 
         return app;
     }
+
+    private static bool IsSeederRaceLoss(IEnumerable<IdentityError> errors) =>
+        errors.All(e => e.Code is DuplicateUserNameErrorCode or DuplicateEmailErrorCode);
 }
