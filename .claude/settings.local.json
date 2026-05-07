@@ -16,7 +16,13 @@
       "Bash(echo \"PID=$!\")",
       "Read(//tmp/**)",
       "Bash(taskkill -F -IM dotnet.exe)",
-      "PowerShell($thumb = '0EE0619FD261237B0A0AB8C1DE96113CBA7F9ED7'; \"CurrentUser\\\\Root:\"; Get-ChildItem \"Cert:\\\\CurrentUser\\\\Root\\\\$thumb\" -ErrorAction SilentlyContinue | Format-List Subject, Thumbprint; \"LocalMachine\\\\Root:\"; Get-ChildItem \"Cert:\\\\LocalMachine\\\\Root\\\\$thumb\" -ErrorAction SilentlyContinue | Format-List Subject, Thumbprint; \"CurrentUser\\\\My:\"; Get-ChildItem \"Cert:\\\\CurrentUser\\\\My\\\\$thumb\" -ErrorAction SilentlyContinue | Format-List Subject, Thumbprint)"
+      "PowerShell($thumb = '0EE0619FD261237B0A0AB8C1DE96113CBA7F9ED7'; \"CurrentUser\\\\Root:\"; Get-ChildItem \"Cert:\\\\CurrentUser\\\\Root\\\\$thumb\" -ErrorAction SilentlyContinue | Format-List Subject, Thumbprint; \"LocalMachine\\\\Root:\"; Get-ChildItem \"Cert:\\\\LocalMachine\\\\Root\\\\$thumb\" -ErrorAction SilentlyContinue | Format-List Subject, Thumbprint; \"CurrentUser\\\\My:\"; Get-ChildItem \"Cert:\\\\CurrentUser\\\\My\\\\$thumb\" -ErrorAction SilentlyContinue | Format-List Subject, Thumbprint)",
+      "Bash(dotnet new *)",
+      "Bash(dotnet nuget *)",
+      "Bash(dotnet restore *)",
+      "Bash(dotnet add *)",
+      "Bash(dotnet sln *)",
+      "Bash(dotnet test *)"
     ]
   }
 }

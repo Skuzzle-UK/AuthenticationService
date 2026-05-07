@@ -1,0 +1,244 @@
+using AuthenticationService.Constants;
+using AwesomeAssertions;
+using Microsoft.Extensions.Logging;
+
+namespace AuthenticationService.Tests.Constants;
+
+/// <summary>
+/// <para>Constants in the main project pin SIEM contracts (EventIds, RevocationReasons),
+/// user-facing error text (ErrorMessages), and rate-limit policy / token-purpose strings.
+/// SIEM rules in particular match on numeric EventIds — changing a value silently breaks
+/// downstream alerting. These tests pin every value so renames or numeric drift fail at PR
+/// time rather than in production.</para>
+/// </summary>
+public class MainProjectConstantsTests
+{
+    /// <summary>
+    /// SIEM contract: each EventId.Id is the wire-side identifier; renaming the .NET field
+    /// is fine but the integer must not change. Ranges follow the documented buckets.
+    /// </summary>
+    [Theory]
+    [InlineData(nameof(SecurityEventIds.LoginSucceeded), 1001, 1000, 1999)]
+    [InlineData(nameof(SecurityEventIds.LoginFailed), 1002, 1000, 1999)]
+    [InlineData(nameof(SecurityEventIds.MfaChallengeIssued), 1003, 1000, 1999)]
+    [InlineData(nameof(SecurityEventIds.MfaVerified), 1004, 1000, 1999)]
+    [InlineData(nameof(SecurityEventIds.MfaFailed), 1005, 1000, 1999)]
+    [InlineData(nameof(SecurityEventIds.FailedLoginLockoutTriggered), 1006, 1000, 1999)]
+    [InlineData(nameof(SecurityEventIds.RefreshTokenRotated), 1007, 1000, 1999)]
+    [InlineData(nameof(SecurityEventIds.RefreshTokenReuseDetected), 1008, 1000, 1999)]
+    [InlineData(nameof(SecurityEventIds.LogoutPerDevice), 1009, 1000, 1999)]
+    [InlineData(nameof(SecurityEventIds.LogoutAllDevices), 1010, 1000, 1999)]
+    [InlineData(nameof(SecurityEventIds.RegistrationCompleted), 2001, 2000, 2999)]
+    [InlineData(nameof(SecurityEventIds.EmailConfirmed), 2002, 2000, 2999)]
+    [InlineData(nameof(SecurityEventIds.EmailConfirmationFailed), 2003, 2000, 2999)]
+    [InlineData(nameof(SecurityEventIds.PasswordChanged), 3001, 3000, 3999)]
+    [InlineData(nameof(SecurityEventIds.PasswordResetRequested), 3002, 3000, 3999)]
+    [InlineData(nameof(SecurityEventIds.PasswordResetCompleted), 3003, 3000, 3999)]
+    [InlineData(nameof(SecurityEventIds.AccountLockedByUser), 3004, 3000, 3999)]
+    [InlineData(nameof(SecurityEventIds.MfaEnabled), 3005, 3000, 3999)]
+    [InlineData(nameof(SecurityEventIds.ProfileUpdated), 3006, 3000, 3999)]
+    [InlineData(nameof(SecurityEventIds.TokenRevoked), 4001, 4000, 4999)]
+    [InlineData(nameof(SecurityEventIds.RevokedTokenReplayAttempt), 4002, 4000, 4999)]
+    [InlineData(nameof(SecurityEventIds.OrphanedTokenRevoked), 4003, 4000, 4999)]
+    [InlineData(nameof(SecurityEventIds.RevokedTokenReplayThresholdWarned), 4004, 4000, 4999)]
+    [InlineData(nameof(SecurityEventIds.RevokedTokenReplayThresholdLocked), 4005, 4000, 4999)]
+    public void SecurityEventIds_PinExpectedNumericIds(string fieldName, int expectedId, int rangeMin, int rangeMax)
+    {
+        // arrange
+        var field = typeof(SecurityEventIds).GetField(fieldName);
+        field.Should().NotBeNull(because: "every public EventId must remain accessible by name.");
+        var eventId = (EventId)field!.GetValue(null)!;
+
+        // act / assert — number, name, and range bucket must all line up.
+        eventId.Id.Should().Be(expectedId);
+        eventId.Name.Should().Be(fieldName, because: "Name uses nameof() — rename of the field must update the wire string too.");
+        eventId.Id.Should().BeInRange(rangeMin, rangeMax,
+            because: "the range buckets (1000s/2000s/3000s/4000s) are part of the SIEM contract.");
+    }
+
+    [Fact]
+    public void RevocationReasons_PinExpectedWireValues()
+    {
+        // SIEM correlation often groups by reason; renaming would split a previously-unified
+        // dashboard into two halves with different labels.
+        RevocationReasons.Logout.Should().Be("logout");
+        RevocationReasons.LogoutAll.Should().Be("logout_all");
+        RevocationReasons.PasswordChange.Should().Be("password_change");
+        RevocationReasons.PasswordReset.Should().Be("password_reset");
+        RevocationReasons.AccountLock.Should().Be("account_lock");
+        RevocationReasons.FailedLoginLockout.Should().Be("failed_login_lockout");
+        RevocationReasons.ReuseDetected.Should().Be("reuse_detected");
+        RevocationReasons.UserNotFound.Should().Be("user_not_found");
+    }
+
+    [Fact]
+    public void RateLimitPolicies_PinExpectedRegistrationKeys()
+    {
+        // The string is what [EnableRateLimiting(...)] uses to look up the registered policy.
+        // A rename here without a coordinated update to every controller would silently
+        // drop the per-endpoint rate limit (only the global limiter would still apply).
+        RateLimitPolicies.AuthStrict.Should().Be("auth-strict");
+        RateLimitPolicies.AuthSensitive.Should().Be("auth-sensitive");
+    }
+
+    [Fact]
+    public void TokenPurposes_LockoutPinned()
+    {
+        // Identity's IUserTokenStore separates tokens by (provider, purpose) — the purpose
+        // string is the lookup key, so a rename invalidates every previously-issued
+        // panic-button-lock token.
+        TokenPurposes.Lockout.Should().Be("Lockout");
+    }
+
+    [Fact]
+    public void ApiRoutes_ConfirmEmailPinned()
+    {
+        // The email-confirmation link is built into emails sent to users — those emails are
+        // sitting in mailboxes for hours/days. Changing the route makes existing links 404.
+        ApiRoutes.ConfirmEmail.Should().Be("/confirm/email");
+    }
+
+    [Fact]
+    public void WellKnownPaths_PrefixAndDocumentNamesFollowSpec()
+    {
+        // Standard /.well-known/ URIs from RFC 8615 + OIDC Discovery — consumers (JwtBearer,
+        // operator tooling) expect these exact paths.
+        WellKnownPaths.Prefix.Should().Be(".well-known");
+        WellKnownPaths.Jwks.Should().Be("jwks.json");
+        WellKnownPaths.OpenIdConfiguration.Should().Be("openid-configuration");
+    }
+
+    [Fact]
+    public void ErrorMessages_AreNonEmptyAndUniqueAcrossPublicConsts()
+    {
+        // arrange — pull every public const string and verify each carries a non-empty
+        // operator-facing message and that values are distinct (a duplicated message would
+        // mean two distinct error conditions render identically to the client).
+        var fields = typeof(ErrorMessages)
+            .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+            .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+            .ToList();
+
+        fields.Should().NotBeEmpty();
+
+        // act
+        var values = fields.Select(f => (string)f.GetRawConstantValue()!).ToList();
+
+        // assert
+        values.Should().AllSatisfy(v => v.Should().NotBeNullOrWhiteSpace());
+        values.Should().OnlyHaveUniqueItems();
+    }
+
+    [Theory]
+    [InlineData(nameof(ErrorMessages.InvalidRequest), "Invalid request.")]
+    [InlineData(nameof(ErrorMessages.InvalidToken), "Token is invalid.")]
+    [InlineData(nameof(ErrorMessages.InvalidRefreshToken), "Refresh token is invalid.")]
+    [InlineData(nameof(ErrorMessages.ExpiredRefreshToken), "Refresh token has expired.")]
+    [InlineData(nameof(ErrorMessages.AccountLocked), "Your account is locked.")]
+    [InlineData(nameof(ErrorMessages.AccountLockedFailedAttempts), "Your account is locked due to too many failed login attempts.")]
+    [InlineData(nameof(ErrorMessages.InvalidMfaProvider), "Invalid MFA Provider.")]
+    [InlineData(nameof(ErrorMessages.PhoneMfaNotConfigured), "Phone MFA is not configured on this deployment.")]
+    [InlineData(nameof(ErrorMessages.PhoneNumberNotConfirmed), "Phone number is missing or not confirmed.")]
+    [InlineData(nameof(ErrorMessages.InvalidEmailConfirmationRequest), "Invalid email confirmation request")]
+    [InlineData(nameof(ErrorMessages.MissingJtiClaim), "Token does not contain a jti claim.")]
+    public void ErrorMessages_PinPublishedText(string fieldName, string expected)
+    {
+        // arrange — the user-facing English text. Localisation is a future change; until
+        // then this is the canonical wire string. Subtle rephrasing here would change UX
+        // copy across every consumer that surfaces these messages directly.
+        var field = typeof(ErrorMessages).GetField(fieldName);
+
+        // act
+        var value = (string)field!.GetRawConstantValue()!;
+
+        // assert
+        value.Should().Be(expected);
+    }
+
+    [Fact]
+    public void UriConstants_AreNonEmpty()
+    {
+        // arrange — UriConstants is a small grab-bag of query-string parameter names. A
+        // string-equality test on each pin is overkill; verifying every public const is
+        // non-empty is enough to catch accidental clearing.
+        var fields = typeof(UriConstants)
+            .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+            .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+            .ToList();
+
+        // act / assert
+        fields.Should().NotBeEmpty();
+        fields.Select(f => (string)f.GetRawConstantValue()!)
+            .Should().AllSatisfy(v => v.Should().NotBeNullOrWhiteSpace());
+    }
+
+    [Fact]
+    public void EmailSubjects_AreNonEmptyAndUnique()
+    {
+        // arrange / act — email subject lines must be distinct so users can scan their
+        // inbox and tell which kind of email they received.
+        var fields = typeof(EmailSubjects)
+            .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+            .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+            .Select(f => (string)f.GetRawConstantValue()!)
+            .ToList();
+
+        // assert
+        fields.Should().NotBeEmpty();
+        fields.Should().OnlyHaveUniqueItems();
+        fields.Should().AllSatisfy(v => v.Should().NotBeNullOrWhiteSpace());
+    }
+
+    [Fact]
+    public void UserConstants_AdminUsernamePinned()
+    {
+        // The seeded admin's username is part of the deployment contract — operators look
+        // for "admin" specifically when troubleshooting. Renaming would break runbooks.
+        UserConstants.Admin.Should().Be("admin");
+    }
+
+    [Fact]
+    public void RouteConstants_PageRoutes_ArePinnedWithLeadingSlash()
+    {
+        // Razor Page routes — referenced from email templates and redirect-after-action
+        // flows. Leading slash is the Razor convention; absent it the redirect resolves
+        // relative to the current page and breaks for non-root requests.
+        PageRouteConstants.ResetPassword.Should().Be("/ResetPassword");
+        PageRouteConstants.LockAccount.Should().Be("/LockAccount");
+        PageRouteConstants.ActionComplete.Should().Be("/ActionComplete");
+
+        new[] {
+            PageRouteConstants.ResetPassword,
+            PageRouteConstants.LockAccount,
+            PageRouteConstants.ActionComplete
+        }.Should().AllSatisfy(r => r.Should().StartWith("/"));
+    }
+
+    [Fact]
+    public void ResponseConstants_BadRequestAndUnauthorizedKeys_Pinned()
+    {
+        // These are the keys ApiResponse.AddError gets called with for the standard
+        // failure shapes. Clients deserialize the Errors dictionary and look up by these
+        // exact keys, so renaming silently breaks client error handling.
+        ResponseConstants.BadRequest.Should().Be("Bad Request");
+        ResponseConstants.Unauthorized.Should().Be("Unauthorized");
+    }
+
+    [Fact]
+    public void RevocationReasons_AllValues_AreUniqueAndSnakeCase()
+    {
+        // arrange — pull every const, verify uniqueness (so SIEM grouping is meaningful)
+        // and snake_case shape (consistent serialization style — the wire convention is
+        // snake_case in this codebase).
+        var values = typeof(RevocationReasons)
+            .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+            .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+            .Select(f => (string)f.GetRawConstantValue()!)
+            .ToList();
+
+        // act / assert
+        values.Should().NotBeEmpty();
+        values.Should().OnlyHaveUniqueItems();
+        values.Should().AllSatisfy(v => v.Should().MatchRegex("^[a-z_]+$"));
+    }
+}
