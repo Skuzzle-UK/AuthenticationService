@@ -88,7 +88,10 @@ public class JWTService : ITokenService
             return new RefreshResult.NotFound();
         }
 
+        // AsNoTracking because we don't mutate this row via the change tracker; the consume step
+        // below uses ExecuteUpdateAsync with a WHERE clause for race-resistance instead.
         var existing = await _context.RefreshTokens
+            .AsNoTracking()
             .FirstOrDefaultAsync(t => t.TokenHash == hash && t.UserId == userId);
 
         if (existing is null)
@@ -98,17 +101,7 @@ public class JWTService : ITokenService
 
         if (existing.ConsumedAt is not null)
         {
-            // Reuse detected. Defensive cascade: revoke every refresh-token family for this
-            // user and rotate the security stamp so all outstanding access tokens die too.
-            var compromisedFamilyId = existing.FamilyId;
-            await RevokeAllRefreshTokenFamiliesAsync(userId, RevocationReasons.ReuseDetected);
-            var compromisedUser = await _userManager.FindByIdAsync(userId);
-            if (compromisedUser is not null)
-            {
-                await _userManager.UpdateSecurityStampAsync(compromisedUser);
-            }
-            await transaction.CommitAsync();
-            return new RefreshResult.Reused(compromisedFamilyId);
+            return await CascadeReuseAsync(userId, existing.FamilyId, transaction);
         }
 
         if (existing.ExpiresAt < DateTime.UtcNow)
@@ -122,15 +115,41 @@ public class JWTService : ITokenService
             return new RefreshResult.NotFound();
         }
 
+        // Two concurrent requests can both update this same refresh token.
+        // Whoever's UPDATE runs first wins; the
+        // other's WHERE clause matches zero rows because ConsumedAt is no longer null by
+        // the time it executes.
+        var rowsClaimed = await _context.RefreshTokens
+            .Where(t => t.Id == existing.Id && t.ConsumedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.ConsumedAt, DateTime.UtcNow));
+
+        if (rowsClaimed == 0)
+        {
+            return await CascadeReuseAsync(userId, existing.FamilyId, transaction);
+        }
+
         var roles = await _userManager.GetRolesAsync(user);
         var newToken = await CreateTokenAsync(user, roles, existing.FamilyId, ipAddress);
 
-        existing.ConsumedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
         await transaction.CommitAsync();
-
         return new RefreshResult.Success(newToken);
+    }
+
+    private async Task<RefreshResult> CascadeReuseAsync(
+        string userId,
+        Guid compromisedFamilyId,
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction)
+    {
+        await RevokeAllRefreshTokenFamiliesAsync(userId, RevocationReasons.ReuseDetected);
+
+        var compromisedUser = await _userManager.FindByIdAsync(userId);
+        if (compromisedUser is not null)
+        {
+            await _userManager.UpdateSecurityStampAsync(compromisedUser);
+        }
+
+        await transaction.CommitAsync();
+        return new RefreshResult.Reused(compromisedFamilyId);
     }
 
     public async Task RevokeAllRefreshTokenFamiliesAsync(string userId, string reason)

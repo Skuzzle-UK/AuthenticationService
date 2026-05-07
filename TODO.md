@@ -11,15 +11,6 @@ deployment; pick from the top and work down.
 These are real bugs or operational issues that will manifest under load with multiple
 replicas. Highest leverage for "production gate review with a straight face."
 
-- [ ] **`RotateRefreshTokenAsync` race condition.**
-  [JWTService.cs:80-134](AuthenticationService/Services/JWTService.cs:80). The transaction
-  begins but the `existing` SELECT doesn't lock the row. Two concurrent requests with the
-  same refresh token can both pass the `ConsumedAt is null` check, both create a new pair,
-  both commit. The reuse-detection cascade never fires because both observed null.
-  **Fix:** `[ConcurrencyCheck]` on `RefreshToken.ConsumedAt`, OR (better) replace the save
-  with a conditional UPDATE — `UPDATE RefreshTokens SET ConsumedAt = ... WHERE Id = ... AND
-  ConsumedAt IS NULL`. If 0 rows affected, treat as reuse and fire the cascade. Atomic, no
-  race.
 
 - [ ] **Background workers run on every replica.**
   Both `DataRetentionCleanupService` and `RevokedTokenReplayEscalationService` are
