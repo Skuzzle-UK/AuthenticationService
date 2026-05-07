@@ -582,6 +582,29 @@ The `kid` you publish to operations for step 3 is the value visible in the JWKS 
 
 Consumers using `Authority`-based JwtBearer auto-refresh JWKS every 24 hours by default, so they pick up new keys without redeployment. Tighten that interval if your rotation cadence is faster than 24 hours.
 
+### 11. Distributed rate limiting
+
+Rate limits are enforced cluster-wide via Redis. With multiple replicas behind a load balancer, every replica's limiter consults the same Redis-backed counters — caps stay constant as you scale replicas up or down.
+
+**Three policies, layered:**
+
+| Policy | Limit (Redis, cluster-wide) | Applied to |
+|---|---|---|
+| Global default | 4 req / 10s per user (or per IP if anonymous) | Every endpoint as a catch-all |
+| `auth-strict` | 10 req / minute per IP | Unauthenticated credential / link endpoints (login, MFA, register, forgot-password, etc.) |
+| `auth-sensitive` | 10 req / minute per user | Authenticated state-changing endpoints (change-password, enable-MFA) |
+| Health-check carve-out | 30 req / 10s per IP | `/healthz`, `/readyz` — orchestrator probes shouldn't be throttled with API traffic |
+
+The `auth-strict` and `auth-sensitive` policies are applied via `[EnableRateLimiting]` attributes on the controller actions. Most-restrictive across all applicable limiters wins per request.
+
+**In-memory fallback when Redis is down.** The global limiter is *chained* — Redis primary plus an in-memory limiter as fallback. When Redis is up, Redis caps are the binding constraint (tighter, distributed). When Redis goes down, the in-memory fallback (per-replica caps, looser cluster-wide because of the replica multiplier) takes over. Why this matters: the readiness probe pulls a Redis-down replica from the K8s service within ~10-30 seconds, but during that window incoming requests still need *some* protection. The fallback provides it.
+
+The named policies (`auth-strict`, `auth-sensitive`) are Redis-only and fail-open if Redis is down — they vanish until Redis recovers. The global in-memory fallback covers them in degraded mode.
+
+**Operationally:** when Redis is down for an extended period, you'll see `LogWarning` events from the rate limiter and the `RedisHealthCheck` will mark `/readyz` as unhealthy. K8s removes the replica from service. Self-heals when Redis recovers — the next `/readyz` probe passes, K8s adds the replica back, the Redis primary resumes binding.
+
+**Sized for an enterprise platform.** The Redis caps may need tightening or loosening based on actual traffic patterns. The right way to tune them is by watching real `EventId = ...` rate-limit-rejection counts in the SIEM and adjusting against the rejection rate — too-loose means attacks get through; too-tight means legitimate users hit 429s. Defaults shipped here are conservative starting points.
+
 ---
 
 ## Wiring up a consuming microservice

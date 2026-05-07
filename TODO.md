@@ -15,17 +15,6 @@ replicas. Highest leverage for "production gate review with a straight face."
 
 
 
-- [ ] **Rate limiter is per-replica (in-memory).**
-  [HostExtensions.AddRateLimiting](AuthenticationService/Extensions/HostExtensions.cs:376).
-  `PartitionedRateLimiter.Create<...>` is in-memory. With 3 replicas, the actual cap is 3×
-  the configured value because each replica counts independently. Credential stuffing
-  through the LB sees 3× the throughput.
-  **Fix options:**
-  - Distributed rate limiter via Redis (e.g. `cristipufu/aspnetcore-redis-rate-limiting`
-    NuGet) — uses the multiplexer we already have.
-  - Push credential-stuffing protection up the stack (Azure Front Door, AWS WAF,
-    Cloudflare).
-  - Accept the multiplier and tighten thresholds by replica count (fragile).
 
 - [ ] **Email sending blocks the request thread.**
   Every `_emailService.SendEmailAsync` call in controllers happens inline. Slow SMTP →

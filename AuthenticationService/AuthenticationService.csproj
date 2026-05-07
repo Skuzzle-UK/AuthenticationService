@@ -29,6 +29,7 @@
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
     <PackageReference Include="MySql.EntityFrameworkCore" Version="10.0.1" />
     <PackageReference Include="QRCoder" Version="1.8.0" />
+    <PackageReference Include="RedisRateLimiting.AspNetCore" Version="1.2.1" />
     <PackageReference Include="Serilog" Version="4.3.1" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />

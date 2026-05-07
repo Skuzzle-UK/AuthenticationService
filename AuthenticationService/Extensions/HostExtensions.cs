@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
@@ -23,7 +24,6 @@ using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading.RateLimiting;
 using IPNetwork = System.Net.IPNetwork;
 
 namespace AuthenticationService.Extensions;
@@ -392,84 +392,17 @@ public static class HostExtensions
                 });
             });
 
-    public static IServiceCollection AddRateLimiting(this IServiceCollection services) =>
-            services.AddRateLimiter(opt =>
-            {
-                // Global limiter applies to every request and acts as the catch-all default.
-                // Endpoints with a stricter named policy attached are subject to BOTH limiters
-                // (most-restrictive wins).
-                opt.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-                {
-                    // Health-check endpoints get a permissive bucket — orchestrator + monitoring
-                    // probes fire frequently (especially during startup) and shouldn't be throttled
-                    // alongside regular API traffic. Still rate-limited to cap DDoS abuse on the
-                    // anonymous health endpoints.
-                    if (context.Request.Path.StartsWithSegments("/healthz")
-                        || context.Request.Path.StartsWithSegments("/readyz"))
-                    {
-                        var probeIp = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
-                        return RateLimitPartition.GetFixedWindowLimiter(
-                            partitionKey: $"health:{probeIp}",
-                            factory: _ => new FixedWindowRateLimiterOptions
-                            {
-                                Window = TimeSpan.FromSeconds(10),
-                                PermitLimit = 30,
-                                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                                QueueLimit = 0
-                            });
-                    }
-
-                    // Default partition: per-user once authenticated, per-IP otherwise.
-                    var userId = context.User?.FindFirst(ClaimConstants.Sub)?.Value
-                                 ?? context.Connection.RemoteIpAddress?.ToString()
-                                 ?? "anonymous";
-
-                    return RateLimitPartition.GetFixedWindowLimiter(
-                        partitionKey: userId,
-                        factory: _ => new FixedWindowRateLimiterOptions
-                        {
-                            Window = TimeSpan.FromSeconds(10),
-                            PermitLimit = 4,
-                            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                            QueueLimit = 2
-                        });
-                });
-
-                // Strict per-IP cap for unauthenticated credential/link endpoints.
-                // 10/minute leaves headroom for shared NAT (corporate / family) but pins
-                // automated credential stuffing well below useful throughput.
-                opt.AddPolicy(RateLimitPolicies.AuthStrict, context =>
-                {
-                    var ip = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
-                    return RateLimitPartition.GetFixedWindowLimiter(
-                        partitionKey: $"auth-strict:{ip}",
-                        factory: _ => new FixedWindowRateLimiterOptions
-                        {
-                            Window = TimeSpan.FromMinutes(1),
-                            PermitLimit = 10,
-                            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                            QueueLimit = 0
-                        });
-                });
-
-                // Per-user cap for authenticated state-changing endpoints.
-                opt.AddPolicy(RateLimitPolicies.AuthSensitive, context =>
-                {
-                    var key = context.User?.FindFirst(ClaimConstants.Sub)?.Value
-                              ?? context.Connection.RemoteIpAddress?.ToString()
-                              ?? "anonymous";
-                    return RateLimitPartition.GetFixedWindowLimiter(
-                        partitionKey: $"auth-sensitive:{key}",
-                        factory: _ => new FixedWindowRateLimiterOptions
-                        {
-                            Window = TimeSpan.FromMinutes(1),
-                            PermitLimit = 10,
-                            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                            QueueLimit = 0
-                        });
-                });
-
-                // Reject with 429 and a hint, rather than letting requests pile up silently.
-                opt.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            });
+    /// <summary>
+    /// Wires up the rate limiter middleware. The actual configuration is in
+    /// <see cref="RateLimiterOptionsConfigurator"/> — registered as
+    /// <see cref="IConfigureOptions{TOptions}"/> here so it can take
+    /// <see cref="StackExchange.Redis.IConnectionMultiplexer"/> via constructor injection
+    /// when the options are first resolved.
+    /// </summary>
+    public static IServiceCollection AddRateLimiting(this IServiceCollection services)
+    {
+        services.AddRateLimiter(_ => { });
+        services.AddSingleton<IConfigureOptions<RateLimiterOptions>, RateLimiterOptionsConfigurator>();
+        return services;
+    }
 }
