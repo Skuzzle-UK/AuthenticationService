@@ -6,57 +6,14 @@ deployment; pick from the top and work down.
 
 ---
 
-## Tier 1 & Tier 2 — closed
+## Tier 1, 2 & 3 — closed
 
-All items in these tiers are now done and have been removed. Multi-replica correctness
-(refresh-token race, workers split, distributed rate limiter, queued email send, etc.) and
-the security-review-prep sweep (security headers, password length, open-redirect fix,
-JWKS caching, etc.) are complete.
-
----
-
-## Tier 3 — Code smells and known gaps
-
-- [ ] **`User.WaitingForMfa` is a persisted boolean.**
-  [User.cs:20](AuthenticationService/Entities/User.cs:20). Storing "is this user
-  mid-MFA-challenge" on the User entity is the wrong shape — it's *session* state, not
-  user state. Two browsers starting MFA simultaneously can't both succeed; the flag
-  persists across replica restarts even when no challenge is outstanding.
-  **Fix:** Drop it. Replace with a short-lived signed cookie / state token, or derive
-  "in MFA" from a fresh-issued MFA token in Identity's `UserToken` store.
-
-- [ ] **Residual fields on `User` entity.**
-  [User.cs:25-40](AuthenticationService/Entities/User.cs:25). `MothersMaidenName`,
-  `AddressLine1-3`, `Postcode`, `City` exist with no flow using them — leftovers from the
-  deleted recovery flow. Plus the `// TODO: Update user details endpoint /nb` in
-  AccountController hints at intent.
-  **Fix:** Either build a profile-update endpoint that uses them, or drop the fields and
-  add a column-drop migration. One or the other; current state is worst-of-both.
-
-- [ ] **`JwtSecurityTokenHandler` instantiated per call.**
-  [JWTService.cs](AuthenticationService/Services/JWTService.cs) — multiple sites.
-  `new JwtSecurityTokenHandler()` created on every token operation. Lightweight but
-  unnecessary allocation.
-  **Fix:** `private static readonly JwtSecurityTokenHandler _handler = new();`. Thread-safe
-  for the operations we use.
-
-
-- [ ] **`JWTSettings.ExpiryInMinutes` is `double`.**
-  [JWTSettings.cs](AuthenticationService/Settings/JWTSettings.cs). `double` reads as
-  "fractional minutes are meaningful" which they aren't. Either `int` (conventional) or
-  `TimeSpan` (clearest). Cosmetic.
-
-- [ ] **`AddAutoMapper(cfg => { }, typeof(Program))`.**
-  [HostExtensions.cs:35](AuthenticationService/Extensions/HostExtensions.cs:35). Empty
-  config delegate is a smell. If `RegistrationDto → User` is the only mapping (worth
-  checking), hand-rolling is clearer and faster. AutoMapper's own current guidance is
-  "use it where you have many mappings; hand-roll for one or two."
-
-- [ ] **No HTTP request size limit.**
-  Kestrel default is 30 MB. For an auth service that takes only small JSON bodies, this
-  is overkill and a small DoS surface.
-  **Fix:** Configure `KestrelServerOptions.Limits.MaxRequestBodySize` to something sane
-  (1 MB).
+All items in these tiers are now done and have been removed. Covers multi-replica
+correctness (refresh-token race, workers split, distributed rate limiter, queued email
+send, etc.), the security-review-prep sweep (security headers, password length,
+open-redirect fix, JWKS caching, etc.), and code-smell cleanup (`WaitingForMfa` /
+`MothersMaidenName` dropped, profile-update endpoint built, AutoMapper removed,
+`JwtSecurityTokenHandler` static, JWT expiry as `int`, request-body cap configurable).
 
 ---
 
@@ -139,36 +96,24 @@ than aspirational. None are blockers today; flagged so the design space is visib
 
 ---
 
-## Tier 6 — Small corrections
+## Tier 6 — closed
 
-- [ ] **`RuntimeDbSeed` doesn't handle DB unavailable at startup gracefully.** Would
-  crash the replica with an opaque error. Either retry-with-backoff, or log clearly and
-  fail fast so K8s reschedules.
-
-- [ ] **`WellKnownController.Jwks` allocates new anonymous objects on every call.** Could
-  be cached on `IEcdsaKeyProvider` since keys don't change at runtime (or invalidate on
-  the next loader refresh, which doesn't currently exist anyway).
-
-- [ ] **No `appsettings.Production.json` template.** Operators have nothing to copy/paste
-  from. A template with placeholder values + comments explaining what each setting needs
-  in production would shorten the bootstrap.
-
-- [ ] **JWKS / discovery endpoints share the global rate-limit partition.** During a key
-  rotation, many consumers fetching JWKS through the same outbound IP (corporate NAT)
-  could trip the 4/10s default. Worth a more generous policy on `/.well-known/*`.
+All small corrections are now done: `RuntimeDbSeed` fails fast with a clear DB-unreachable
+message, `WellKnownController.Jwks` returns a pre-built cached document, JWKS / discovery
+endpoints have their own generous rate-limit partition. (Production config is
+operator-overridden via env vars + the base `appsettings.json` — no separate Production
+template needed.)
 
 ---
 
 ## Recommended next-up order
 
 1. **Tier 4 item 1: tests + CI.** The single biggest open piece. Multi-day.
-   Surface is now stable enough — Tier 1 + 2 settled, Tier 3 / 5 / 6 are individually small
-   and won't reshape what tests target.
+   Surface is now stable enough — Tier 1 + 2 + 3 + 6 settled, Tier 5 is individually
+   feature-shaped and won't reshape what tests target.
 2. **Tier 4 items 2-3 (OpenTelemetry + metrics)** — half-day, lights up dashboards.
    Pairs with item 1 since CI gives a place to assert metrics shape doesn't regress.
-3. **Tier 3 + 6** opportunistically alongside the above — none are urgent, all are
-   small and improve quality.
-4. **Tier 5** items as real platform requirements arrive — don't pre-build.
+3. **Tier 5** items as real platform requirements arrive — don't pre-build.
 
 Rough effort estimate to reach "I'd put this in a production gate review with a straight
 face": **tests + CI is the gating piece.** Maybe a week of focused work; less if you're

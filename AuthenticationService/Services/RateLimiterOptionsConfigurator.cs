@@ -81,6 +81,23 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
                     });
             }
 
+            // Discovery + JWKS endpoints get their own bucket. During a key
+            // rotation a fleet of consumers behind the same corporate NAT may all refresh
+            // their cached JWKS within a few seconds — the default 4/10s would trip on
+            // anything more than a handful.
+            if (context.Request.Path.StartsWithSegments($"/{WellKnownPaths.Prefix}"))
+            {
+                var probeIp = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+                return RedisRateLimitPartition.GetFixedWindowRateLimiter(
+                    partitionKey: $"well-known:{probeIp}",
+                    factory: _ => new RedisFixedWindowRateLimiterOptions
+                    {
+                        ConnectionMultiplexerFactory = () => _redis,
+                        PermitLimit = 60,
+                        Window = TimeSpan.FromSeconds(10),
+                    });
+            }
+
             // Default: per-user once authenticated, per-IP otherwise.
             var userId = context.User?.FindFirst(ClaimConstants.Sub)?.Value
                          ?? context.Connection.RemoteIpAddress?.ToString()
@@ -114,6 +131,20 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
                     {
                         Window = TimeSpan.FromSeconds(10),
                         PermitLimit = 30,
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 0,
+                    });
+            }
+
+            if (context.Request.Path.StartsWithSegments($"/{WellKnownPaths.Prefix}"))
+            {
+                var probeIp = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+                return RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: $"well-known-fallback:{probeIp}",
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        Window = TimeSpan.FromSeconds(10),
+                        PermitLimit = 60,
                         QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                         QueueLimit = 0,
                     });

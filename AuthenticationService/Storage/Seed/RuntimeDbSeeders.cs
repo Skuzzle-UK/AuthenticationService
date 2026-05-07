@@ -39,55 +39,110 @@ public static class RuntimeDbSeeders
         var settings = scope.ServiceProvider.GetRequiredService<IOptions<AdminAccountSeedSettings>>().Value;
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("RuntimeDbSeeders");
 
-        if (await userManager.FindByNameAsync(UserConstants.Admin) is not null)
+        try
         {
-            return app;
-        }
-
-        var result = await userManager.CreateAsync(
-            new User
+            if (await userManager.FindByNameAsync(UserConstants.Admin) is not null)
             {
-                UserName = UserConstants.Admin,
-                FirstName = settings.FirstName,
-                LastName = settings.LastName,
-                Email = settings.Email,
-                EmailConfirmed = true,
-                PhoneNumber = settings.PhoneNumber,
-                PhoneNumberConfirmed = settings.PhoneNumberConfirmed,
-                Country = settings.Country,
-            },
-            settings.Password);
-
-        if (!result.Succeeded)
-        {
-            if (IsSeederRaceLoss(result.Errors))
-            {
-                logger.LogInformation(
-                    "Administrator seeding skipped — another replica seeded the account first.");
                 return app;
             }
 
-            var exceptionMessage = "AdminAccountSeedSettings is configured incorrectly: ";
-            foreach (var error in result.Errors)
+            var result = await userManager.CreateAsync(
+                new User
+                {
+                    UserName = UserConstants.Admin,
+                    FirstName = settings.FirstName,
+                    LastName = settings.LastName,
+                    Email = settings.Email,
+                    EmailConfirmed = true,
+                    PhoneNumber = settings.PhoneNumber,
+                    PhoneNumberConfirmed = settings.PhoneNumberConfirmed,
+                    Country = settings.Country,
+                },
+                settings.Password);
+
+            if (!result.Succeeded)
             {
-                exceptionMessage += $"{error.Description} ";
+                if (IsSeederRaceLoss(result.Errors))
+                {
+                    logger.LogInformation(
+                        "Administrator seeding skipped — another replica seeded the account first.");
+                    return app;
+                }
+
+                var exceptionMessage = "AdminAccountSeedSettings is configured incorrectly: ";
+                foreach (var error in result.Errors)
+                {
+                    exceptionMessage += $"{error.Description} ";
+                }
+
+                throw new ArgumentException(exceptionMessage);
             }
 
-            throw new ArgumentException(exceptionMessage);
+            var user = await userManager.FindByEmailAsync(settings.Email);
+            await userManager.AddToRoleAsync(user!, RolesConstants.Admin);
+            await userManager.AddToRoleAsync(user!, RolesConstants.DefaultUser);
+
+            logger.LogInformation(
+                "Seeded administrator account {UserName} ({UserId}).",
+                UserConstants.Admin,
+                user!.Id);
+
+            return app;
         }
-
-        var user = await userManager.FindByEmailAsync(settings.Email);
-        await userManager.AddToRoleAsync(user!, RolesConstants.Admin);
-        await userManager.AddToRoleAsync(user!, RolesConstants.DefaultUser);
-
-        logger.LogInformation(
-            "Seeded administrator account {UserName} ({UserId}).",
-            UserConstants.Admin,
-            user!.Id);
-
-        return app;
+        catch (ArgumentException)
+        {
+            // Misconfigured admin settings — message is already self-describing.
+            throw;
+        }
+        catch (Exception ex) when (IsTransientDatabaseError(ex))
+        {
+            logger.LogCritical(
+                ex,
+                "Runtime DB seeding failed because the database is unreachable. " +
+                "Check ConnectionStrings:DefaultConnection and that the DB host accepts " +
+                "connections from this replica. Failing startup so the orchestrator reschedules.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogCritical(
+                ex,
+                "Runtime DB seeding failed unexpectedly. If the database is unreachable, " +
+                "the orchestrator should reschedule on its own; otherwise investigate the " +
+                "seed configuration and migration state. Failing startup.");
+            throw;
+        }
     }
 
     private static bool IsSeederRaceLoss(IEnumerable<IdentityError> errors) =>
         errors.All(e => e.Code is DuplicateUserNameErrorCode or DuplicateEmailErrorCode);
+
+    /// <summary>
+    /// Walks the inner-exception chain looking for anything that smells like a
+    /// database-connectivity problem.
+    /// </summary>
+    private static bool IsTransientDatabaseError(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is System.Data.Common.DbException)
+            {
+                return true;
+            }
+
+            if (current is TimeoutException)
+            {
+                return true;
+            }
+
+            var typeName = current.GetType().FullName ?? string.Empty;
+            if (typeName.StartsWith("MySqlConnector.", StringComparison.Ordinal)
+                || typeName.StartsWith("MySql.Data.", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

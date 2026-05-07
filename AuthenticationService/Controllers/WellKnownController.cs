@@ -40,21 +40,7 @@ public class WellKnownController : ControllerBase
     /// </summary>
     [HttpGet(WellKnownPaths.Jwks)]
     [ResponseCache(Duration = CacheSeconds, Location = ResponseCacheLocation.Any)]
-    public IActionResult Jwks()
-    {
-        var keys = _keyProvider.PublicJsonWebKeys.Select(jwk => new
-        {
-            kty = jwk.Kty,
-            crv = jwk.Crv,
-            x   = jwk.X,
-            y   = jwk.Y,
-            use = jwk.Use,
-            alg = jwk.Alg,
-            kid = jwk.Kid,
-        });
-
-        return Ok(new { keys });
-    }
+    public IActionResult Jwks() => Ok(_keyProvider.JwksDocument);
 
     /// <summary>
     /// Minimal OIDC discovery document. Lets consumers configure JwtBearer with just `Authority`.

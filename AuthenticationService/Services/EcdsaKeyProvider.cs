@@ -25,6 +25,7 @@ public sealed class EcdsaKeyProvider : IEcdsaKeyProvider, IDisposable
     public SigningCredentials SigningCredentials { get; }
     public IReadOnlyList<SecurityKey> PublicSecurityKeys { get; }
     public IReadOnlyList<JsonWebKey> PublicJsonWebKeys { get; }
+    public JwksDocument JwksDocument { get; }
 
     public EcdsaKeyProvider(
         IOptions<JWTSettings> jwtSettings,
@@ -53,6 +54,17 @@ public sealed class EcdsaKeyProvider : IEcdsaKeyProvider, IDisposable
 
         PublicSecurityKeys = _allKeys.Select(k => (SecurityKey)k.PublicKey).ToList();
         PublicJsonWebKeys = _allKeys.Select(k => k.JsonWebKey).ToList();
+        JwksDocument = new JwksDocument(
+            PublicJsonWebKeys
+                .Select(jwk => new JwksKey(
+                    Kty: jwk.Kty,
+                    Crv: jwk.Crv,
+                    X: jwk.X,
+                    Y: jwk.Y,
+                    Use: jwk.Use,
+                    Alg: jwk.Alg,
+                    Kid: jwk.Kid))
+                .ToList());
     }
 
     public void Dispose()

@@ -29,4 +29,11 @@ public interface IEcdsaKeyProvider
     /// consumers so they can validate tokens signed by any active or recently-rotated-out key.
     /// </summary>
     IReadOnlyList<JsonWebKey> PublicJsonWebKeys { get; }
+
+    /// <summary>
+    /// Pre-built JWKS response payload. Keys don't change at runtime, so the document is
+    /// allocated once at startup and reused on every <c>/.well-known/jwks.json</c> request
+    /// — saves rebuilding an array of anonymous objects on every consumer fetch.
+    /// </summary>
+    JwksDocument JwksDocument { get; }
 }
