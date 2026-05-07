@@ -123,18 +123,32 @@ public static class HostExtensions
         return services;
     }
 
-    public static IServiceCollection AddServices(this IServiceCollection services) =>
+    public static IServiceCollection AddServices(this IServiceCollection services)
+    {
         services
             .AddSingleton<IEcdsaKeyProvider, EcdsaKeyProvider>()
             .AddScoped<ITokenService, JWTService>()
             .AddScoped<IUserService, UserService>()
-            .AddSingleton<IEmailService, EmailService>()
             // TODO: Replace this with a real ISmsService implementation (Twilio, AWS SNS, etc.)
             // to enable phone MFA. SmsService reports IsConfigured = false so
             // the MFA endpoints return a clean BadRequest until a provider is wired.
             .AddSingleton<ISmsService, SmsService>()
             .AddHttpContextAccessor()
             .AddSingleton<ILogEventEnricher, HttpContextLogEnricher>();
+
+        // QueuedEmailService plays three roles on a single instance: producer (controllers
+        // get IEmailService), consumer (BackgroundService runs the drain loop), and the
+        // concrete singleton itself. Register the concrete type, then expose it via the
+        // two interfaces the rest of the app sees. Always registered as a hosted service
+        // — the dispatcher must run on every replica that queues emails, regardless of
+        // HostingSettings:BackgroundWorkersEnabled (that flag governs the cleanup /
+        // escalation workers, which are a different concern).
+        services.AddSingleton<QueuedEmailService>();
+        services.AddSingleton<IEmailService>(sp => sp.GetRequiredService<QueuedEmailService>());
+        services.AddHostedService(sp => sp.GetRequiredService<QueuedEmailService>());
+
+        return services;
+    }
 
     public static IServiceCollection AddHostedServices(this IServiceCollection services, HostBuilderContext context)
     {

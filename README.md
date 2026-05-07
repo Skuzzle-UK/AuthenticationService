@@ -196,7 +196,7 @@ Seeds a single admin user on first startup. All fields except `LastName`/`PhoneN
 
 ### `EmailServerSettings`
 
-SMTP credentials for outbound email (registration confirmation, MFA, recovery, lockout notices).
+SMTP credentials for outbound email (registration confirmation, MFA, recovery, lockout notices). Email send happens off the request thread via an in-memory queue + background dispatcher — see [§12 — Email dispatch](#12-email-dispatch).
 
 ### `DataRetentionSettings`
 
@@ -604,6 +604,28 @@ The named policies (`auth-strict`, `auth-sensitive`) are Redis-only and fail-ope
 **Operationally:** when Redis is down for an extended period, you'll see `LogWarning` events from the rate limiter and the `RedisHealthCheck` will mark `/readyz` as unhealthy. K8s removes the replica from service. Self-heals when Redis recovers — the next `/readyz` probe passes, K8s adds the replica back, the Redis primary resumes binding.
 
 **Sized for an enterprise platform.** The Redis caps may need tightening or loosening based on actual traffic patterns. The right way to tune them is by watching real `EventId = ...` rate-limit-rejection counts in the SIEM and adjusting against the rejection rate — too-loose means attacks get through; too-tight means legitimate users hit 429s. Defaults shipped here are conservative starting points.
+
+### 12. Email dispatch
+
+Outbound email goes through an **in-memory queue + background dispatcher** rather than blocking the request thread on the SMTP send. Controllers call `_emailService.SendEmailAsync(...)` which writes to a bounded `Channel<T>` and returns immediately (sub-millisecond); a `BackgroundService` reads from the channel and does the actual SMTP work off the request path.
+
+The dispatcher uses MailKit and **holds the SMTP connection open across messages**. Connection reuse + SMTP pipelining (when the server advertises it) means a sustained burst of emails amortises the TLS-handshake / authentication cost across all of them — typically 3-10× the throughput of a fresh-connect-per-send model. The connection is established lazily on the first message and re-established whenever it drops (idle-disconnect from the SMTP server, network blip, etc.). Clean QUIT on shutdown.
+
+**What this changes:**
+
+- Login / registration / forgot-password requests no longer wait for SMTP. A slow or hung SMTP server doesn't stall the auth service's request handling.
+- SMTP errors after queueing are logged but **not** propagated back to the controller — by design, a downstream email problem shouldn't fail the user's request mid-flow.
+
+**Failure modes worth knowing:**
+
+| Symptom | What happens | Operator action |
+|---|---|---|
+| SMTP slow | Queue absorbs the latency; controllers stay fast. Dispatcher catches up when SMTP recovers. | None — system self-heals. |
+| SMTP throws on send | Logged at `Error`. Message is dropped. Dispatcher continues with the next message. | Investigate the SMTP server; the user can re-trigger the email by re-running the flow (forgot-password again, etc.). |
+| Sustained SMTP outage filling the queue | After ~1000 messages the queue is full. Producers (controllers) wait up to 1 second for space, then log + drop. The controller's request still returns successfully — the user sees "check your inbox" but the email never arrives. | Investigate SMTP. The `LogError` "Email queue full" entries in the logs are the alert signal. |
+| Replica restart with messages still in the queue | Anything not yet drained is lost. | None — auth-service email volumes are low enough that this loss window is tiny. If cross-replica persistence is needed for compliance, swap the queue for Hangfire / similar. |
+
+**Per-replica queue.** Each replica has its own in-memory channel and dispatcher. Whichever replica receives the request also dispatches its own emails — meaning the dispatcher must run on every replica that queues, regardless of `HostingSettings:BackgroundWorkersEnabled`. The hosted service is wired in `AddServices` (always-on) rather than the gated `AddHostedServices` bucket (cleanup / escalation workers, which are an unrelated concern).
 
 ---
 

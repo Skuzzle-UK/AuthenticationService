@@ -16,12 +16,6 @@ replicas. Highest leverage for "production gate review with a straight face."
 
 
 
-- [ ] **Email sending blocks the request thread.**
-  Every `_emailService.SendEmailAsync` call in controllers happens inline. Slow SMTP →
-  slow login response. SMTP timeout → 500 to the user.
-  **Fix:** Background task queue. Either build a small `Channel<T>` with a worker, pull in
-  a NuGet (Hangfire/MassTransit/Coravel) if the platform allows, or at minimum set tight
-  `SmtpClient.Timeout` so failures fail fast.
 
 ---
 
@@ -243,6 +237,7 @@ than aspirational. None are blockers today; flagged so the design space is visib
 - [ ] **JWKS / discovery endpoints share the global rate-limit partition.** During a key
   rotation, many consumers fetching JWKS through the same outbound IP (corporate NAT)
   could trip the 4/10s default. Worth a more generous policy on `/.well-known/*`.
+
 
 ---
 
