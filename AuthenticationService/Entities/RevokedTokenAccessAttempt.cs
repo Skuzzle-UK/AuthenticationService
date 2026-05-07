@@ -1,6 +1,7 @@
 #pragma warning disable
 
 using AuthenticationService.Enums;
+using System.ComponentModel.DataAnnotations;
 
 namespace AuthenticationService.Entities;
 
@@ -23,6 +24,10 @@ public class RevokedTokenAccessAttempt
     public string TokenJti { get; set; }
     public string UserId { get; set; }
     public string IpAddress { get; set; }
+
+    [MaxLength(512)]
+    public string? UserAgent { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public Severity Severity { get; set; }
 }

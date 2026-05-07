@@ -85,7 +85,9 @@ public interface ITokenService
     /// Records that someone tried to use a token we'd already revoked. Writes one
     /// <c>RevokedTokenAccessAttempt</c> row for the threshold-escalation worker and
     /// SIEM forwarding to consume. The caller passes in the already-loaded
-    /// <see cref="RevokedToken"/> so we don't hit the DB twice.
+    /// <see cref="RevokedToken"/> so we don't hit the DB twice. <paramref name="userAgent"/>
+    /// is captured on the audit row so SIEM rules that don't ingest logs can still
+    /// correlate replays by UA.
     /// </summary>
-    Task RecordRevokedReplayAsync(RevokedToken revokedToken, string ipAddress);
+    Task RecordRevokedReplayAsync(RevokedToken revokedToken, string ipAddress, string? userAgent);
 }

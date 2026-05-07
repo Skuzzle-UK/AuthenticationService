@@ -283,9 +283,6 @@ than aspirational. None are blockers today; flagged so the design space is visib
   be cached on `IEcdsaKeyProvider` since keys don't change at runtime (or invalidate on
   the next loader refresh, which doesn't currently exist anyway).
 
-- [ ] **`RevokedTokenAccessAttempt` could include `UserAgent`** as a column for offline
-  analysis. We already have it in logs via the new `HttpContextLogEnricher`, but
-  persisting on the audit row helps SIEM rules that don't ingest logs.
 
 - [ ] **No `appsettings.Production.json` template.** Operators have nothing to copy/paste
   from. A template with placeholder values + comments explaining what each setting needs

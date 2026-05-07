@@ -236,7 +236,7 @@ public class JWTService : ITokenService
             ipAddress);
     }
 
-    public async Task RecordRevokedReplayAsync(RevokedToken revokedToken, string ipAddress)
+    public async Task RecordRevokedReplayAsync(RevokedToken revokedToken, string ipAddress, string? userAgent)
     {
         // Severity distinguishes "still-live revoked token" (Medium — the deny-list is the
         // only thing stopping it) from "naturally-expired revoked token" (Low — JwtBearer's
@@ -258,12 +258,28 @@ public class JWTService : ITokenService
             TokenJti = revokedToken.TokenJti,
             UserId = revokedToken.UserId,
             IpAddress = ipAddress,
+            UserAgent = TruncateUserAgent(userAgent),
             CreatedAt = DateTime.UtcNow,
             Severity = severity,
         };
 
         await _context.RevokedTokenAccessAttempts.AddAsync(attempt);
         await _context.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Defensive guard against an attacker sending a malicious 10MB User-Agent header to
+    /// bloat our audit table.
+    /// </summary>
+    private static string? TruncateUserAgent(string? userAgent)
+    {
+        if (string.IsNullOrEmpty(userAgent))
+        {
+            return null;
+        }
+
+        const int maxLength = 512;
+        return userAgent.Length <= maxLength ? userAgent : userAgent[..maxLength];
     }
 
     public string GetUserId(string token)

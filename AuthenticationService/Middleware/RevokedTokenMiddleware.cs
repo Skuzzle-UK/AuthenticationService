@@ -37,7 +37,8 @@ public class RevokedTokenMiddleware
                 var revokedToken = await tokenService.GetRevokedTokenAsync(token);
                 if (revokedToken is not null)
                 {
-                    await tokenService.RecordRevokedReplayAsync(revokedToken, context.GetRemoteIpAddress());
+                    var userAgent = context.Request.Headers.UserAgent.ToString();
+                    await tokenService.RecordRevokedReplayAsync(revokedToken, context.GetRemoteIpAddress(), userAgent);
 
                     context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     await context.Response.WriteAsync("Token has been revoked");
