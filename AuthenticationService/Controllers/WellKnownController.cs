@@ -16,13 +16,20 @@ namespace AuthenticationService.Controllers;
 [Route(WellKnownPaths.Prefix)]
 public class WellKnownController : ControllerBase
 {
+    private const int CacheSeconds = 3600;
+
     private readonly IEcdsaKeyProvider _keyProvider;
     private readonly JWTSettings _jwtSettings;
+    private readonly PublicUrlSettings _publicUrlSettings;
 
-    public WellKnownController(IEcdsaKeyProvider keyProvider, IOptions<JWTSettings> jwtSettings)
+    public WellKnownController(
+        IEcdsaKeyProvider keyProvider,
+        IOptions<JWTSettings> jwtSettings,
+        IOptions<PublicUrlSettings> publicUrlSettings)
     {
         _keyProvider = keyProvider;
         _jwtSettings = jwtSettings.Value;
+        _publicUrlSettings = publicUrlSettings.Value;
     }
 
     /// <summary>
@@ -32,6 +39,7 @@ public class WellKnownController : ControllerBase
     /// JwtBearer which to use.
     /// </summary>
     [HttpGet(WellKnownPaths.Jwks)]
+    [ResponseCache(Duration = CacheSeconds, Location = ResponseCacheLocation.Any)]
     public IActionResult Jwks()
     {
         var keys = _keyProvider.PublicJsonWebKeys.Select(jwk => new
@@ -52,14 +60,18 @@ public class WellKnownController : ControllerBase
     /// Minimal OIDC discovery document. Lets consumers configure JwtBearer with just `Authority`.
     /// </summary>
     [HttpGet(WellKnownPaths.OpenIdConfiguration)]
+    [ResponseCache(Duration = CacheSeconds, Location = ResponseCacheLocation.Any)]
     public IActionResult OpenIdConfiguration()
     {
-        var issuer = _jwtSettings.ValidIssuer;
-        var jwksUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/{WellKnownPaths.Prefix}/{WellKnownPaths.Jwks}";
+        // Use the configured public base URL rather than request-derived scheme/host so
+        // the discovery doc advertises the canonical name even behind a reverse proxy
+        // that doesn't preserve Host (we deliberately don't honour X-Forwarded-Host —
+        // host-header attack surface).
+        var jwksUri = $"{_publicUrlSettings.BaseUrl}/{WellKnownPaths.Prefix}/{WellKnownPaths.Jwks}";
 
         return Ok(new
         {
-            issuer,
+            issuer = _jwtSettings.ValidIssuer,
             jwks_uri = jwksUri,
             id_token_signing_alg_values_supported = new[] { SecurityAlgorithms.EcdsaSha256 },
         });

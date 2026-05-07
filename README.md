@@ -19,7 +19,7 @@ sharing secrets.
 
 ## User flow (end-user perspective)
 
-1. **Register** with email + password. Username is a separate display field; a deny-list (`Constants/ReservedUserNames`) blocks claims on names that should remain reserved for system / platform identities (`administrator`, `root`, `noreply`, `support`, etc.).
+1. **Register** with email + password. Username is a separate display field; a deny-list (`IdentitySettings.User.ReservedUserNames` in config) blocks claims on names that should remain reserved for system / platform identities (`administrator`, `root`, `noreply`, `support`, etc.).
 2. **Confirm email** via the link sent to the inbox.
 3. **Authenticate** with email/username + password — receive a JWT (5 min) + refresh token (5 days). The pair belongs to a "session family" identified by the `sid` claim — a single login is one family; multiple devices each get their own.
 4. (Optional) **Enable MFA** — server returns a QR code.
@@ -157,7 +157,7 @@ The example consumer's Swagger lives at `https://localhost:50500/swagger`. It ex
 - **Replay a consumed refresh token.** Authenticate, hit `/refresh` once successfully, then hit `/refresh` again with the *original* (now-consumed) refresh token. Expect 401, plus a `RevocationReason = "reuse_detected"` row in `RefreshTokens` for every active family for the user, plus a `LogWarning` event in the auth service logs. (Email send may also fire if SMTP is reachable.)
 - **Per-device logout isolation.** Log in twice with the same admin account (two browser sessions). Hit `/logout` from one — the other should keep working until you also `/logout` it (or `/logoutall` from either). Inspect the `RefreshTokens` table to see the per-family revocation.
 - **Restart the auth service WITHOUT restarting Redis.** Outstanding email-link tokens (request a password reset, don't click the link, restart the service, click the link) should still work — proof that the data-protection key ring survived restart via Redis persistence. Restart Redis without persistence configured and the link will be broken — proof that AOF/RDB matters.
-- **Try registering with a reserved username.** `POST /api/Registration/register` with `{ "UserName": "Administrator", ... }` should return 400 with an `errors.ReservedUserName` entry. Same for any of the names in `Constants/ReservedUserNames` (case-insensitive). Try `"alice"` and you should get past the username validator (succeeds, or fails on a different rule).
+- **Try registering with a reserved username.** `POST /api/Registration/register` with `{ "UserName": "Administrator", ... }` should return 400 with an `errors.ReservedUserName` entry. Same for any of the names in `IdentitySettings.User.ReservedUserNames` (case-insensitive). Try `"alice"` and you should get past the username validator (succeeds, or fails on a different rule).
 - **Replay a consumed email-confirmation link.** Click the confirmation link in the registration email — the email is now confirmed. Click the same link again — should fail because the security stamp rotated on the first successful confirm, invalidating the token.
 
 ### What's actually happening
@@ -222,6 +222,25 @@ Per-deployment flags that let the same Docker image run as either an API replica
 | Key | Description |
 |---|---|
 | `BackgroundWorkersEnabled` | Default `true`. Set to `false` on API replicas of a split deployment so only the dedicated worker pod runs the cleanup sweep + threshold-escalation worker. |
+
+### `IdentitySettings`
+
+ASP.NET Core Identity tuning — password rules, user-creation rules, lockout policy. Defaults match NIST 800-63B / OWASP guidance and reasonable lockout protection. Most deployments shouldn't need to change these; the block in `appsettings.json` is a reference for what's tunable.
+
+| Key | Default | Notes |
+|---|---|---|
+| `Password.RequiredLength` | `12` | NIST 800-63B / OWASP. Bump to 14 or 16 for higher-assurance environments. |
+| `Password.RequireDigit` | `true` | |
+| `Password.RequireLowercase` | `true` | |
+| `Password.RequireUppercase` | `true` | |
+| `Password.RequireNonAlphanumeric` | `true` | |
+| `Password.RequiredUniqueChars` | `1` | Effectively no restriction. NIST recommends *not* enforcing — uniqueness rules push users toward predictable patterns. Exposed for compliance frameworks that require it. |
+| `User.RequireUniqueEmail` | `true` | Don't disable — the password-reset flow looks users up by email. |
+| `User.AllowedUserNameCharacters` | (Identity's default — letters, digits, `-._@+`) | Tighten by removing characters. E.g. drop `+` if usernames are emails and you want to block gmail-alias style. Affects new registrations only. |
+| `User.ReservedUserNames` | (platform defaults — see `IdentitySettings.cs`) | Usernames blocked at registration. Setting this in config **replaces** the default list — copy the defaults out and extend rather than start from scratch. Useful for adding org-specific reserved names (`finance`, `infosec`, `payroll`, etc.). |
+| `Lockout.AllowedForNewUsers` | `true` | Don't disable — brand-new accounts need the same brute-force protection as existing ones. |
+| `Lockout.DefaultLockoutDurationInMinutes` | `2` | Auto-clears at this duration. Short by design — legitimate user typos shouldn't pay a long penalty. |
+| `Lockout.MaxFailedAccessAttempts` | `3` | Tight enough to deter credential stuffing, generous enough for typos. |
 
 ### `ThresholdEscalationSettings`
 
@@ -626,6 +645,20 @@ The dispatcher uses MailKit and **holds the SMTP connection open across messages
 | Replica restart with messages still in the queue | Anything not yet drained is lost. | None — auth-service email volumes are low enough that this loss window is tiny. If cross-replica persistence is needed for compliance, swap the queue for Hangfire / similar. |
 
 **Per-replica queue.** Each replica has its own in-memory channel and dispatcher. Whichever replica receives the request also dispatches its own emails — meaning the dispatcher must run on every replica that queues, regardless of `HostingSettings:BackgroundWorkersEnabled`. The hosted service is wired in `AddServices` (always-on) rather than the gated `AddHostedServices` bucket (cleanup / escalation workers, which are an unrelated concern).
+
+### 13. Security response headers
+
+Every response carries a small set of security headers as defence-in-depth backstops. Implemented in `SecurityHeadersMiddleware`, applied early in the pipeline (right after `UseStaticFiles()`) so every response — including 404s, static files, and Razor pages — gets them.
+
+| Header | Value | Why |
+|---|---|---|
+| `Content-Security-Policy` | `default-src 'self'`, `script-src 'self' 'unsafe-inline'`, `frame-ancestors 'none'`, etc. | Locks down what scripts / styles / images / iframes the browser will load. Defends against XSS even if a payload reaches our HTML. The Razor pages need `'unsafe-inline'` for now; tighten to nonce-based later if needed. |
+| `X-Content-Type-Options` | `nosniff` | Stops the browser overriding our Content-Type. Defends against MIME-confusion attacks. |
+| `X-Frame-Options` | `DENY` | Refuses iframe embedding. Defends against clickjacking. Duplicated by CSP `frame-ancestors 'none'` for older browsers. |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Caps what gets sent in `Referer` on outbound requests. Stops us leaking URLs (which contain reset-password tokens!) to third-party sites. |
+| `Permissions-Policy` | empty allow-lists for `camera`, `microphone`, `geolocation`, `payment`, `usb`, `fullscreen` | Disables browser features the auth service has no business using. Defence in depth. |
+
+`HSTS` is set separately in `WebApplicationExtensions.ConfigureApplicationAsync` (only in non-Development).
 
 ---
 

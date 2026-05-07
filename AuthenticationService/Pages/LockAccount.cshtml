@@ -6,8 +6,8 @@
 
 <script>
     function LockoutAccount() {
-        let token = '@Model.Token';
-        let email = '@Model.Email';
+        let token = @Json.Serialize(Model.Token);
+        let email = @Json.Serialize(Model.Email);
 
         let request = {
             Email: email,

@@ -61,6 +61,7 @@ public static class WebApplicationExtensions
 
         app.UseHttpsRedirection();
         app.UseStaticFiles();
+        app.UseMiddleware<SecurityHeadersMiddleware>();
 
         // Must run before UseAuthentication
         app.UseCors();

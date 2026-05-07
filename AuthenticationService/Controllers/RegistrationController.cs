@@ -24,6 +24,7 @@ public class RegistrationController : ControllerBase
     private readonly IMapper _mapper;
     private readonly DatabaseContext _dbContext;
     private readonly PublicUrlSettings _publicUrlSettings;
+    private readonly CorsSettings _corsSettings;
     private readonly ILogger<RegistrationController> _logger;
 
     public RegistrationController(
@@ -32,6 +33,7 @@ public class RegistrationController : ControllerBase
         IMapper mapper,
         DatabaseContext dbContext,
         IOptions<PublicUrlSettings> publicUrlSettings,
+        IOptions<CorsSettings> corsSettings,
         ILogger<RegistrationController> logger)
     {
         _userService = userService;
@@ -39,6 +41,7 @@ public class RegistrationController : ControllerBase
         _mapper = mapper;
         _dbContext = dbContext;
         _publicUrlSettings = publicUrlSettings.Value;
+        _corsSettings = corsSettings.Value;
         _logger = logger;
     }
 
@@ -137,9 +140,43 @@ public class RegistrationController : ControllerBase
             "Email confirmed for {UserId}",
             user.Id);
 
-        return string.IsNullOrWhiteSpace(callbackUri)
-            ? Ok(new ApiResponse())
-            : Redirect(callbackUri);
+        return Redirect(ResolveSafeCallback(callbackUri));
+    }
+
+    /// <summary>
+    /// Validates the supplied <paramref name="callbackUri"/> against the CORS allow-list
+    /// before honouring it.
+    /// </summary>
+    private string ResolveSafeCallback(string? callbackUri)
+    {
+        var defaultDestination = $"{_publicUrlSettings.BaseUrl}{RouteConstants.ActionComplete}";
+
+        if (string.IsNullOrWhiteSpace(callbackUri))
+        {
+            return defaultDestination;
+        }
+
+        if (IsAllowedRedirect(callbackUri))
+        {
+            return callbackUri;
+        }
+
+        _logger.LogWarning(
+            "Rejected open-redirect attempt to {CallbackUri} from {IpAddress}; redirecting to default",
+            callbackUri,
+            Request.GetRemoteIpAddress());
+        return defaultDestination;
+    }
+
+    private bool IsAllowedRedirect(string callbackUri)
+    {
+        if (!Uri.TryCreate(callbackUri, UriKind.Absolute, out var uri))
+        {
+            return true; // relative URL — stays on our origin, safe
+        }
+
+        var origin = uri.GetLeftPart(UriPartial.Authority);
+        return _corsSettings.AllowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>

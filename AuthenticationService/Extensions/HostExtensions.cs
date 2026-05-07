@@ -37,7 +37,7 @@ public static class HostExtensions
             services.AddValidators();
             services.AddAutoMapper(cfg => { }, typeof(Program));
             services.AddDatabase(context);
-            services.AddSecurity();
+            services.AddSecurity(context);
             services.AddDataProtectionConfiguration(context);
             services.AddForwardedHeadersConfiguration(context);
             services.AddCorsConfiguration(context);
@@ -99,6 +99,11 @@ public static class HostExtensions
 
         services.AddOptions<HostingSettings>()
             .Bind(context.Configuration.GetSection(nameof(HostingSettings)))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<IdentitySettings>()
+            .Bind(context.Configuration.GetSection(nameof(IdentitySettings)))
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
@@ -176,15 +181,30 @@ public static class HostExtensions
                 opt.UseMySQL(context.Configuration.GetConnectionString("MySQL")!);
             });
 
-    public static IServiceCollection AddSecurity(this IServiceCollection services)
+    public static IServiceCollection AddSecurity(this IServiceCollection services, HostBuilderContext context)
     {
+        // Read at registration time so the values are known before AddIdentity sees them.
+        // Validation still runs via ValidateOnStart() in AddValidatedSettings — anything
+        // out-of-range or invalid throws there, not silently here.
+        var identitySettings = context.Configuration
+            .GetSection(nameof(IdentitySettings))
+            .Get<IdentitySettings>() ?? new IdentitySettings();
+
         services.AddIdentity<User, Role>(opt =>
         {
-            opt.Password.RequiredLength = 8;
-            opt.User.RequireUniqueEmail = true;
-            opt.Lockout.AllowedForNewUsers = true;
-            opt.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(2);
-            opt.Lockout.MaxFailedAccessAttempts = 3;
+            opt.Password.RequiredLength = identitySettings.Password.RequiredLength;
+            opt.Password.RequireDigit = identitySettings.Password.RequireDigit;
+            opt.Password.RequireLowercase = identitySettings.Password.RequireLowercase;
+            opt.Password.RequireUppercase = identitySettings.Password.RequireUppercase;
+            opt.Password.RequireNonAlphanumeric = identitySettings.Password.RequireNonAlphanumeric;
+            opt.Password.RequiredUniqueChars = identitySettings.Password.RequiredUniqueChars;
+
+            opt.User.RequireUniqueEmail = identitySettings.User.RequireUniqueEmail;
+            opt.User.AllowedUserNameCharacters = identitySettings.User.AllowedUserNameCharacters;
+
+            opt.Lockout.AllowedForNewUsers = identitySettings.Lockout.AllowedForNewUsers;
+            opt.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(identitySettings.Lockout.DefaultLockoutDurationInMinutes);
+            opt.Lockout.MaxFailedAccessAttempts = identitySettings.Lockout.MaxFailedAccessAttempts;
         })
            .AddEntityFrameworkStores<DatabaseContext>()
            .AddPasswordValidator<CustomPasswordValidator<User>>()

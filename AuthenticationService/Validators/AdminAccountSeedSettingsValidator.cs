@@ -18,7 +18,7 @@ public sealed class AdminAccountSeedSettingsValidator : IValidateOptions<AdminAc
 {
     /// <summary>The dev-only default that ships in <c>appsettings.Development.json</c>.
     /// Kept in sync with that file by hand — if you change one, change the other.</summary>
-    private const string DevDefaultPassword = "Pa5$word123";
+    private const string DevDefaultPassword = "Pa5$word123-dev";
 
     private readonly IHostEnvironment _environment;
 
