@@ -26,14 +26,6 @@ replicas. Highest leverage for "production gate review with a straight face."
     duplicate writes.
 
 
-- [ ] **Cleanup uses `RemoveRange` instead of `ExecuteDeleteAsync`.**
-  [DataRetentionCleanupService.RunCleanupAsync:74-76](AuthenticationService/Services/Hosted/DataRetentionCleanupService.cs:74).
-  `RemoveRange(query)` materialises every matching row into memory then issues N DELETE
-  statements. After a busy day's failed-login wave, this can be tens of thousands of rows
-  loaded into memory. EF Core 7+ has `ExecuteDeleteAsync` for bulk deletes — single SQL
-  DELETE.
-  **Fix:** Replace each `RemoveRange(...)` with `.ExecuteDeleteAsync(stoppingToken)` on the
-  same predicate.
 
 - [ ] **Rate limiter is per-replica (in-memory).**
   [HostExtensions.AddRateLimiting](AuthenticationService/Extensions/HostExtensions.cs:376).

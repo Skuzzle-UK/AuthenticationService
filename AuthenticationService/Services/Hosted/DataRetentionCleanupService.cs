@@ -1,5 +1,6 @@
 using AuthenticationService.Settings;
 using AuthenticationService.Storage;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace AuthenticationService.Services.Hosted;
@@ -71,10 +72,19 @@ public class DataRetentionCleanupService : BackgroundService
         using var scope = _serviceScopeFactory.CreateScope();
 
         var context = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
-        context.RevokedTokenAccessAttempts.RemoveRange(context.RevokedTokenAccessAttempts.Where(x => x.CreatedAt.AddDays(_settings.RevokedReplayTTLInDays) < DateTime.UtcNow));
-        context.RevokedTokens.RemoveRange(context.RevokedTokens.Where(x => x.ExpiresAt < DateTime.UtcNow));
-        context.RefreshTokens.RemoveRange(context.RefreshTokens.Where(x => x.ExpiresAt < DateTime.UtcNow));
+        var now = DateTime.UtcNow;
 
-        await context.SaveChangesAsync(stoppingToken);
+        // Using ExecuteDeleteAsync for efficient server-side deletes without loading entities into memory.
+        await context.RevokedTokenAccessAttempts
+            .Where(x => x.CreatedAt.AddDays(_settings.RevokedReplayTTLInDays) < now)
+            .ExecuteDeleteAsync(stoppingToken);
+
+        await context.RevokedTokens
+            .Where(x => x.ExpiresAt < now)
+            .ExecuteDeleteAsync(stoppingToken);
+
+        await context.RefreshTokens
+            .Where(x => x.ExpiresAt < now)
+            .ExecuteDeleteAsync(stoppingToken);
     }
 }
