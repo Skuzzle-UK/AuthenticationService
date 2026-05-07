@@ -7,9 +7,13 @@ namespace AuthenticationService.Settings;
 /// </summary>
 public class DataProtectionCertificateSettings
 {
-    /// <summary>Path to a PFX file containing the cert + private key.</summary>
+    /// <summary>
+    /// Path to a PFX file containing the cert + private key.
+    /// </summary>
     public string? PfxPath { get; set; }
 
-    /// <summary>Password protecting the PFX. Leave null if the PFX is unprotected.</summary>
+    /// <summary>
+    /// Password protecting the PFX. Leave null if the PFX is unprotected.
+    /// </summary>
     public string? PfxPassword { get; set; }
 }

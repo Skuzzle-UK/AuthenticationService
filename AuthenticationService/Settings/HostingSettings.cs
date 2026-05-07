@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace AuthenticationService.Settings;
 
 /// <summary>
@@ -23,4 +25,15 @@ public class HostingSettings
     /// dedicated worker replica runs them.
     /// </summary>
     public bool BackgroundWorkersEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Cap on inbound request body size, in kilobytes. Default 1024 (1 MB). Kestrel's own
+    /// default of 30 MB is far larger than anything an auth endpoint legitimately accepts
+    /// — login / registration / refresh bodies are all small JSON — so we cap it tight to
+    /// shrink the DoS surface. Raise this if a future endpoint legitimately accepts larger
+    /// payloads (e.g. avatar upload). Hard-capped at 30 MB (Kestrel's own default) — at
+    /// that point the config-time cap is no longer doing anything useful.
+    /// </summary>
+    [Range(1, 30720)]
+    public int MaxRequestBodySizeInKilobytes { get; set; } = 1024;
 }

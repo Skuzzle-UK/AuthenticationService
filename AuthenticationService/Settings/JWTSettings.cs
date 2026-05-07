@@ -32,7 +32,9 @@ public class JWTSettings
     /// </summary>
     public string ActiveKeyId { get; set; } = "auto";
 
-    /// <summary>The <c>iss</c> claim stamped onto issued tokens. Consumers validate against this.</summary>
+    /// <summary>
+    /// The <c>iss</c> claim stamped onto issued tokens. Consumers validate against this.
+    /// </summary>
     [Required]
     public string ValidIssuer { get; set; }
 
@@ -43,11 +45,15 @@ public class JWTSettings
     [Required]
     public string ValidAudience { get; set; }
 
-    /// <summary>How long an access token is valid for, in minutes. Short by design — the refresh flow rolls fresh ones quickly.</summary>
-    [Required]
-    public double ExpiryInMinutes { get; set; }
+    /// <summary>
+    /// How long an access token is valid for, in minutes. Short by design — the refresh flow rolls fresh ones quickly.
+    /// </summary>
+    [Required, Range(1, 1440)]
+    public int ExpiryInMinutes { get; set; }
 
-    /// <summary>How long a refresh token is valid for, in days. After this they're pruned by the cleanup sweep.</summary>
-    [Required]
-    public double RefreshTokenExpiryInDays { get; set; }
+    /// <summary>
+    /// How long a refresh token is valid for, in days. After this they're pruned by the cleanup sweep.
+    /// </summary>
+    [Required, Range(1, 365)]
+    public int RefreshTokenExpiryInDays { get; set; }
 }

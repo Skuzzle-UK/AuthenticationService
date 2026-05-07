@@ -7,15 +7,20 @@
 /// </summary>
 public class ApiResponse
 {
-    /// <summary>True until an error is added. Calling <see cref="Successful"/> flips it back.</summary>
+    /// <summary>
+    /// True until an error is added. Calling <see cref="Successful"/> flips it back.
+    /// </summary>
     public bool IsSuccessful { get; private set; } = true;
 
-    /// <summary>Keyed errors. Null when there are none.</summary>
+    /// <summary>
+    /// Keyed errors. Null when there are none.
+    /// </summary>
     public Dictionary<string, string>? Errors { get; private set; }
 
-    /// <summary>Adds one keyed error and marks the response unsuccessful. Returns <c>this</c> for chaining.</summary>
-    public ApiResponse AddError(string key, string error)
-    {
+    /// <summary>
+    /// Adds one keyed error and marks the response unsuccessful. Returns <c>this</c> for chaining.
+    /// </summary>
+    public ApiResponse AddError(string key, string error)    {
         if (Errors == null)
         {
             Errors = new Dictionary<string, string>();
@@ -28,9 +33,10 @@ public class ApiResponse
         return this;
     }
 
-    /// <summary>Adds many keyed errors at once and marks the response unsuccessful. Returns <c>this</c> for chaining.</summary>
-    public ApiResponse AddErrors(Dictionary<string, string> errors)
-    {
+    /// <summary>
+    /// Adds many keyed errors at once and marks the response unsuccessful. Returns <c>this</c> for chaining.
+    /// </summary>
+    public ApiResponse AddErrors(Dictionary<string, string> errors)    {
         if (Errors == null)
         {
             Errors = new Dictionary<string, string>();

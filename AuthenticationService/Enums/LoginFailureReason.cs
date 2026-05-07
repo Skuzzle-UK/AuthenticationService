@@ -7,12 +7,15 @@ namespace AuthenticationService.Enums;
 /// </summary>
 public enum LoginFailureReason
 {
-    /// <summary>Wrong username/email or wrong password.</summary>
+    /// <summary>
+    /// Wrong username/email or wrong password.
+    /// </summary>
     BadCredentials,
-
-    /// <summary>Account is currently locked (manual lock, or auto-lock from failed attempts).</summary>
+    /// <summary>
+    /// Account is currently locked (manual lock, or auto-lock from failed attempts).
+    /// </summary>
     AccountLocked,
-
-    /// <summary>Account exists but the email hasn't been confirmed yet.</summary>
-    EmailNotConfirmed,
-}
+    /// <summary>
+    /// Account exists but the email hasn't been confirmed yet.
+    /// </summary>
+    EmailNotConfirmed,}

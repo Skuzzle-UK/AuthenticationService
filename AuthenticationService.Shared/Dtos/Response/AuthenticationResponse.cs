@@ -10,18 +10,25 @@ namespace AuthenticationService.Shared.Dtos.Response;
 /// </summary>
 public class AuthenticationResponse : ApiResponse
 {
-    /// <summary>Issued access + refresh token pair. Null when MFA is still pending.</summary>
+    /// <summary>
+    /// Issued access + refresh token pair. Null when MFA is still pending.
+    /// </summary>
     public Token? Token { get; set; }
 
-    /// <summary>True if the user must complete an MFA challenge before getting a token.</summary>
+    /// <summary>
+    /// True if the user must complete an MFA challenge before getting a token.
+    /// </summary>
     public bool? MfaRequired { get; set; }
 
-    /// <summary>Which MFA provider was used (so the client knows what to prompt for).</summary>
+    /// <summary>
+    /// Which MFA provider was used (so the client knows what to prompt for).
+    /// </summary>
     public MfaProviders? MfaProvider { get; set; }
 
-    /// <summary>Builds a successful response carrying the issued token pair.</summary>
-    public static AuthenticationResponse WithToken(Token? token)
-    {
+    /// <summary>
+    /// Builds a successful response carrying the issued token pair.
+    /// </summary>
+    public static AuthenticationResponse WithToken(Token? token)    {
         return new AuthenticationResponse()
         {
             Token = token

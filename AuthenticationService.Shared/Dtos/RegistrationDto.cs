@@ -36,9 +36,6 @@ public class RegistrationDto
 
     public MfaProviders? PreferredMfaProvider { get; set; }
 
-    [MaxLength(150)]
-    public string? MothersMaidenName { get; set; }
-
     [MaxLength(256)]
     public string? AddressLine1 { get; set; }
 

@@ -6,24 +6,12 @@ deployment; pick from the top and work down.
 
 ---
 
-## Tier 1 — Correctness and multi-replica blockers
+## Tier 1 & Tier 2 — closed
 
-These are real bugs or operational issues that will manifest under load with multiple
-replicas. Highest leverage for "production gate review with a straight face."
-
-
-
-
-
-
-
----
-
-## Tier 2 — Security review prep
-
-Things a corporate-security review would flag. Individually small, collectively the
-difference between "polished" and "rough."
-
+All items in these tiers are now done and have been removed. Multi-replica correctness
+(refresh-token race, workers split, distributed rate limiter, queued email send, etc.) and
+the security-review-prep sweep (security headers, password length, open-redirect fix,
+JWKS caching, etc.) are complete.
 
 ---
 
@@ -52,11 +40,6 @@ difference between "polished" and "rough."
   **Fix:** `private static readonly JwtSecurityTokenHandler _handler = new();`. Thread-safe
   for the operations we use.
 
-- [ ] **`EmailSubjects` has three near-identical lock subjects.**
-  [EmailSubjects.cs:9-11](AuthenticationService/Constants/EmailSubjects.cs:9). `AccountLocked`
-  is unused; `LockedAccountInfo` is for failed-login lockout; `SuspiciousActivity` is for
-  refresh-reuse + threshold-escalation. Either rationalise to two (or one) or document
-  the distinction.
 
 - [ ] **`JWTSettings.ExpiryInMinutes` is `double`.**
   [JWTSettings.cs](AuthenticationService/Settings/JWTSettings.cs). `double` reads as
@@ -86,8 +69,6 @@ difference between "polished" and "rough."
   - Integration tests for the auth flow against a real MySQL container (Testcontainers).
   - Snapshot test for the JWKS / OIDC discovery doc shape.
   - CI workflow that runs `dotnet build` + tests on PR.
-
-  Best done after Tier 1 lands so tests target a stable, correctness-improved surface.
 
 - [ ] **No OpenTelemetry / W3C trace propagation.**
   Auth is the most-logged-against service. Add `services.AddOpenTelemetry()` with
@@ -168,7 +149,6 @@ than aspirational. None are blockers today; flagged so the design space is visib
   be cached on `IEcdsaKeyProvider` since keys don't change at runtime (or invalidate on
   the next loader refresh, which doesn't currently exist anyway).
 
-
 - [ ] **No `appsettings.Production.json` template.** Operators have nothing to copy/paste
   from. A template with placeholder values + comments explaining what each setting needs
   in production would shorten the bootstrap.
@@ -177,23 +157,19 @@ than aspirational. None are blockers today; flagged so the design space is visib
   rotation, many consumers fetching JWKS through the same outbound IP (corporate NAT)
   could trip the 4/10s default. Worth a more generous policy on `/.well-known/*`.
 
-
 ---
 
 ## Recommended next-up order
 
-1. **Tier 1 items 1-5** (~1-2 days) — real correctness / multi-replica issues. Highest
-   leverage. Refresh-token race fix is probably the single highest-value item.
-2. **Tier 1 item 6** (email queueing, ~half-day) — operationally important under load.
-3. **Tier 2 items 1, 3** (Swagger gating, SMTP password — ~1 hour) — small but
-   visible-to-security wins.
-4. **Tier 4 item 1: tests + CI.** Now you're testing a stable, correctness-improved
-   surface — coverage you write during/after Tier 1 catches the regressions you'd
-   otherwise re-introduce.
-5. **Tier 4 items 2-3 (OpenTelemetry + metrics)** — half-day, lights up dashboards.
-6. **Remaining Tier 2** as you go — individually small.
-7. **Tier 5** items as real platform requirements arrive — don't pre-build.
-8. **Tier 3 + 6** opportunistically alongside the above.
+1. **Tier 4 item 1: tests + CI.** The single biggest open piece. Multi-day.
+   Surface is now stable enough — Tier 1 + 2 settled, Tier 3 / 5 / 6 are individually small
+   and won't reshape what tests target.
+2. **Tier 4 items 2-3 (OpenTelemetry + metrics)** — half-day, lights up dashboards.
+   Pairs with item 1 since CI gives a place to assert metrics shape doesn't regress.
+3. **Tier 3 + 6** opportunistically alongside the above — none are urgent, all are
+   small and improve quality.
+4. **Tier 5** items as real platform requirements arrive — don't pre-build.
 
 Rough effort estimate to reach "I'd put this in a production gate review with a straight
-face": ~2 weeks of focused work for Tiers 1+2+4, plus whatever piece of Tier 5 arrives.
+face": **tests + CI is the gating piece.** Maybe a week of focused work; less if you're
+happy with unit-test-only coverage rather than full integration tests via Testcontainers.

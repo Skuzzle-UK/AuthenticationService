@@ -17,7 +17,9 @@ public static class RuntimeDbSeeders
     private const string DuplicateUserNameErrorCode = "DuplicateUserName";
     private const string DuplicateEmailErrorCode = "DuplicateEmail";
 
-    /// <summary>Runs every runtime seeder. Called once at startup.</summary>
+    /// <summary>
+    /// Runs every runtime seeder. Called once at startup.
+    /// </summary>
     public static async Task<WebApplication> RuntimeDbSeedAsync(this WebApplication app)
     {
         await app.SeedAdministratorAccountAsync();

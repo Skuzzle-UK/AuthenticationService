@@ -9,7 +9,9 @@ namespace AuthenticationService.Helpers;
 /// </summary>
 public static class AccountHelpers
 {
-    /// <summary>Builds the link sent in a password-reset email.</summary>
+    /// <summary>
+    /// Builds the link sent in a password-reset email.
+    /// </summary>
     public static string GenerateResetPasswordUri(string email, string token, string callbackUri)
     {
         var resetPasswordParams = new Dictionary<string, string>

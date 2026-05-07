@@ -1,4 +1,5 @@
 using AuthenticationService.Extensions;
+using AuthenticationService.Settings;
 using Serilog;
 
 namespace AuthenticationService;
@@ -17,15 +18,28 @@ public class Program
 
             var builder = WebApplication.CreateBuilder(args);
 
-            builder.Host.UseSerilog((hostingContext, services, configuration) => configuration
-                .ReadFrom.Configuration(hostingContext.Configuration)
-                .ReadFrom.Services(services)
-                .Enrich.FromLogContext());
-
             builder.Configuration
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
                 .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
                 .AddEnvironmentVariables();
+
+            // Cap inbound request body size. This is an auth service — every endpoint
+            // accepts only small JSON bodies (login, registration, etc.). Kestrel's 30 MB
+            // default is overkill and a small DoS surface; cap it tight via
+            // HostingSettings:MaxRequestBodySizeInKilobytes (default 1024 KB / 1 MB).
+            var hostingSettings = builder.Configuration
+                .GetSection(nameof(HostingSettings))
+                .Get<HostingSettings>() ?? new HostingSettings();
+
+            builder.WebHost.ConfigureKestrel(opt =>
+            {
+                opt.Limits.MaxRequestBodySize = (long)hostingSettings.MaxRequestBodySizeInKilobytes * 1024;
+            });
+
+            builder.Host.UseSerilog((hostingContext, services, configuration) => configuration
+                .ReadFrom.Configuration(hostingContext.Configuration)
+                .ReadFrom.Services(services)
+                .Enrich.FromLogContext());
 
             builder.Host.ConfigureHost();
 

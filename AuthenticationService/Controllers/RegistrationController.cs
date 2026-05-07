@@ -7,7 +7,6 @@ using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
 using AuthenticationService.Storage;
-using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
@@ -21,7 +20,6 @@ public class RegistrationController : ControllerBase
 {
     private readonly IUserService _userService;
     private readonly IEmailService _emailService;
-    private readonly IMapper _mapper;
     private readonly DatabaseContext _dbContext;
     private readonly PublicUrlSettings _publicUrlSettings;
     private readonly CorsSettings _corsSettings;
@@ -30,7 +28,6 @@ public class RegistrationController : ControllerBase
     public RegistrationController(
         IUserService userService,
         IEmailService emailService,
-        IMapper mapper,
         DatabaseContext dbContext,
         IOptions<PublicUrlSettings> publicUrlSettings,
         IOptions<CorsSettings> corsSettings,
@@ -38,7 +35,6 @@ public class RegistrationController : ControllerBase
     {
         _userService = userService;
         _emailService = emailService;
-        _mapper = mapper;
         _dbContext = dbContext;
         _publicUrlSettings = publicUrlSettings.Value;
         _corsSettings = corsSettings.Value;
@@ -58,7 +54,21 @@ public class RegistrationController : ControllerBase
             return BadRequest();
         }
 
-        var user = _mapper.Map<User>(request);
+        var user = new User
+        {
+            UserName = request.UserName,
+            FirstName = request.FirstName,
+            LastName = request.LastName,
+            DateOfBirth = request.DateOfBirth,
+            Email = request.Email,
+            PhoneNumber = request.PhoneNumber,
+            Country = request.Country,
+            AddressLine1 = request.AddressLine1,
+            AddressLine2 = request.AddressLine2,
+            AddressLine3 = request.AddressLine3,
+            Postcode = request.Postcode,
+            City = request.City,
+        };
 
         using var transaction = await _dbContext.Database.BeginTransactionAsync();
 
@@ -149,7 +159,7 @@ public class RegistrationController : ControllerBase
     /// </summary>
     private string ResolveSafeCallback(string? callbackUri)
     {
-        var defaultDestination = $"{_publicUrlSettings.BaseUrl}{RouteConstants.ActionComplete}";
+        var defaultDestination = $"{_publicUrlSettings.BaseUrl}{PageRouteConstants.ActionComplete}";
 
         if (string.IsNullOrWhiteSpace(callbackUri))
         {
@@ -218,7 +228,7 @@ public class RegistrationController : ControllerBase
             // After confirmation, redirect the user to the supplied callback if any,
             // otherwise to the bundled ActionComplete Razor page so something sensible
             // renders.
-            { UriConstants.CallBackUri, callbackUri ?? $"{_publicUrlSettings.BaseUrl}{RouteConstants.ActionComplete}" }
+            { UriConstants.CallBackUri, callbackUri ?? $"{_publicUrlSettings.BaseUrl}{PageRouteConstants.ActionComplete}" }
         };
 
         var confirmEmailUri = QueryHelpers.AddQueryString(confirmEmailPath, confirmEmailParams!);

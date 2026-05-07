@@ -34,34 +34,141 @@ namespace AuthenticationService.Constants;
 /// </summary>
 public static class SecurityEventIds
 {
+    // ------------------------------------------------------------------
     // 1000s — Authentication
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// A user successfully authenticated and was issued a token pair.
+    /// </summary>
     public static readonly EventId LoginSucceeded = new(1001, nameof(LoginSucceeded));
+
+    /// <summary>
+    /// A login attempt failed. Reason carried in the <c>{Reason}</c> field (bad credentials, email not confirmed, account locked, etc.).
+    /// </summary>
     public static readonly EventId LoginFailed = new(1002, nameof(LoginFailed));
+
+    /// <summary>
+    /// An MFA challenge was issued to the user — code emailed / generated in the authenticator app.
+    /// </summary>
     public static readonly EventId MfaChallengeIssued = new(1003, nameof(MfaChallengeIssued));
+
+    /// <summary>
+    /// The user submitted a valid MFA code; login completed.
+    /// </summary>
     public static readonly EventId MfaVerified = new(1004, nameof(MfaVerified));
+
+    /// <summary>
+    /// The user submitted an invalid MFA code. Counts toward the failed-login lockout the same as a wrong password.
+    /// </summary>
     public static readonly EventId MfaFailed = new(1005, nameof(MfaFailed));
+
+    /// <summary>
+    /// An account was auto-locked after exceeding the configured failed-attempt threshold.
+    /// </summary>
     public static readonly EventId FailedLoginLockoutTriggered = new(1006, nameof(FailedLoginLockoutTriggered));
+
+    /// <summary>
+    /// A refresh token was successfully rotated; the caller received a new access + refresh pair.
+    /// </summary>
     public static readonly EventId RefreshTokenRotated = new(1007, nameof(RefreshTokenRotated));
+
+    /// <summary>
+    /// An already-consumed refresh token was presented again. Treated as theft — every active session for the user is revoked. <b>Critical level</b> — page on every occurrence.
+    /// </summary>
     public static readonly EventId RefreshTokenReuseDetected = new(1008, nameof(RefreshTokenReuseDetected));
+
+    /// <summary>
+    /// The user logged out of a single device (single refresh-token family revoked).
+    /// </summary>
     public static readonly EventId LogoutPerDevice = new(1009, nameof(LogoutPerDevice));
+
+    /// <summary>
+    /// The user logged out of every device (every refresh-token family revoked, security stamp rotated).
+    /// </summary>
     public static readonly EventId LogoutAllDevices = new(1010, nameof(LogoutAllDevices));
 
+    // ------------------------------------------------------------------
     // 2000s — Registration
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// A new user account was created.
+    /// </summary>
     public static readonly EventId RegistrationCompleted = new(2001, nameof(RegistrationCompleted));
+
+    /// <summary>
+    /// The user clicked the confirmation link in their registration email; their email is now confirmed.
+    /// </summary>
     public static readonly EventId EmailConfirmed = new(2002, nameof(EmailConfirmed));
+
+    /// <summary>
+    /// The user clicked an email-confirmation link but the token didn't validate (wrong, expired, or for a different user).
+    /// </summary>
     public static readonly EventId EmailConfirmationFailed = new(2003, nameof(EmailConfirmationFailed));
 
+    // ------------------------------------------------------------------
     // 3000s — Account management
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// The user changed their password while authenticated.
+    /// </summary>
     public static readonly EventId PasswordChanged = new(3001, nameof(PasswordChanged));
+
+    /// <summary>
+    /// The user kicked off the "I forgot my password" flow; we emailed them a reset link.
+    /// </summary>
     public static readonly EventId PasswordResetRequested = new(3002, nameof(PasswordResetRequested));
+
+    /// <summary>
+    /// The user completed the reset flow — supplied a valid reset token and set a new password.
+    /// </summary>
     public static readonly EventId PasswordResetCompleted = new(3003, nameof(PasswordResetCompleted));
+
+    /// <summary>
+    /// The user clicked the panic-button "wasn't me!" link in a password-changed email; their account is now locked.
+    /// </summary>
     public static readonly EventId AccountLockedByUser = new(3004, nameof(AccountLockedByUser));
+
+    /// <summary>
+    /// The user enabled MFA on their account. Provider in the <c>{Provider}</c> field.
+    /// </summary>
     public static readonly EventId MfaEnabled = new(3005, nameof(MfaEnabled));
 
+    /// <summary>
+    /// The user updated their profile (name, address, phone, etc.). Phone-number changes
+    /// reset the phone-confirmed flag — track which fields changed via the <c>{Fields}</c>
+    /// payload field if forensic detail is needed.
+    /// </summary>
+    public static readonly EventId ProfileUpdated = new(3006, nameof(ProfileUpdated));
+
+    // ------------------------------------------------------------------
     // 4000s — Token state
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// An access token was added to the deny-list. Reason in the <c>{Reason}</c> field.
+    /// </summary>
     public static readonly EventId TokenRevoked = new(4001, nameof(TokenRevoked));
+
+    /// <summary>
+    /// An already-revoked access token was presented again. <c>{Severity}</c> field distinguishes "still-live" replay (Medium) from "naturally-expired" replay (Low).
+    /// </summary>
     public static readonly EventId RevokedTokenReplayAttempt = new(4002, nameof(RevokedTokenReplayAttempt));
+
+    /// <summary>
+    /// An access token was revoked because the user it referenced no longer exists in the database. Defensive — closes the door on a token that's signed correctly but no longer represents a real user.
+    /// </summary>
     public static readonly EventId OrphanedTokenRevoked = new(4003, nameof(OrphanedTokenRevoked));
+
+    /// <summary>
+    /// The threshold-escalation worker spotted repeated replay of a single revoked token and emitted a warn-level signal. No user-facing impact.
+    /// </summary>
     public static readonly EventId RevokedTokenReplayThresholdWarned = new(4004, nameof(RevokedTokenReplayThresholdWarned));
+
+    /// <summary>
+    /// The threshold-escalation worker locked an account due to sustained replay of a revoked token. Account is now indefinitely locked; user must reset password to recover. <b>Critical level</b> — page on every occurrence.
+    /// </summary>
     public static readonly EventId RevokedTokenReplayThresholdLocked = new(4005, nameof(RevokedTokenReplayThresholdLocked));
 }

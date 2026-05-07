@@ -145,9 +145,6 @@ public class AuthenticationController : ControllerBase
                 user.Id,
                 request.MfaProvider);
 
-            user.WaitingForMfa = true;
-            await _userService.UpdateAsync(user);
-
             return Ok(AuthenticationResponse.WithMfaRequired(request.MfaProvider));
         }
 
@@ -188,11 +185,6 @@ public class AuthenticationController : ControllerBase
             return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidRequest));
         }
 
-        if (!user.WaitingForMfa)
-        {
-            return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidRequest));
-        }
-
         if (await _userService.IsLockedOutAsync(user))
         {
             _logger.LogWarning(
@@ -227,9 +219,6 @@ public class AuthenticationController : ControllerBase
         var token = await _tokenService.CreateTokenAsync(user, roles, familyId: null, ipAddress: ipAddress);
 
         await _userService.ResetAccessFailedCountAsync(user);
-
-        user.WaitingForMfa = false;
-        await _userService.UpdateAsync(user);
 
         _logger.LogInformation(
             SecurityEventIds.LoginSucceeded,
@@ -403,9 +392,6 @@ public class AuthenticationController : ControllerBase
         {
             await SendFailedLoginLockoutEmailAsync(user, resetPasswordUri);
 
-            user.WaitingForMfa = false;
-            await _userService.UpdateAsync(user);
-
             await _userService.InvalidateUserTokensAsync(user, Request.GetRemoteIpAddress(), RevocationReasons.FailedLoginLockout);
 
             _logger.LogWarning(
@@ -437,7 +423,7 @@ public class AuthenticationController : ControllerBase
         try
         {
             var baseResetUri = string.IsNullOrWhiteSpace(resetPasswordUri)
-                ? $"{_publicUrlSettings.BaseUrl}{RouteConstants.ResetPassword}"
+                ? $"{_publicUrlSettings.BaseUrl}{PageRouteConstants.ResetPassword}"
                 : resetPasswordUri;
 
             var token = await _userService.GeneratePasswordResetTokenAsync(user);

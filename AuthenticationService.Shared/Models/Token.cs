@@ -8,18 +8,28 @@ namespace AuthenticationService.Shared.Models;
 /// </summary>
 public class Token
 {
-    /// <summary>Token scheme — currently always <c>"Bearer"</c>.</summary>
+    /// <summary>
+    /// Token scheme — currently always <c>"Bearer"</c>.
+    /// </summary>
     public required string Type { get; init; }
 
-    /// <summary>The access token (the JWT itself).</summary>
+    /// <summary>
+    /// The access token (the JWT itself).
+    /// </summary>
     public required string Value { get; init; }
 
-    /// <summary>When the access token expires.</summary>
+    /// <summary>
+    /// When the access token expires.
+    /// </summary>
     public DateTime? Expires { get; init; }
 
-    /// <summary>The refresh token (an opaque random string — keep it secret).</summary>
+    /// <summary>
+    /// The refresh token (an opaque random string — keep it secret).
+    /// </summary>
     public string? RefreshToken { get; init; }
 
-    /// <summary>When the refresh token expires.</summary>
+    /// <summary>
+    /// When the refresh token expires.
+    /// </summary>
     public DateTime? RefreshTokenExpiresAt { get; init; }
 }

@@ -222,6 +222,7 @@ Per-deployment flags that let the same Docker image run as either an API replica
 | Key | Description |
 |---|---|
 | `BackgroundWorkersEnabled` | Default `true`. Set to `false` on API replicas of a split deployment so only the dedicated worker pod runs the cleanup sweep + threshold-escalation worker. |
+| `MaxRequestBodySizeInKilobytes` | Default `1024` (1 MB). Cap on inbound request body size, in KB — Kestrel's own default of 30 MB is far larger than any auth endpoint legitimately needs, so we cap tight to shrink the DoS surface. Range: `1` to `30720` (30 MB — past that the config cap stops helping since Kestrel's own default kicks in). Raise if a future endpoint accepts larger payloads (e.g. avatar upload). |
 
 ### `IdentitySettings`
 

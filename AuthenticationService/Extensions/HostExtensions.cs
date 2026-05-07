@@ -35,7 +35,6 @@ public static class HostExtensions
         {
             services.AddValidatedSettings(context);
             services.AddValidators();
-            services.AddAutoMapper(cfg => { }, typeof(Program));
             services.AddDatabase(context);
             services.AddSecurity(context);
             services.AddDataProtectionConfiguration(context);
@@ -139,25 +138,20 @@ public static class HostExtensions
             // the MFA endpoints return a clean BadRequest until a provider is wired.
             .AddSingleton<ISmsService, SmsService>()
             .AddHttpContextAccessor()
-            .AddSingleton<ILogEventEnricher, HttpContextLogEnricher>();
-
-        // QueuedEmailService plays three roles on a single instance: producer (controllers
-        // get IEmailService), consumer (BackgroundService runs the drain loop), and the
-        // concrete singleton itself. Register the concrete type, then expose it via the
-        // two interfaces the rest of the app sees. Always registered as a hosted service
-        // — the dispatcher must run on every replica that queues emails, regardless of
-        // HostingSettings:BackgroundWorkersEnabled (that flag governs the cleanup /
-        // escalation workers, which are a different concern).
-        services.AddSingleton<QueuedEmailService>();
-        services.AddSingleton<IEmailService>(sp => sp.GetRequiredService<QueuedEmailService>());
-        services.AddHostedService(sp => sp.GetRequiredService<QueuedEmailService>());
+            .AddSingleton<ILogEventEnricher, HttpContextLogEnricher>()
+            .AddSingleton<QueuedEmailService>()
+            .AddSingleton<IEmailService>(sp => sp.GetRequiredService<QueuedEmailService>());
 
         return services;
     }
 
     public static IServiceCollection AddHostedServices(this IServiceCollection services, HostBuilderContext context)
     {
-        // Background workers are gated by HostingSettings:BackgroundWorkersEnabled so
+        // Non gated hosted services to run on all replicas
+        services
+            .AddHostedService(sp => sp.GetRequiredService<QueuedEmailService>());
+
+        // Gated background services by HostingSettings:BackgroundWorkersEnabled so
         // a multi-replica deployment can split into API pods (workers off) and a
         // single worker pod (workers on).
         var hostingSettings = context.Configuration

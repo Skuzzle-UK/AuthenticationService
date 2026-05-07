@@ -9,21 +9,31 @@ namespace AuthenticationService.Settings;
 /// </summary>
 public class EmailServerSettings
 {
-    /// <summary>The address that appears in the From: header of outbound emails.</summary>
+    /// <summary>
+    /// The address that appears in the From: header of outbound emails.
+    /// </summary>
     [Required, EmailAddress]
     public string From { get; set; }
 
-    /// <summary>SMTP server hostname.</summary>
+    /// <summary>
+    /// SMTP server hostname.
+    /// </summary>
     [Required]
     public string SmtpServer { get; set; }
 
-    /// <summary>SMTP server port (587 for STARTTLS, 465 for implicit TLS, 25 for plain).</summary>
+    /// <summary>
+    /// SMTP server port (587 for STARTTLS, 465 for implicit TLS, 25 for plain).
+    /// </summary>
     [Required]
     public int Port { get; set; }
 
-    /// <summary>SMTP username, if the server requires authentication.</summary>
+    /// <summary>
+    /// SMTP username, if the server requires authentication.
+    /// </summary>
     public string? UserName { get; set; }
 
-    /// <summary>SMTP password, if the server requires authentication.</summary>
+    /// <summary>
+    /// SMTP password, if the server requires authentication.
+    /// </summary>
     public string? Password { get; set; }
 }

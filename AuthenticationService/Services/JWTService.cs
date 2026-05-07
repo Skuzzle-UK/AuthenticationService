@@ -30,6 +30,8 @@ public class JWTService : ITokenService
     private readonly IEcdsaKeyProvider _keyProvider;
     private readonly ILogger<JWTService> _logger;
 
+    private static readonly JwtSecurityTokenHandler TokenHandler = new();
+
     public JWTService(
         IOptions<JWTSettings> jwtSettings,
         UserManager<User> userManager,
@@ -70,7 +72,7 @@ public class JWTService : ITokenService
         return new Token
         {
             Type = AuthSchemeConstants.Bearer,
-            Value = new JwtSecurityTokenHandler().WriteToken(tokenOptions),
+            Value = TokenHandler.WriteToken(tokenOptions),
             Expires = tokenOptions.ValidTo,
             RefreshToken = rawRefreshToken,
             RefreshTokenExpiresAt = refreshTokenEntity.ExpiresAt,
@@ -181,8 +183,6 @@ public class JWTService : ITokenService
 
     public async Task<bool> ValidateExpiredTokenAsync(string token)
     {
-        var tokenHandler = new JwtSecurityTokenHandler();
-        
         var parameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -195,7 +195,7 @@ public class JWTService : ITokenService
             ValidAlgorithms = [SecurityAlgorithms.EcdsaSha256]
         };
 
-        var validationResult = await tokenHandler.ValidateTokenAsync(token, parameters);
+        var validationResult = await TokenHandler.ValidateTokenAsync(token, parameters);
         return validationResult.IsValid;
     }
 
@@ -291,23 +291,19 @@ public class JWTService : ITokenService
 
     public string GetUserId(string token)
     {
-        var handler = new JwtSecurityTokenHandler();
-        var jwtToken = handler.ReadJwtToken(token);
-
+        var jwtToken = TokenHandler.ReadJwtToken(token);
         return jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimConstants.Sub)?.Value ?? string.Empty;
     }
 
     private static string GetJtiFromToken(string token)
     {
-        var tokenHandler = new JwtSecurityTokenHandler();
-
-        if (tokenHandler.ReadToken(token) is not JwtSecurityToken jwtToken)
+        if (TokenHandler.ReadToken(token) is not JwtSecurityToken jwtToken)
         {
             throw new UnauthorizedAccessException(ErrorMessages.InvalidToken);
         }
 
         var jti = jwtToken.Claims.FirstOrDefault(claim => claim.Type == ClaimConstants.Jti)?.Value;
-        
+
         return jti
             ?? throw new UnauthorizedAccessException(ErrorMessages.MissingJtiClaim);
     }
@@ -324,9 +320,7 @@ public class JWTService : ITokenService
 
     public DateTime? GetExpiryDateTime(string token)
     {
-        var tokenHandler = new JwtSecurityTokenHandler();
-
-        if (tokenHandler.ReadToken(token) is not JwtSecurityToken jwtToken)
+        if (TokenHandler.ReadToken(token) is not JwtSecurityToken jwtToken)
         {
             return null;
         }

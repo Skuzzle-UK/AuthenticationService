@@ -16,8 +16,6 @@ using System.Text;
 
 namespace AuthenticationService.Controllers;
 
-// TODO: Update user details endpoint /nb
-
 [Route("api/[controller]")]
 [ApiController]
 public class AccountController : ControllerBase
@@ -95,6 +93,125 @@ public class AccountController : ControllerBase
             PreferredMfaProvider = user.PreferredMfaProvider,
             Roles = roles,
         });
+    }
+
+    /// <summary>
+    /// Updates editable profile fields on the logged-in user. Each field on the body is
+    /// optional — only the supplied ones are written, the rest are left untouched. Returns
+    /// 200 with an empty <see cref="ApiResponse"/> on success; clients should re-fetch
+    /// <c>GET /me</c> if they need the post-update snapshot.
+    ///
+    /// <para>Changing <c>PhoneNumber</c> resets the phone-confirmed flag — the user must
+    /// re-confirm before SMS-based MFA will work against the new number. Username, email,
+    /// password, MFA, and roles are out of scope here — they each have a dedicated flow.</para>
+    /// </summary>
+    [HttpPut("me")]
+    [Authorize]
+    [EnableRateLimiting(RateLimitPolicies.AuthSensitive)]
+    public async Task<IActionResult> UpdateProfileAsync([FromBody] UpdateProfileDto request)
+    {
+        if (request is null)
+        {
+            return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidRequest));
+        }
+
+        var sub = User.FindFirst(ClaimConstants.Sub)?.Value;
+        if (string.IsNullOrEmpty(sub))
+        {
+            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidToken));
+        }
+
+        var user = await _userService.FindByIdAsync(sub);
+        if (user is null)
+        {
+            // Token references a user that no longer exists — same defensive revoke as GET /me.
+            var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
+            await _tokenService.RevokeOrphanedTokenAsync(token, Request.GetRemoteIpAddress());
+
+            return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidToken));
+        }
+
+        var changedFields = new List<string>();
+
+        if (request.FirstName is not null && request.FirstName != user.FirstName)
+        {
+            user.FirstName = request.FirstName;
+            changedFields.Add(nameof(user.FirstName));
+        }
+
+        if (request.LastName is not null && request.LastName != user.LastName)
+        {
+            user.LastName = request.LastName;
+            changedFields.Add(nameof(user.LastName));
+        }
+
+        if (request.DateOfBirth is not null && request.DateOfBirth != user.DateOfBirth)
+        {
+            user.DateOfBirth = request.DateOfBirth;
+            changedFields.Add(nameof(user.DateOfBirth));
+        }
+
+        if (request.PhoneNumber is not null && request.PhoneNumber != user.PhoneNumber)
+        {
+            user.PhoneNumber = request.PhoneNumber;
+            // Number changed — old confirmation no longer applies. SMS-MFA paths block on
+            // PhoneNumberConfirmed so clearing this is what gates them off.
+            user.PhoneNumberConfirmed = false;
+            changedFields.Add(nameof(user.PhoneNumber));
+        }
+
+        if (request.Country is not null && request.Country != user.Country)
+        {
+            user.Country = request.Country;
+            changedFields.Add(nameof(user.Country));
+        }
+
+        if (request.AddressLine1 is not null && request.AddressLine1 != user.AddressLine1)
+        {
+            user.AddressLine1 = request.AddressLine1;
+            changedFields.Add(nameof(user.AddressLine1));
+        }
+
+        if (request.AddressLine2 is not null && request.AddressLine2 != user.AddressLine2)
+        {
+            user.AddressLine2 = request.AddressLine2;
+            changedFields.Add(nameof(user.AddressLine2));
+        }
+
+        if (request.AddressLine3 is not null && request.AddressLine3 != user.AddressLine3)
+        {
+            user.AddressLine3 = request.AddressLine3;
+            changedFields.Add(nameof(user.AddressLine3));
+        }
+
+        if (request.City is not null && request.City != user.City)
+        {
+            user.City = request.City;
+            changedFields.Add(nameof(user.City));
+        }
+
+        if (request.Postcode is not null && request.Postcode != user.Postcode)
+        {
+            user.Postcode = request.Postcode;
+            changedFields.Add(nameof(user.Postcode));
+        }
+
+        if (changedFields.Count == 0)
+        {
+            // Nothing actually differed — skip the round-trip and the audit event.
+            return Ok(new ApiResponse());
+        }
+
+        await _userService.UpdateAsync(user);
+
+        _logger.LogInformation(
+            SecurityEventIds.ProfileUpdated,
+            "Profile updated for {UserId} from {IpAddress} ({Fields})",
+            user.Id,
+            Request.GetRemoteIpAddress(),
+            string.Join(",", changedFields));
+
+        return Ok(new ApiResponse());
     }
 
     /// <summary>
@@ -202,7 +319,7 @@ public class AccountController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(request.ResetPasswordUri))
         {
-            request.ResetPasswordUri = $"{_publicUrlSettings.BaseUrl}{RouteConstants.ResetPassword}";
+            request.ResetPasswordUri = $"{_publicUrlSettings.BaseUrl}{PageRouteConstants.ResetPassword}";
         }
 
         var resetPasswordUri = AccountHelpers.GenerateResetPasswordUri(user.Email!, encodedToken, request.ResetPasswordUri);
@@ -250,7 +367,7 @@ public class AccountController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(request.LockAccountUri))
         {
-            request.LockAccountUri = $"{_publicUrlSettings.BaseUrl}{RouteConstants.LockAccount}";
+            request.LockAccountUri = $"{_publicUrlSettings.BaseUrl}{PageRouteConstants.LockAccount}";
         }
 
         var lockAccountUri = AccountHelpers.GenerateLockoutUri(user.Email!, lockoutToken, request.LockAccountUri);
@@ -326,7 +443,7 @@ public class AccountController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(request.LockAccountUri))
         {
-            request.LockAccountUri = $"{_publicUrlSettings.BaseUrl}{RouteConstants.LockAccount}";
+            request.LockAccountUri = $"{_publicUrlSettings.BaseUrl}{PageRouteConstants.LockAccount}";
         }
 
         var lockAccountUri = AccountHelpers.GenerateLockoutUri(user.Email!, lockoutToken, request.LockAccountUri);
@@ -379,7 +496,7 @@ public class AccountController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(request.ResetPasswordUri))
         {
-            request.ResetPasswordUri = $"{_publicUrlSettings.BaseUrl}{RouteConstants.ResetPassword}";
+            request.ResetPasswordUri = $"{_publicUrlSettings.BaseUrl}{PageRouteConstants.ResetPassword}";
         }
 
         var resetPasswordUri = AccountHelpers.GenerateResetPasswordUri(user.Email!, encodedToken, request.ResetPasswordUri);

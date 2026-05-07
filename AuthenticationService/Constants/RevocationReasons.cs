@@ -7,27 +7,43 @@ namespace AuthenticationService.Constants;
 /// </summary>
 public static class RevocationReasons
 {
-    /// <summary>User-initiated logout from a single device.</summary>
+    /// <summary>
+    /// User-initiated logout from a single device.
+    /// </summary>
     public const string Logout = "logout";
 
-    /// <summary>User-initiated logout from all devices.</summary>
+    /// <summary>
+    /// User-initiated logout from all devices.
+    /// </summary>
     public const string LogoutAll = "logout_all";
 
-    /// <summary>User changed their password while authenticated.</summary>
+    /// <summary>
+    /// User changed their password while authenticated.
+    /// </summary>
     public const string PasswordChange = "password_change";
 
-    /// <summary>User reset a forgotten password via email link.</summary>
+    /// <summary>
+    /// User reset a forgotten password via email link.
+    /// </summary>
     public const string PasswordReset = "password_reset";
 
-    /// <summary>User triggered the panic-button lock-account email link.</summary>
+    /// <summary>
+    /// User triggered the panic-button lock-account email link.
+    /// </summary>
     public const string AccountLock = "account_lock";
 
-    /// <summary>Account auto-locked after exceeding the failed-login threshold.</summary>
+    /// <summary>
+    /// Account auto-locked after exceeding the failed-login threshold.
+    /// </summary>
     public const string FailedLoginLockout = "failed_login_lockout";
 
-    /// <summary>Refresh-token reuse detected; cascade revoked all the user's tokens.</summary>
+    /// <summary>
+    /// Refresh-token reuse detected; cascade revoked all the user's tokens.
+    /// </summary>
     public const string ReuseDetected = "reuse_detected";
 
-    /// <summary>Token presented for a user that no longer exists in the database.</summary>
+    /// <summary>
+    /// Token presented for a user that no longer exists in the database.
+    /// </summary>
     public const string UserNotFound = "user_not_found";
 }

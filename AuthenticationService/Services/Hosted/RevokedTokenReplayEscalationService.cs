@@ -232,7 +232,7 @@ public class RevokedTokenReplayEscalationService : BackgroundService
             var resetUri = AccountHelpers.GenerateResetPasswordUri(
                 user.Email,
                 encodedToken,
-                $"{_publicUrlSettings.BaseUrl}{RouteConstants.ResetPassword}");
+                $"{_publicUrlSettings.BaseUrl}{PageRouteConstants.ResetPassword}");
 
             await emailService.SendEmailAsync(
                 user.Email,

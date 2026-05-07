@@ -23,23 +23,35 @@ public class IdentitySettings
     public LockoutSettings Lockout { get; set; } = new();
 }
 
-/// <summary>Password-rule settings — what counts as a valid password at create / change time.</summary>
+/// <summary>
+/// Password-rule settings — what counts as a valid password at create / change time.
+/// </summary>
 public class PasswordSettings
 {
-    /// <summary>Minimum password length. Default 12 (NIST 800-63B / OWASP guidance).</summary>
+    /// <summary>
+    /// Minimum password length. Default 12 (NIST 800-63B / OWASP guidance).
+    /// </summary>
     [Range(1, 256)]
     public int RequiredLength { get; set; } = 12;
 
-    /// <summary>Require at least one digit. Default true.</summary>
+    /// <summary>
+    /// Require at least one digit. Default true.
+    /// </summary>
     public bool RequireDigit { get; set; } = true;
 
-    /// <summary>Require at least one lowercase letter. Default true.</summary>
+    /// <summary>
+    /// Require at least one lowercase letter. Default true.
+    /// </summary>
     public bool RequireLowercase { get; set; } = true;
 
-    /// <summary>Require at least one uppercase letter. Default true.</summary>
+    /// <summary>
+    /// Require at least one uppercase letter. Default true.
+    /// </summary>
     public bool RequireUppercase { get; set; } = true;
 
-    /// <summary>Require at least one non-alphanumeric character. Default true.</summary>
+    /// <summary>
+    /// Require at least one non-alphanumeric character. Default true.
+    /// </summary>
     public bool RequireNonAlphanumeric { get; set; } = true;
 
     /// <summary>
@@ -52,7 +64,9 @@ public class PasswordSettings
     public int RequiredUniqueChars { get; set; } = 1;
 }
 
-/// <summary>User-creation settings.</summary>
+/// <summary>
+/// User-creation settings.
+/// </summary>
 public class UserSettings
 {
     /// <summary>
@@ -120,7 +134,9 @@ public class UserSettings
     };
 }
 
-/// <summary>Failed-login lockout settings.</summary>
+/// <summary>
+/// Failed-login lockout settings.
+/// </summary>
 public class LockoutSettings
 {
     /// <summary>

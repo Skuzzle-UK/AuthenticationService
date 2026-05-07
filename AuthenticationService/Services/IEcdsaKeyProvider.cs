@@ -9,12 +9,14 @@ namespace AuthenticationService.Services;
 /// </summary>
 public interface IEcdsaKeyProvider
 {
-    /// <summary>The <c>kid</c> (RFC 7638 thumbprint) of the key currently being used to sign new tokens.</summary>
+    /// <summary>
+    /// The <c>kid</c> (RFC 7638 thumbprint) of the key currently being used to sign new tokens.
+    /// </summary>
     string KeyId { get; }
-
-    /// <summary>Signing credentials for newly-issued tokens. Always references the active key.</summary>
+    /// <summary>
+    /// Signing credentials for newly-issued tokens. Always references the active key.
+    /// </summary>
     SigningCredentials SigningCredentials { get; }
-
     /// <summary>
     /// Every public key currently loaded — the active one plus any predecessors still being
     /// honoured. JwtBearer uses the whole list to validate, so a token signed by a

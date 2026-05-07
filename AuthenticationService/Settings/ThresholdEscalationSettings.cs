@@ -18,10 +18,14 @@ public class ThresholdEscalationSettings
     /// </summary>
     public bool Enabled { get; set; } = true;
 
-    /// <summary>How often the worker scans <c>RevokedTokenAccessAttempts</c>.</summary>
+    /// <summary>
+    /// How often the worker scans <c>RevokedTokenAccessAttempts</c>.
+    /// </summary>
     public double SweepIntervalInMinutes { get; set; } = 1;
 
-    /// <summary>The sliding-window size both thresholds are evaluated against.</summary>
+    /// <summary>
+    /// The sliding-window size both thresholds are evaluated against.
+    /// </summary>
     public double WindowInMinutes { get; set; } = 5;
 
     /// <summary>

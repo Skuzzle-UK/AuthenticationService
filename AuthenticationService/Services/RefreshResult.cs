@@ -8,13 +8,19 @@ namespace AuthenticationService.Services;
 /// </summary>
 public abstract record RefreshResult
 {
-    /// <summary>Rotation succeeded; <paramref name="Token"/> is the new access + refresh pair.</summary>
+    /// <summary>
+    /// Rotation succeeded; <paramref name="Token"/> is the new access + refresh pair.
+    /// </summary>
     public sealed record Success(Token Token) : RefreshResult;
 
-    /// <summary>Refresh token did not match any row for this user. Generic 401.</summary>
+    /// <summary>
+    /// Refresh token did not match any row for this user. Generic 401.
+    /// </summary>
     public sealed record NotFound : RefreshResult;
 
-    /// <summary>Refresh token row exists but its <c>ExpiresAt</c> has passed. 401.</summary>
+    /// <summary>
+    /// Refresh token row exists but its <c>ExpiresAt</c> has passed. 401.
+    /// </summary>
     public sealed record Expired : RefreshResult;
 
     /// <summary>
