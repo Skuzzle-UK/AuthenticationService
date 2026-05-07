@@ -154,34 +154,22 @@ public class JWTService : ITokenService
 
     public async Task RevokeAllRefreshTokenFamiliesAsync(string userId, string reason)
     {
-        var activeTokens = await _context.RefreshTokens
-            .Where(t => t.UserId == userId && t.ConsumedAt == null)
-            .ToListAsync();
-
         var now = DateTime.UtcNow;
-        foreach (var token in activeTokens)
-        {
-            token.ConsumedAt = now;
-            token.RevocationReason = reason;
-        }
-
-        await _context.SaveChangesAsync();
+        await _context.RefreshTokens
+            .Where(t => t.UserId == userId && t.ConsumedAt == null)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(t => t.ConsumedAt, now)
+                .SetProperty(t => t.RevocationReason, reason));
     }
 
     public async Task RevokeFamilyAsync(Guid familyId, string reason)
     {
-        var activeTokens = await _context.RefreshTokens
-            .Where(t => t.FamilyId == familyId && t.ConsumedAt == null)
-            .ToListAsync();
-
         var now = DateTime.UtcNow;
-        foreach (var token in activeTokens)
-        {
-            token.ConsumedAt = now;
-            token.RevocationReason = reason;
-        }
-
-        await _context.SaveChangesAsync();
+        await _context.RefreshTokens
+            .Where(t => t.FamilyId == familyId && t.ConsumedAt == null)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(t => t.ConsumedAt, now)
+                .SetProperty(t => t.RevocationReason, reason));
     }
 
     private static string HashRefreshToken(string rawToken)
