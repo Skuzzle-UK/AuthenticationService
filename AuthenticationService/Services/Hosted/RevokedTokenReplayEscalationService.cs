@@ -91,7 +91,11 @@ public class RevokedTokenReplayEscalationService : BackgroundService
         }
     }
 
-    private async Task RunSweepAsync(CancellationToken stoppingToken)
+    /// <summary>
+    /// One pass of the sweep. Exposed as <c>internal</c> so tests can drive escalation
+    /// logic directly without going through <see cref="ExecuteAsync"/>'s timer loop.
+    /// </summary>
+    internal async Task RunSweepAsync(CancellationToken stoppingToken)
     {
         using var scope = _serviceScopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<DatabaseContext>();

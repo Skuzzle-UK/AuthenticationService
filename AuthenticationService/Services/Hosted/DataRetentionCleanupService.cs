@@ -67,7 +67,11 @@ public class DataRetentionCleanupService : BackgroundService
         }
     }
 
-    private async Task RunCleanupAsync(CancellationToken stoppingToken)
+    /// <summary>
+    /// One pass of cleanup. Exposed as <c>internal</c> so tests can drive the cleanup
+    /// logic directly without going through <see cref="ExecuteAsync"/>'s timer loop.
+    /// </summary>
+    internal async Task RunCleanupAsync(CancellationToken stoppingToken)
     {
         using var scope = _serviceScopeFactory.CreateScope();
 

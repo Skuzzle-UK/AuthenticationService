@@ -5,9 +5,9 @@ Three test projects, one per source project, all using:
 - **xUnit** as the runner
 - **AwesomeAssertions** for fluent assertions (FluentAssertions fork; no licence concerns)
 - **NSubstitute** for mocking (no Moq SponsorLink politics)
-- **EF Core SQLite InMemory** for tests that need transactions / `ExecuteUpdateAsync`
-  (the EF Core `InMemory` provider rejects both — SQLite InMemory honours them while
-  staying fully self-contained)
+- **EF Core SQLite InMemory** for tests that need transactions / `ExecuteUpdateAsync` /
+  `ExecuteDeleteAsync` (the EF Core `InMemory` provider rejects all three — SQLite
+  InMemory honours them while staying fully self-contained)
 
 All tests follow the **arrange / act / assert** pattern with comments explaining what's
 being tested and why. The reasoning matters as much as the assertions — when a test fails
@@ -26,14 +26,14 @@ dotnet test Tests/AuthenticationService.Tests/
 dotnet test
 ```
 
-## Coverage status
+## Coverage
 
-| Project | Public types | Tested types | Tests |
-|---|---|---|---|
-| `AuthenticationService.Client` | 2 | 2 | 10 |
-| `AuthenticationService.Shared` | ~20 (DTOs, models, enums, constants) | all | 78 |
-| `AuthenticationService` | ~50 (services, controllers, validators, middleware, etc.) | most | 231 |
-| **Total** | | | **319** |
+| Project | Tests |
+|---|---|
+| `AuthenticationService.Client` | 10 |
+| `AuthenticationService.Shared` | 78 |
+| `AuthenticationService` | 308 |
+| **Total** | **396** |
 
 ## What's covered
 
@@ -78,6 +78,12 @@ dotnet test
   - `JWTService` — `CreateTokenAsync` (claim shape, FamilyId reuse, refresh-hash-not-raw), `RotateRefreshTokenAsync` (success, garbage-token throw, expired, reuse-cascade, unknown-user), `ValidateExpiredTokenAsync` (valid, foreign-key, garbage), `RevokeTokenAsync` / `GetRevokedTokenAsync` / `RevokeOrphanedTokenAsync`, `RecordRevokedReplayAsync` (Severity.Low for naturally-expired, Medium for still-live, null-UA, oversized-UA truncation, null-ExpiresAt → Medium), `RevokeAllRefreshTokenFamiliesAsync` (only active rows), `RevokeFamilyAsync` (only named family), `GetUserId`, `GetExpiryDateTime`. **29 tests.**
   - `UserService` — `InvalidateUserTokensAsync` (with + without token, empty-string token), plus representative pass-throughs for the renamed Mfa methods (Get/Set/Generate/Verify) and a sample of the rest.
   - `SmsService` — default `IsConfigured = false`, `SendAsync` throws.
+  - `QueuedEmailService` (producer side) — sub-millisecond return time pinned; concurrent multi-writer enqueue; queue-full path doesn't throw.
+- **Hosted services** (sweep / cleanup methods exposed as `internal` + `InternalsVisibleTo`):
+  - `DataRetentionCleanupService.RunCleanupAsync` — old audit rows past TTL deleted, recent kept; expired RevokedTokens / RefreshTokens deleted, live ones kept; empty DB no-op.
+  - `RevokedTokenReplayEscalationService.RunSweepAsync` — no replays no-op, warn at threshold (stamps WarnedAt without lock cascade), already-warned doesn't refire, lock at threshold (cascade: lockout-until-MaxValue + revoke-all-families + stamp rotation + email + Critical SIEM), already-locked doesn't refire, missing user logs and skips, email-send-fails doesn't break security action, audit row for unknown jti gracefully skipped.
+- **Health checks**:
+  - `RedisHealthCheck` — ping succeeds → Healthy, ping throws → Unhealthy with exception, ping hangs past 1s timeout → Unhealthy, outer cancellation already cancelled → Unhealthy.
 - **Storage**:
   - `RuntimeDbSeeders` — happy path, admin-already-exists no-op, multi-replica race (Duplicate*Code → benign), real Identity error → ArgumentException, transient DB error (`DbException`) → re-throw for orchestrator reschedule, unexpected error → re-throw, composite `RuntimeDbSeedAsync` entry point.
 - **Controllers**:
@@ -85,52 +91,39 @@ dotnet test
   - `WellKnownController` — JWKS returns cached document by reference, OIDC discovery shape (issuer, jwks_uri, ES256-only).
   - `AccountController.MeAsync` — happy, missing-sub-claim 401, orphan-token (revoke + 401).
   - `AccountController.UpdateProfileAsync` — null body 400, missing-sub-claim 401, orphan-token revoke + 401, no-changes 200 with no DB write, partial update only writes changed fields, phone-change resets confirmation, same-phone doesn't reset.
+  - `AccountController.EnableMfaAsync` — orphan, key-already-exists vs needs-reset, invalid-provider, Email path, Phone × (sms-configured, phone-confirmed) matrix with rollback, Authenticator path with QR + key, null-DTO-provider preserves existing user preference.
+  - `AccountController.ForgotPasswordAsync` — unknown email 400, unconfirmed email 400, callback URL preserved, default fallback to bundled page.
+  - `AccountController.ResetForgottenPasswordAsync` — unknown / unconfirmed 400, identity reset failure surfaces errors, success → invalidate-all-tokens, clear lockout, send notification.
+  - `AccountController.ChangePasswordAsync` — missing sub 401, orphan-token revoke + 401, unconfirmed email 400 (no revoke), locked 401, identity error 400 with errors, success → invalidate + clear lockout + reset access-failed + email notification.
+  - `AccountController.LockAccountAsync` — unknown email 400, invalid token 401, happy → invalidate + lockout-until-MaxValue + send reset email.
   - `AuthenticationController.AuthenticateAsync` — every branch: unknown email, email-not-confirmed, account locked, wrong password, MFA-required (all three providers), SMS-not-configured, phone-unconfirmed, invalid provider, happy path.
+  - `AuthenticationController.MfaAuthenticateAsync` — unknown email, locked, wrong code (failed-attempt + lockout cascade with email), accepted (token + reset).
+  - `AuthenticationController.RefreshTokenAsync` — invalid expired-token signature 401, every `RefreshResult` case (Success, NotFound, Expired, Reused with notification email + critical SIEM), Reused-but-no-email gracefully skipped, Reused-but-email-throws still 401.
+  - `AuthenticationController.LogoutAsync` — missing sid 401, happy path revokes family + access token.
+  - `AuthenticationController.LogoutAllAsync` — missing sub 401, orphan-token idempotent (revoke + Ok), happy path invalidates everything.
+  - `RegistrationController.RegisterUserAsync` — null body 400, identity error 400 with errors, happy → role + email + 201, MFA preference applied, no-MFA-preference skips UpdateAsync, exception mid-flow → rollback + 500 with correlation id.
+  - `RegistrationController.ConfirmEmailAsync` — unknown email 400, identity rejects token 400, success → security stamp rotated + redirect; allow-listed callback honoured, off-list callback rejected (open-redirect defence) + falls back to default, relative callback honoured as safe.
+  - `RegistrationController.ResendConfirmEmailAsync` — unknown 400, already-confirmed 400, fresh send Ok.
 
 ## What's deferred (and how to add it)
 
-The task scope was "every public class + every path through every public method." Due
-to context budget the items below are **not yet covered**. Each is straightforward to
-add following the patterns established in the existing tests; this section exists so a
-follow-up developer (or a follow-up AI session) can pick up cleanly.
+### Integration tests (Testcontainers)
+Unit tests use SQLite InMemory + substituted services. End-to-end auth flow against a real
+MySQL container would catch:
+- EF query shape divergences between SQLite and MySQL (collation, JSON columns, etc.).
+- The full Identity stack against the production-shape schema.
+- The `QueuedEmailService` consumer loop end-to-end against a fake SMTP container
+  (e.g. MailHog) — currently only the producer side is unit-tested.
 
-### Controllers — remaining endpoints
-The pattern is established in `AccountControllerMeTests` and
-`AuthenticationControllerLoginTests`. Each remaining endpoint mostly needs:
-1. happy path, 2. orphan-token-revoke path (where authorised), 3. each documented failure
-mode, 4. a SIEM-event-emitted assertion.
+These are flagged in the parent `TODO.md` Tier 4.
 
-Outstanding endpoints:
-
-| Controller | Endpoint | Branches still to cover |
-|---|---|---|
-| `AccountController` | `EnableMfaAsync` | orphan, key-already-exists vs. needs-reset, invalid-provider, Email path, Phone path × (sms-configured, phone-confirmed) matrix, Authenticator path, MFA-rollback when phone validation fails after `SetMfaEnabledAsync(true)`, happy SIEM event. |
-| `AccountController` | `ForgotPasswordAsync` | unknown-email returns 400 (don't leak registration), unconfirmed-email returns 400, default callback URL fallback, callback URL preserved, email sent. |
-| `AccountController` | `ResetForgottenPasswordAsync` | unknown email, unconfirmed email, identity reset failure, identity reset success — clears lockout + sends "password changed" notification. |
-| `AccountController` | `ChangePasswordAsync` | orphan, wrong old password, identity error, success → invalidate-all-tokens + email notification. |
-| `AccountController` | `LockAccountAsync` | unknown email, invalid token, already-locked no-op, happy → invalidate-all-tokens + lockout SIEM event. |
-| `AuthenticationController` | `MfaAuthenticateAsync` | unknown user, locked, wrong code → record failed attempt, code accepted → token issued + SIEM event. |
-| `AuthenticationController` | `RefreshAsync` | each `RefreshResult` case (Success → 200 + token, NotFound → 401, Expired → 401, Reused → 401 + reuse SIEM event). |
-| `AuthenticationController` | `LogoutAsync` / `LogoutAllAsync` | orphan, happy. |
-| `RegistrationController` | `RegisterUserAsync` | identity error → BadRequest, transactional commit on success, MFA preference applied, role assigned, confirmation email sent. |
-| `RegistrationController` | `ConfirmEmailAsync` (GET) | unknown email, identity error, success → security stamp rotated + redirect to safe callback. |
-| `RegistrationController` | `ResendEmailConfirmationAsync` | unknown email returns 200 (don't leak), already-confirmed returns 200, fresh send. |
-| `RegistrationController` | `ResolveSafeCallback` (private) — exercised through `ConfirmEmailAsync` | absolute URL on allow-list passes, off-list URL falls back to default + SIEM warn. |
-
-### Hosted services
-- `DataRetentionCleanupService` — driven by `PeriodicTimer`. Pure unit tests would need
-  a mockable timer abstraction the production code doesn't currently expose. Path forward:
-  introduce an `ITimeProvider` / extract the cleanup body into a public method and test
-  that directly.
-- `RevokedTokenReplayEscalationService` — same shape; same path forward.
-- `QueuedEmailService` — `Channel<T>` + persistent SMTP connection. Test by enqueueing
-  via `SendEmailAsync` then asserting the dispatcher consumes; SMTP call needs a
-  mockable abstraction that doesn't exist yet.
-
-### Health checks
-- `RedisHealthCheck` — depends on a real `IConnectionMultiplexer`. Either mock the
-  multiplexer to return controlled `IsConnected` values, or run a Redis test container
-  via Testcontainers.
+### `UserService` pass-through methods
+A representative sample (`FindByEmailAsync`, `GetMfaEnabledAsync`, `SetMfaEnabledAsync`,
+`GenerateMfaTokenAsync`, `VerifyMfaTokenAsync`, `GetValidMfaProvidersAsync`,
+`CreateAsync`, `ResetPasswordAsync`, `IsLockedOutAsync`) is covered. The remaining ~15
+methods are 1-line `UserManager` delegations — adding 1:1 tests adds little value beyond
+compile-time signature checks. A full delegation matrix could be auto-generated via
+reflection if exhaustive coverage is later wanted.
 
 ### Framework wiring (genuinely tested indirectly via app startup)
 The following are pure DI / pipeline registration with no testable behaviour beyond
@@ -138,12 +131,8 @@ The following are pure DI / pipeline registration with no testable behaviour bey
 - `HostExtensions` (every `Add*` method)
 - `WebApplicationExtensions.ConfigureApplicationAsync`
 - `DatabaseContext.OnModelCreating` (EF model assertions are typically integration tests)
-
-### Pass-through `UserService` methods
-A representative sample is covered. The remaining ~20 are 1-line UserManager
-delegations — adding 1:1 tests adds little value beyond compile-time signature checks.
-A full delegation matrix could be auto-generated via reflection if exhaustive coverage
-is later wanted.
+- `RateLimiterOptionsConfigurator` (testable in principle but requires a real Redis +
+  HttpContext fixture; better as integration test).
 
 ## How to extend
 
@@ -155,5 +144,9 @@ is later wanted.
    the collaborator's behaviour is itself part of what's being tested
    (`EcdsaKeyProvider` in `JWTServiceTests` is the canonical example).
 4. For DB-backed tests, use SQLite InMemory (see `JWTServiceTests` for the pattern with
-   open-connection tracking + `db.ChangeTracker.Clear()` after `ExecuteUpdate*` calls
-   to defeat stale-tracker reads).
+   open-connection tracking + `db.ChangeTracker.Clear()` after `ExecuteUpdate*` /
+   `ExecuteDelete*` calls to defeat stale-tracker reads).
+5. For hosted-service sweep / cleanup logic, drive the `internal` method directly via
+   `[InternalsVisibleTo("AuthenticationService.Tests")]` rather than spinning up the
+   timer loop (see `DataRetentionCleanupServiceTests` /
+   `RevokedTokenReplayEscalationServiceTests` for the pattern).

@@ -42,6 +42,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Expose internal members to the test project so hosted-service sweep methods
+         can be unit-tested without spinning up the PeriodicTimer wrapper. -->
+    <InternalsVisibleTo Include="AuthenticationService.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Folder Include="keys\" />
     <Folder Include="Migrations\" />
   </ItemGroup>

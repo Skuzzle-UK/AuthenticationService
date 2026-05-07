@@ -19,13 +19,23 @@ open-redirect fix, JWKS caching, etc.), and code-smell cleanup (`WaitingForMfa` 
 
 ## Tier 4 — Tests, observability, infrastructure
 
-- [ ] **No tests, no CI.**
-  No `*Test*.csproj`, no GitHub Actions / Azure Pipelines yaml. At minimum:
-  - Unit tests for `JWTService` (claim shape, expiry, validation, rotation, reuse
-    detection), `EcdsaKeyProvider`, the validators, the threshold-escalation worker logic.
-  - Integration tests for the auth flow against a real MySQL container (Testcontainers).
-  - Snapshot test for the JWKS / OIDC discovery doc shape.
-  - CI workflow that runs `dotnet build` + tests on PR.
+- [x] ~~**Unit tests landed.**~~ 396 tests across three test projects
+  (`Tests/AuthenticationService.{Client,Shared,}.Tests`) using xUnit + AwesomeAssertions
+  + NSubstitute. Every controller endpoint, every validator branch, full `JWTService`
+  / `EcdsaKeyProvider` / middleware / helpers / hosted-services (sweep methods exposed
+  via `InternalsVisibleTo`) coverage. Detailed coverage map in
+  [`Tests/README.md`](Tests/README.md).
+
+- [ ] **CI workflow not yet wired.**
+  Tests run locally via `dotnet test` but there's no GitHub Actions / Azure Pipelines
+  yaml. Minimum: a workflow that runs `dotnet build` + `dotnet test` on PR.
+
+- [ ] **Integration tests via Testcontainers.**
+  Unit tests use SQLite InMemory + substituted `IUserService` / `ITokenService`. An
+  end-to-end auth flow against a real MySQL container would catch EF query shapes
+  that diverge between SQLite and MySQL (collation, JSON columns, etc.). Pairs with
+  fake-SMTP container (e.g. MailHog) for the `QueuedEmailService` consumer loop —
+  currently only the producer side is unit-tested.
 
 - [ ] **No OpenTelemetry / W3C trace propagation.**
   Auth is the most-logged-against service. Add `services.AddOpenTelemetry()` with
