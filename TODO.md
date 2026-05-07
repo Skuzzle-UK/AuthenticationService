@@ -12,18 +12,6 @@ These are real bugs or operational issues that will manifest under load with mul
 replicas. Highest leverage for "production gate review with a straight face."
 
 
-- [ ] **Background workers run on every replica.**
-  Both `DataRetentionCleanupService` and `RevokedTokenReplayEscalationService` are
-  registered via `AddHostedService` so they run on every API replica. Two replicas can
-  cross the threshold for the same `jti` simultaneously and both fire warn/lock — the
-  nullable-column idempotency depends on a read-modify-write that has its own race here.
-  Cleanup also runs N× concurrently every 12h.
-  **Fix options:**
-  - Move workers to a separate K8s Deployment with `replicas=1` (cleanest — same image,
-    different startup mode, e.g. a `--workers-only` flag).
-  - Leader election via a Redis-based distributed lock (we already have the multiplexer).
-  - EF concurrency tokens on `WarnedAt`/`LockedAt` — doesn't stop duplicate work but stops
-    duplicate writes.
 
 
 

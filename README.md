@@ -215,6 +215,14 @@ Where this service is publicly reachable. Used by background workers (e.g. the t
 |---|---|
 | `BaseUrl` | Scheme + host (+ optional port) of the auth service from a user's browser. No trailing slash. Required outside Development; the dev-only default in `appsettings.Development.json` is `https://localhost:53217`. |
 
+### `HostingSettings`
+
+Per-deployment flags that let the same Docker image run as either an API replica or a worker replica. See [§7a — Split API + worker deployments](#7a-split-api--worker-deployments-multi-replica) for the multi-replica K8s pattern.
+
+| Key | Description |
+|---|---|
+| `BackgroundWorkersEnabled` | Default `true`. Set to `false` on API replicas of a split deployment so only the dedicated worker pod runs the cleanup sweep + threshold-escalation worker. |
+
 ### `ThresholdEscalationSettings`
 
 Tuning knobs for the `RevokedTokenReplayEscalationService` background worker. See [§9a — Threshold escalation on revoked-token replay](#9a-threshold-escalation-on-revoked-token-replay) for the full picture.
@@ -386,6 +394,73 @@ dotnet ef database update
 - **Lets you roll back.** With out-of-band migrations the deploy pipeline can stop at the migration step if anything looks wrong, before the new app version actually goes live.
 
 In Development the default (`RunMigrationsAtStartup=true`) is preserved so devs don't have to remember a separate step.
+
+### 7a. Split API + worker deployments (multi-replica)
+
+For a multi-replica K8s deployment, run the same Docker image as **two separate Deployments**:
+
+- **API Deployment** (`replicas: 3+`). Handles HTTP traffic. Background workers disabled.
+- **Worker Deployment** (`replicas: 1`). Runs the cleanup sweep + threshold-escalation worker. Not in the API's K8s Service so no traffic is routed to it.
+
+Why split: the workers (`DataRetentionCleanupService`, `RevokedTokenReplayEscalationService`) shouldn't run on every API replica. With N replicas all running the threshold-escalation worker, two replicas can simultaneously cross a threshold for the same token and both fire the warn/lock event — duplicate SIEM events, duplicate notification emails to the user. Splitting the workers onto a single dedicated replica eliminates the race.
+
+Gated by one config flag, default `true` (so existing single-deployment setups don't change behaviour):
+
+```bash
+# API Deployment
+HostingSettings__BackgroundWorkersEnabled=false
+
+# Worker Deployment (default; can also be omitted)
+HostingSettings__BackgroundWorkersEnabled=true
+```
+
+Example K8s manifest sketch:
+
+```yaml
+# API Deployment — handles traffic, no workers
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: auth-api }
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: auth
+          image: auth-service:v1
+          env:
+            - name: HostingSettings__BackgroundWorkersEnabled
+              value: "false"
+            # ... other env vars (DB, Redis, JWT settings, etc.)
+---
+# Worker Deployment — runs the workers, no traffic
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: auth-worker }
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: auth
+          image: auth-service:v1
+          # No HostingSettings__BackgroundWorkersEnabled override needed — defaults to true
+          env:
+            # ... same env as API for DB / Redis / etc.
+---
+# Service routes only to the API deployment (selector matches API's labels, not worker's)
+apiVersion: v1
+kind: Service
+metadata: { name: auth-api }
+spec:
+  selector:
+    app: auth-api
+  ports: [...]
+```
+
+The worker pod still binds web ports and exposes `/healthz` / `/readyz` so K8s can probe it normally — there's no special "worker mode" startup, just a config flag. If the worker pod dies, K8s restarts it; until then the workers aren't running. That's acceptable: the cleanup sweep runs every 12h and the threshold-escalation sweep every minute, so a few-minute worker outage causes at most some delayed audit cleanup and a delayed lock-event for an actively-attacked account. Nothing data-corrupting.
+
+If you want auto-failover (worker pod dies → another picks up immediately) the right tool is leader election via a Redis-backed distributed lock. Worth the complexity if your platform's SLA demands it; otherwise the single-replica worker pattern is simpler and sufficient for an auth service's background-task volume.
 
 ### 8. HTTPS / hostname
 

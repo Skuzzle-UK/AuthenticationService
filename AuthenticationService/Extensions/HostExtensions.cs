@@ -43,7 +43,7 @@ public static class HostExtensions
             services.AddCorsConfiguration(context);
             services.AddHealthChecksConfiguration();
             services.AddServices();
-            services.AddHostedServices();
+            services.AddHostedServices(context);
             services.AddRazorPages();
             services.AddApiControllers();
             services.AddSwagger();
@@ -97,6 +97,11 @@ public static class HostExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<HostingSettings>()
+            .Bind(context.Configuration.GetSection(nameof(HostingSettings)))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         return services;
     }
 
@@ -131,10 +136,24 @@ public static class HostExtensions
             .AddHttpContextAccessor()
             .AddSingleton<ILogEventEnricher, HttpContextLogEnricher>();
 
-    public static IServiceCollection AddHostedServices(this IServiceCollection services) =>
-        services
+    public static IServiceCollection AddHostedServices(this IServiceCollection services, HostBuilderContext context)
+    {
+        // Background workers are gated by HostingSettings:BackgroundWorkersEnabled so
+        // a multi-replica deployment can split into API pods (workers off) and a
+        // single worker pod (workers on).
+        var hostingSettings = context.Configuration
+            .GetSection(nameof(HostingSettings))
+            .Get<HostingSettings>() ?? new HostingSettings();
+
+        if (!hostingSettings.BackgroundWorkersEnabled)
+        {
+            return services;
+        }
+
+        return services
             .AddHostedService<DataRetentionCleanupService>()
             .AddHostedService<RevokedTokenReplayEscalationService>();
+    }
 
     public static IServiceCollection AddDatabase(this IServiceCollection services, HostBuilderContext context) =>
         services
