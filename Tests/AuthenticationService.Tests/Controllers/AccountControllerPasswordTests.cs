@@ -409,7 +409,7 @@ public class AccountControllerPasswordTests
         await deps.UserService.Received(1).InvalidateUserTokensAsync(
             user, Arg.Any<string>(), RevocationReasons.AccountLock);
         await deps.UserService.Received(1).SetLockoutEnabledAsync(user, true);
-        await deps.UserService.Received(1).SetLockoutEndDateAsync(user, DateTimeOffset.MaxValue);
+        await deps.UserService.Received(1).SetLockoutEndDateAsync(user, LockoutDurations.Indefinite);
         await deps.EmailService.Received(1).SendEmailAsync(
             "alice@example.com", EmailSubjects.AccountLocked, Arg.Any<string>());
     }

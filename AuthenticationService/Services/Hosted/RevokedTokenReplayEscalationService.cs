@@ -120,15 +120,20 @@ public class RevokedTokenReplayEscalationService : BackgroundService
             return;
         }
 
-        // Load every revoked-token row we might need to update in one round-trip.
-        var jtis = attemptCounts.Select(a => a.Jti).ToList();
-        var revokedTokens = await context.RevokedTokens
-            .Where(t => jtis.Contains(t.TokenJti))
-            .ToDictionaryAsync(t => t.TokenJti, stoppingToken);
-
+        // Look up the revoked-token row for each jti above-threshold. We loop one row
+        // at a time rather than batching with `Where(t => jtis.Contains(t.TokenJti))`
+        // because Oracle's MySql.EntityFrameworkCore provider can't translate
+        // Contains-on-collection cleanly ("expression does not have a type mapping"
+        // error). The N here is bounded by the number of jtis above WarnThreshold
+        // within the window — single-digit under realistic load — so the N round-trips
+        // are negligible against the 1-minute sweep cadence. If we ever migrate to
+        // Pomelo this can revert to a single batched query.
         foreach (var attempt in attemptCounts)
         {
-            if (!revokedTokens.TryGetValue(attempt.Jti, out var revokedToken))
+            var revokedToken = await context.RevokedTokens
+                .FirstOrDefaultAsync(t => t.TokenJti == attempt.Jti, stoppingToken);
+
+            if (revokedToken is null)
             {
                 // Audit row references a jti we don't have a revocation row for. Should
                 // not happen under normal flows but skip gracefully.
@@ -196,7 +201,7 @@ public class RevokedTokenReplayEscalationService : BackgroundService
 
         // Indefinite lock — same shape as the panic-button /lock endpoint. The user's
         // forgot-password flow is the recovery path and clears LockoutEnd on success.
-        await userService.SetLockoutEndDateAsync(user, DateTimeOffset.MaxValue);
+        await userService.SetLockoutEndDateAsync(user, LockoutDurations.Indefinite);
 
         // Treat every other live token for this user as suspect. Same defensive cascade
         // as the refresh-token reuse-detected path — if one session is compromised, all

@@ -10,18 +10,32 @@ namespace AuthenticationService.IntegrationTests;
 /// once per test run. Container start-up is the slow bit (~30s on cold pull); we share
 /// across every test class via <see cref="IntegrationTestCollection"/>. Tests must
 /// isolate themselves via unique data (random emails) since they share one MySQL.
+///
+/// <para>The default fixture passes <c>--integration-test</c> to the AppHost which
+/// flips <c>HostingSettings:RateLimitingEnabled</c> to false — so a sequence of
+/// credential calls across scenarios doesn't trip the global 4/10s cap. Subclasses
+/// can override <see cref="AppHostArgs"/> to run with different host configuration
+/// (see <see cref="RateLimitedAppHostFixture"/>).</para>
 /// </summary>
-public sealed class AppHostFixture : IAsyncLifetime
+public class AppHostFixture : IAsyncLifetime
 {
     private DistributedApplication? _app;
 
     public DistributedApplication App => _app
         ?? throw new InvalidOperationException("Fixture not initialised — InitializeAsync didn't run.");
 
+    /// <summary>
+    /// Args passed to the AppHost when the test fixture boots it. Default disables rate
+    /// limiting via the <c>--integration-test</c> flag the AppHost recognises. Override
+    /// in a subclass to run with different host config — e.g., rate-limiting tests need
+    /// the production-shape configuration where rate limiting is enabled.
+    /// </summary>
+    protected virtual string[] AppHostArgs => ["--integration-test"];
+
     public async Task InitializeAsync()
     {
         var builder = await DistributedApplicationTestingBuilder
-            .CreateAsync<Projects.AuthenticationService_AppHost>();
+            .CreateAsync<Projects.AuthenticationService_AppHost>(AppHostArgs);
 
         builder.Services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.Warning));
 

@@ -128,7 +128,7 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
         await service.RunSweepAsync(CancellationToken.None);
 
         // assert
-        await deps.UserService.Received(1).SetLockoutEndDateAsync(user, DateTimeOffset.MaxValue);
+        await deps.UserService.Received(1).SetLockoutEndDateAsync(user, LockoutDurations.Indefinite);
         await deps.TokenService.Received(1).RevokeAllRefreshTokenFamiliesAsync("u1", RevocationReasons.ReuseDetected);
         await deps.UserService.Received(1).UpdateSecurityStampAsync(user);
         await deps.EmailService.Received(1).SendEmailAsync(
@@ -213,7 +213,7 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
 
         // assert
         await act.Should().NotThrowAsync();
-        await deps.UserService.Received(1).SetLockoutEndDateAsync(user, DateTimeOffset.MaxValue);
+        await deps.UserService.Received(1).SetLockoutEndDateAsync(user, LockoutDurations.Indefinite);
         await deps.TokenService.Received(1).RevokeAllRefreshTokenFamiliesAsync("u1", RevocationReasons.ReuseDetected);
     }
 

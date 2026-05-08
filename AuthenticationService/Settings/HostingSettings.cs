@@ -36,4 +36,15 @@ public class HostingSettings
     /// </summary>
     [Range(1, 30720)]
     public int MaxRequestBodySizeInKilobytes { get; set; } = 1024;
+
+    /// <summary>
+    /// True (default) → wire up the rate limiter middleware with the policies defined in
+    /// <c>RateLimiterOptionsConfigurator</c>. Set to <c>false</c> in integration-test
+    /// environments so a sequence of tests calling credential endpoints doesn't trip the
+    /// global 4/10s cap. <b>Production should always leave this enabled</b> — disabling
+    /// removes the credential-stuffing / DDoS defence that the unit tests cover but the
+    /// real wire enforces.
+    /// </summary>
+    public bool RateLimitingEnabled { get; set; } = true;
 }
+

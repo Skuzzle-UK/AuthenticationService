@@ -26,16 +26,58 @@ open-redirect fix, JWKS caching, etc.), and code-smell cleanup (`WaitingForMfa` 
   via `InternalsVisibleTo`) coverage. Detailed coverage map in
   [`Tests/README.md`](Tests/README.md).
 
-- [ ] **CI workflow not yet wired.**
-  Tests run locally via `dotnet test` but there's no GitHub Actions / Azure Pipelines
-  yaml. Minimum: a workflow that runs `dotnet build` + `dotnet test` on PR.
+- [x] ~~**Integration tests landed.**~~ 8 scenario tests in
+  `AuthenticationService.IntegrationTests/` driven by **.NET Aspire 13** (the AppHost
+  project orchestrates real MySQL, Redis, and smtp4dev containers + the auth project as
+  a normal process). Tests use `Aspire.Hosting.Testing` to boot the same graph
+  programmatically and exercise the full stack end-to-end. Scenarios cover: registration
+  → confirm → login, refresh-token rotation, refresh-token reuse cascade, password change
+  → "wasn't me!" lock, rate-limiter integration, threshold-escalation worker, JWKS / OIDC
+  consumer round-trip. **Three production-affecting bugs found in the process** —
+  `DateOnly`/MySQL value-converter, `DateTimeOffset.MaxValue` DATETIME overflow,
+  `Contains-on-collection` translation broken in Oracle's MySql.EntityFrameworkCore.
+  Coverage map in [`AuthenticationService.IntegrationTests/README.md`](AuthenticationService.IntegrationTests/README.md).
 
-- [ ] **Integration tests via Testcontainers.**
-  Unit tests use SQLite InMemory + substituted `IUserService` / `ITokenService`. An
-  end-to-end auth flow against a real MySQL container would catch EF query shapes
-  that diverge between SQLite and MySQL (collation, JSON columns, etc.). Pairs with
-  fake-SMTP container (e.g. MailHog) for the `QueuedEmailService` consumer loop —
-  currently only the producer side is unit-tested.
+- [ ] **CI workflow not yet wired.**
+  Both test suites run locally via `dotnet test` but there's no GitHub Actions / Azure
+  Pipelines yaml. Minimum: a workflow that runs unit tests on every push (fast feedback,
+  ~3s) and integration tests on PR + main (~60s, needs Docker on the runner).
+  `ubuntu-latest` GitHub-Actions runners come with Docker pre-installed — half-day at
+  most to wire up.
+
+- [ ] **`RefreshToken.ReplacedByTokenId` never populated** (found by Scenario 2 of the
+  integration tests). The column exists on the entity for forensic chain-walking but
+  the rotation logic only stamps `ConsumedAt` — without the back-pointer, reuse
+  detection has to walk the chain via `CreatedAt` ordering rather than following an
+  explicit link. Small fix, ~30 minutes — just set the field during rotation in
+  `JWTService.RotateRefreshTokenAsync`.
+
+- [ ] **Consider migrating from `MySql.EntityFrameworkCore` (Oracle) to `Pomelo.EntityFrameworkCore.MySql`** _(blocked: waiting on Pomelo 10 release)._
+  All three integration-test bugs trace back to limitations in Oracle's provider that
+  Pomelo handles natively:
+  - `DateOnly` round-trip needs an explicit value converter against Oracle; Pomelo native.
+  - `DateTimeOffset.MaxValue` overflows MySQL `DATETIME` via Oracle; Pomelo handles cleanly.
+  - `Contains` on `List<string>` doesn't translate via Oracle (forced N+1 loop in
+    threshold-escalation worker); Pomelo translates fine.
+
+  **Status as of 2026-05-08:** the latest Pomelo on nuget.org is `9.0.0` which hard-pins
+  to `Microsoft.EntityFrameworkCore.Relational 9.0.0–9.0.999`. The auth service is on
+  EF Core 10. Downgrading EF Core to 9 across the .NET 10 stack would cascade into
+  Identity / Aspire / hosting incompatibilities — not worth it.
+
+  **Re-check quarterly.** Once Pomelo ships `10.0.0` (or any preview targeting
+  EF Core 10), this migration becomes a half-day pass: swap the package, change
+  `UseMySQL` → `UseMySql(connectionString, ServerVersion.AutoDetect(...))`, regenerate
+  the migrations folder (the existing migrations reference Oracle-specific
+  `MySql.EntityFrameworkCore.Metadata` types), revert the three workarounds, run tests.
+  Migrations regeneration is the chunkiest piece — the existing schema is
+  Oracle-flavoured DDL that Pomelo will recreate slightly differently (charset
+  annotations, column types).
+
+  **Workarounds in place until then:** `DateOnly` value converter in
+  `DatabaseContext.OnModelCreating`, `LockoutDurations.Indefinite` sentinel constant,
+  per-jti loop in `RevokedTokenReplayEscalationService.RunSweepAsync`. Each has a code
+  comment explaining "this can revert when we move to Pomelo."
 
 - [ ] **No OpenTelemetry / W3C trace propagation.**
   Auth is the most-logged-against service. Add `services.AddOpenTelemetry()` with
@@ -118,13 +160,19 @@ template needed.)
 
 ## Recommended next-up order
 
-1. **Tier 4 item 1: tests + CI.** The single biggest open piece. Multi-day.
-   Surface is now stable enough — Tier 1 + 2 + 3 + 6 settled, Tier 5 is individually
-   feature-shaped and won't reshape what tests target.
-2. **Tier 4 items 2-3 (OpenTelemetry + metrics)** — half-day, lights up dashboards.
-   Pairs with item 1 since CI gives a place to assert metrics shape doesn't regress.
-3. **Tier 5** items as real platform requirements arrive — don't pre-build.
+1. **CI workflow** — half-day. Smallest remaining gap before the test suite is fully
+   automated. GitHub Actions yaml that runs unit tests on every push + integration tests
+   on PR/main.
+2. **`ReplacedByTokenId` populate fix** — 30 minutes. Closes the data-integrity gap
+   found by Scenario 2.
+3. **Pomelo migration** — half-day investigation. Removes the three workarounds the
+   integration tests forced us to add. Drops them before they become magical-incantation
+   tech debt.
+4. **OpenTelemetry + metrics** — half-day, lights up dashboards. Pairs with CI since
+   the workflow gives a place to assert metric shape doesn't regress.
+5. **Tier 5** items as real platform requirements arrive — don't pre-build.
 
 Rough effort estimate to reach "I'd put this in a production gate review with a straight
-face": **tests + CI is the gating piece.** Maybe a week of focused work; less if you're
-happy with unit-test-only coverage rather than full integration tests via Testcontainers.
+face": **a focused day or two for the remaining Tier 4 work.** Most of the heavy lifting
+(unit + integration tests, the bugs they uncovered, the AppHost/ServiceDefaults pattern)
+is now in place.

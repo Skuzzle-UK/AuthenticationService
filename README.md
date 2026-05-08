@@ -8,12 +8,25 @@ sharing secrets.
 
 ## Solution layout
 
+### Production projects
+
 | Project | Purpose |
 |---|---|
 | `AuthenticationService` | The HTTP API: registration, login, MFA, refresh (with rotation + reuse detection), per-device & all-device logout, password reset (which is also the account-unlock path), JWKS/OIDC discovery. |
 | `AuthenticationService.Shared` | DTOs, view models, and wire-contract constants (claim names, role values, policy names, auth scheme). Shared between the API, the client library, and any non-.NET clients (mobile, frontend, etc). |
 | `AuthenticationService.Client` | The drop-in NuGet/project reference for **other microservices** that need to validate tokens. Provides `AddAuthenticationServiceJwt(...)` and brings `AuthenticationService.Shared` in transitively so consumers get the constants without an extra reference. |
+| `AuthenticationService.ServiceDefaults` | Shared library that wires OpenTelemetry / health-checks / service-discovery defaults into any .NET project that joins the Aspire AppHost graph. Currently only the auth service itself; future microservices reference this for free. Production deploys do **not** ship Aspire — ServiceDefaults still adds OTel without it. |
 | `ExampleConsumer` | A small minimal-API microservice that demonstrates the client library end-to-end. Useful as a smoke test and as a copy-paste starting point for new services. See [Try it end-to-end](#try-it-end-to-end). |
+
+### Dev / test orchestration (not deployed)
+
+| Project | Purpose |
+|---|---|
+| `AuthenticationService.AppHost` | .NET Aspire orchestrator. Hitting F5 here launches the auth service as a normal .NET process and spins up MySQL / Redis / smtp4dev as containers with connection strings auto-injected. Aspire dashboard at `https://localhost:17282` shows live traces, logs, and metrics from every resource in the graph. **Dev/test only — never deployed.** |
+| `Tests/AuthenticationService.Client.Tests` | Unit tests for the client library (10 tests). |
+| `Tests/AuthenticationService.Shared.Tests` | Unit tests for the shared DTOs / constants (78 tests). |
+| `Tests/AuthenticationService.Tests` | Unit tests for the auth service — every controller endpoint, validator, middleware, helper, hosted-service sweep, etc. (308 tests). |
+| `AuthenticationService.IntegrationTests` | End-to-end scenario tests using `Aspire.Hosting.Testing` to boot the whole AppHost graph in-process. Real MySQL, Redis, smtp4dev. (8 scenarios, see [Testing](#testing) below.) |
 
 ---
 
@@ -65,9 +78,31 @@ Anything you don't override falls back to the values in `appsettings.json` / `ap
 
 ### 3. Run
 
+Two options.
+
+**Option A — directly (you supply MySQL / Redis / SMTP yourself):**
+
 ```bash
 dotnet run --project AuthenticationService
 ```
+
+**Option B — via .NET Aspire (recommended; auto-spins MySQL / Redis / smtp4dev as
+containers):**
+
+```bash
+dotnet run --project AuthenticationService.AppHost
+```
+
+In Visual Studio: set `AuthenticationService.AppHost` as the startup project and F5.
+Aspire pulls / starts the container dependencies, injects connection strings, then
+launches the auth service as a normal .NET process (debugger attaches normally; no
+container indirection). The Aspire dashboard opens in a browser showing live logs,
+traces, metrics, and clickable links into each container's web UI (e.g., smtp4dev's
+inbox at the http endpoint shown on the dashboard's `smtp4dev` resource).
+
+Aspire needs Docker (or any Docker-compatible runtime — Rancher Desktop, Podman
+Desktop). Production deploys do NOT use Aspire — the auth service ships on its own
+with operator-supplied infrastructure connection strings.
 
 On the first run you should see:
 
@@ -172,6 +207,94 @@ When you start the consumer:
 > **Common gotcha:** if the consumer's `Authority` setting points at the wrong port, OIDC discovery silently fails — JwtBearer catches the connection error and carries on with no signing keys. The result is a `401` with `"The signature key was not found"` on every request, even with a perfectly valid token. Always verify that `Authority` in `ExampleConsumer/appsettings.json` (and in any new consumer service) matches the port reported by the auth service's `launchSettings.json` (`AuthenticationService/Properties/launchSettings.json`). The `Issuer` value must also match `JWTSettings.ValidIssuer` in the auth service's `appsettings.json`.
 
 There is **no shared secret** between the two services. The consumer never sees the signing key.
+
+---
+
+## Testing
+
+Four test projects, ~404 tests total. Two layers — fast unit tests for everyday feedback,
+slower integration tests for the cross-cutting / DB-shape stuff.
+
+### Layout
+
+| Project | Type | Tests | Duration | When |
+|---|---|---|---|---|
+| `Tests/AuthenticationService.Client.Tests` | Unit | 10 | ~0.2s | Every commit |
+| `Tests/AuthenticationService.Shared.Tests` | Unit | 78 | ~0.1s | Every commit |
+| `Tests/AuthenticationService.Tests` | Unit | 308 | ~3s | Every commit |
+| `AuthenticationService.IntegrationTests` | Integration | 8 | ~60s | Every PR |
+
+Stack: **xUnit** runner, **AwesomeAssertions** for fluent assertions, **NSubstitute**
+for mocking, **EF Core SQLite InMemory** for unit tests that need EF, **.NET Aspire**
+for integration tests.
+
+### Running
+
+```bash
+# Fast feedback — unit tests across all projects (~3s)
+dotnet test Tests/
+
+# Integration tests (~60s — boots real MySQL + Redis + smtp4dev containers)
+dotnet test AuthenticationService.IntegrationTests/
+
+# Everything
+dotnet test
+```
+
+Integration tests need Docker (or a Docker-compatible runtime — Rancher Desktop, Podman
+Desktop). The first run pulls the MySQL / Redis / smtp4dev images (~30s); subsequent
+runs reuse them and finish in under a minute.
+
+### What's covered
+
+- **Unit tests** cover every public method on every public class — controllers, services,
+  validators, middleware, helpers, hosted services. Coverage map at
+  [`Tests/README.md`](Tests/README.md).
+
+- **Integration tests** cover seven end-to-end scenarios that exercise real
+  infrastructure (real MySQL, real Redis, real SMTP via smtp4dev):
+
+  | # | Scenario | Asserts |
+  |---|---|---|
+  | 1 | Register → confirm email → login | Full onboarding pipeline; QueuedEmailService delivery; data-protection-protected confirmation token |
+  | 2 | Refresh token rotation | Old refresh row consumed in MySQL, new row in same family |
+  | 3 | Refresh token reuse cascade | Reuse triggers full nuke: all families revoked, security stamp rotated, suspicious-activity email sent |
+  | 4 | Password change → "wasn't me" lock | Lock token round-trips through email; account locked indefinitely |
+  | 5 | Rate limiter integration | Burst against `/authenticate` trips the global 4/10s cap (real Redis Lua scripts) |
+  | 6 | Threshold escalation worker | `RunSweepAsync` against real MySQL stamps `LockedAt` + fires lock cascade |
+  | 7 | JWKS / OIDC discovery | A consumer using only the published JWKS can validate a JWT issued by the auth service — the actual production contract |
+
+### About `.NET Aspire`
+
+Hitting F5 on `AuthenticationService.AppHost` is the cleanest dev workflow:
+
+1. Aspire boots MySQL, Redis, and smtp4dev as containers.
+2. Connection strings flow into the auth project as env-var overrides — no manual config.
+3. The auth service runs as a normal `dotnet run` process so debugger / edit-and-continue work.
+4. Aspire dashboard opens in a browser showing live logs, traces, metrics, and clickable
+   endpoints to each container's UI (e.g., the smtp4dev inbox).
+
+Plain `dotnet run --project AuthenticationService` still works against any MySQL / Redis
+/ SMTP you've configured in `appsettings.json` — Aspire is just an alternative dev
+front-end. **Production deploys do not include the AppHost** — the auth service ships
+on its own.
+
+### Bugs the integration tests caught
+
+Three production-affecting bugs the unit tests couldn't have caught (different SQL
+semantics between SQLite-InMemory and Oracle's `MySql.EntityFrameworkCore`):
+
+1. **`DateOnly` round-trip** — Oracle's MySQL provider can't deserialise DATE columns
+   back into `DateOnly`. Fixed via `ValueConverter` in `DatabaseContext.OnModelCreating`.
+2. **`DateTimeOffset.MaxValue` overflow** — Oracle's provider tries to write the
+   fractional-second precision past MySQL's DATETIME max. Fixed via
+   `LockoutDurations.Indefinite` (`9999-12-31T00:00:00Z`).
+3. **`Contains-on-collection` SQL translation** — `Where(t => list.Contains(...))` errors
+   out on Oracle's provider. Fixed via per-jti loop in
+   `RevokedTokenReplayEscalationService`.
+
+All three would be obviated by migrating to `Pomelo.EntityFrameworkCore.MySql` — see
+[`TODO.md`](TODO.md) Tier 4.
 
 ---
 

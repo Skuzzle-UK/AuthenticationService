@@ -2,6 +2,7 @@
 using AuthenticationService.Storage.Seed;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace AuthenticationService.Storage;
 
@@ -20,6 +21,14 @@ public class DatabaseContext : IdentityDbContext<User, Role, string>
     {
         base.OnModelCreating(builder);
         builder.ApplyConfiguration(new RoleConfiguration());
+
+        var dateOnlyToNullableDateTime = new ValueConverter<DateOnly?, DateTime?>(
+            d => d.HasValue ? d.Value.ToDateTime(TimeOnly.MinValue) : null,
+            d => d.HasValue ? DateOnly.FromDateTime(d.Value) : null);
+
+        builder.Entity<User>()
+            .Property(u => u.DateOfBirth)
+            .HasConversion(dateOnlyToNullableDateTime);
 
         builder.Entity<RevokedToken>(entity =>
         {

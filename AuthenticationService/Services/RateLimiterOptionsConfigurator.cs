@@ -1,4 +1,5 @@
 using AuthenticationService.Constants;
+using AuthenticationService.Settings;
 using AuthenticationService.Shared.Constants;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
@@ -16,14 +17,33 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
     private const string RedisKeyPrefix = "AuthenticationService:RateLimit:";
 
     private readonly IConnectionMultiplexer _redis;
+    private readonly HostingSettings _hostingSettings;
 
-    public RateLimiterOptionsConfigurator(IConnectionMultiplexer redis)
+    public RateLimiterOptionsConfigurator(
+        IConnectionMultiplexer redis,
+        IOptions<HostingSettings> hostingSettings)
     {
         _redis = redis;
+        _hostingSettings = hostingSettings.Value;
     }
 
     public void Configure(RateLimiterOptions options)
     {
+        if (!_hostingSettings.RateLimitingEnabled)
+        {
+            // Integration tests disable rate limiting via this flag so a sequence of
+            // tests hitting credential endpoints doesn't trip the global 4/10s cap.
+            // Register a no-op global limiter that allows everything; named policies
+            // still register below so endpoints with [EnableRateLimiting] don't 500
+            // because the policy name is unknown.
+            options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(
+                _ => RateLimitPartition.GetNoLimiter("disabled"));
+            options.AddPolicy(RateLimitPolicies.AuthStrict, _ => RateLimitPartition.GetNoLimiter("disabled"));
+            options.AddPolicy(RateLimitPolicies.AuthSensitive, _ => RateLimitPartition.GetNoLimiter("disabled"));
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            return;
+        }
+
         // Global limiter is the catch-all default applied to every request. Chained:
         // Redis primary (distributed, accurate cluster-wide cap) + in-memory fallback
         // (per-replica, kicks in if Redis is unavailable). Most-restrictive wins.
