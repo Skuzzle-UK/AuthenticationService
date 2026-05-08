@@ -17,12 +17,21 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Opt into Node.js 24 for JavaScript-based actions. Without this, GitHub emits a
+# deprecation warning on every step that uses a v4-and-earlier action (checkout,
+# setup-dotnet, upload-artifact, etc.). Forced default arrives June 2nd 2026; opting
+# in early just makes the warnings go away.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ---------------------------------------------------------------------------
   # Unit tests — fast feedback on every push.
-  # All 396 unit tests across Client / Shared / main service. Runs in ~30s
-  # including build, no external dependencies needed (substituted services +
-  # SQLite in-memory).
+  # All 396 unit tests across the three test projects. No external dependencies
+  # (substituted services + SQLite in-memory). Each project is tested explicitly
+  # because `dotnet test` against a folder requires exactly one csproj IN that
+  # folder — pointing it at the parent `Tests/` directory fails to discover the
+  # nested projects.
   # ---------------------------------------------------------------------------
   unit-tests:
     name: Unit tests
@@ -43,12 +52,28 @@ jobs:
       - name: Build (Release)
         run: dotnet build --no-restore --configuration Release
 
-      - name: Run unit tests
+      - name: Run AuthenticationService.Client.Tests
         run: >-
-          dotnet test Tests/
+          dotnet test Tests/AuthenticationService.Client.Tests/AuthenticationService.Client.Tests.csproj
           --no-build
           --configuration Release
-          --logger "trx;LogFileName=unit-results.trx"
+          --logger "trx;LogFileName=client-results.trx"
+          --results-directory ${{ github.workspace }}/TestResults
+
+      - name: Run AuthenticationService.Shared.Tests
+        run: >-
+          dotnet test Tests/AuthenticationService.Shared.Tests/AuthenticationService.Shared.Tests.csproj
+          --no-build
+          --configuration Release
+          --logger "trx;LogFileName=shared-results.trx"
+          --results-directory ${{ github.workspace }}/TestResults
+
+      - name: Run AuthenticationService.Tests
+        run: >-
+          dotnet test Tests/AuthenticationService.Tests/AuthenticationService.Tests.csproj
+          --no-build
+          --configuration Release
+          --logger "trx;LogFileName=main-results.trx"
           --results-directory ${{ github.workspace }}/TestResults
 
       # Always upload — including on failure — so a failing run still leaves the
@@ -94,7 +119,7 @@ jobs:
       # duration of the runner's life — fine for our purposes.
       - name: Run integration tests
         run: >-
-          dotnet test AuthenticationService.IntegrationTests/
+          dotnet test AuthenticationService.IntegrationTests/AuthenticationService.IntegrationTests.csproj
           --no-build
           --configuration Release
           --logger "trx;LogFileName=integration-results.trx"
