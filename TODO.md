@@ -38,12 +38,11 @@ open-redirect fix, JWKS caching, etc.), and code-smell cleanup (`WaitingForMfa` 
   `Contains-on-collection` translation broken in Oracle's MySql.EntityFrameworkCore.
   Coverage map in [`AuthenticationService.IntegrationTests/README.md`](AuthenticationService.IntegrationTests/README.md).
 
-- [ ] **CI workflow not yet wired.**
-  Both test suites run locally via `dotnet test` but there's no GitHub Actions / Azure
-  Pipelines yaml. Minimum: a workflow that runs unit tests on every push (fast feedback,
-  ~3s) and integration tests on PR + main (~60s, needs Docker on the runner).
-  `ubuntu-latest` GitHub-Actions runners come with Docker pre-installed — half-day at
-  most to wire up.
+- [x] ~~**CI workflow.**~~ GitHub Actions at `.github/workflows/ci.yml`. Two jobs:
+  unit tests on every push (fast feedback), integration tests on PR + push-to-main
+  (slower, runs against real MySQL / Redis / smtp4dev via Aspire). Runner is
+  `ubuntu-latest` (Docker pre-installed). Status badge in README. Concurrency group
+  cancels superseded runs to avoid queueing duplicate work on noisy push cycles.
 
 - [ ] **`RefreshToken.ReplacedByTokenId` never populated** (found by Scenario 2 of the
   integration tests). The column exists on the entity for forensic chain-walking but

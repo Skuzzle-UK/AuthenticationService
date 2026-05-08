@@ -1,5 +1,7 @@
 # AuthenticationService
 
+[![CI](https://github.com/Skuzzle-UK/AuthenticationService/actions/workflows/ci.yml/badge.svg)](https://github.com/Skuzzle-UK/AuthenticationService/actions/workflows/ci.yml)
+
 Centralised identity & access service for the platform. Issues short-lived ES256-signed
 JWTs and exposes a JWKS endpoint so consuming microservices can validate them without
 sharing secrets.
