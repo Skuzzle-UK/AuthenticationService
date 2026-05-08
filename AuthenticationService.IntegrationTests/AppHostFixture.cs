@@ -59,7 +59,11 @@ public class AppHostFixture : IAsyncLifetime
         // Aspire's StartAsync returns when resources are launched, but the auth project
         // might still be running EF migrations + seeding the admin user. Polling /healthz
         // lets us proceed only when the service is truly ready to serve traffic.
-        using var client = App.CreateHttpClient("auth", "https");
+        //
+        // We hit the http endpoint specifically — HTTPS-redirection is disabled in test
+        // mode (HostingSettings:HttpsRedirectionEnabled=false) so http is the working
+        // transport. Bypasses the Linux-CI dev-cert dance entirely.
+        using var client = App.CreateHttpClient("auth", "http");
         var deadline = DateTime.UtcNow.AddSeconds(120);
         while (DateTime.UtcNow < deadline)
         {

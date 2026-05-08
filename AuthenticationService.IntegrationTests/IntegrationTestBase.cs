@@ -26,7 +26,7 @@ public abstract class IntegrationTestBase(AppHostFixture fixture) : IAsyncLifeti
 
     public virtual async Task InitializeAsync()
     {
-        AuthClient = Fixture.App.CreateHttpClient("auth", "https");
+        AuthClient = Fixture.App.CreateHttpClient("auth", "http");
         var smtpHttp = Fixture.App.CreateHttpClient("smtp4dev", "http");
         SmtpClient = new Smtp4DevClient(smtpHttp);
 

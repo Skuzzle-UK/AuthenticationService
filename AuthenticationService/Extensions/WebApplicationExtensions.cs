@@ -1,8 +1,10 @@
 ﻿using AuthenticationService.Middleware;
+using AuthenticationService.Settings;
 using AuthenticationService.Storage;
 using AuthenticationService.Storage.Seed;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Serilog;
 
 namespace AuthenticationService.Extensions;
@@ -59,7 +61,15 @@ public static class WebApplicationExtensions
             app.UseHsts();
         }
 
-        app.UseHttpsRedirection();
+        // HTTPS redirection is gated by HostingSettings:HttpsRedirectionEnabled (default
+        // true). Production keeps it on; integration tests turn it off because the AppHost
+        // running under CI on Linux can't reliably bind HTTPS (dev cert dance), and the
+        // tests don't need transport-level confidentiality on a localhost-only run.
+        var hostingSettings = app.Services.GetRequiredService<IOptions<HostingSettings>>().Value;
+        if (hostingSettings.HttpsRedirectionEnabled)
+        {
+            app.UseHttpsRedirection();
+        }
         app.UseStaticFiles();
         app.UseMiddleware<SecurityHeadersMiddleware>();
 

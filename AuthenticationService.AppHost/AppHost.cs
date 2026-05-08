@@ -45,6 +45,9 @@ auth.WithEnvironment("PublicUrlSettings__BaseUrl", auth.GetEndpoint("https"));
 if (integrationTestMode)
 {
     auth.WithEnvironment("HostingSettings__RateLimitingEnabled", "false");
+    // Skip HTTPS redirection in test mode — Linux CI runners struggle with dev certs,
+    // and integration tests just need to reach /healthz / controllers, not exercise TLS.
+    auth.WithEnvironment("HostingSettings__HttpsRedirectionEnabled", "false");
 }
 
 builder.Build().Run();

@@ -46,5 +46,14 @@ public class HostingSettings
     /// real wire enforces.
     /// </summary>
     public bool RateLimitingEnabled { get; set; } = true;
+
+    /// <summary>
+    /// True (default) → install the HTTPS-redirection middleware so HTTP requests are
+    /// 307'd to HTTPS. Set to <c>false</c> in integration-test environments where Kestrel
+    /// is bound to HTTP only (the dev cert dance on Linux CI runners is fragile, and
+    /// integration tests don't need transport-level confidentiality — they're hitting
+    /// localhost on the runner). <b>Production should always leave this enabled.</b>
+    /// </summary>
+    public bool HttpsRedirectionEnabled { get; set; } = true;
 }
 

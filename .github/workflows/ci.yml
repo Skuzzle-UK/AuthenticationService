@@ -108,13 +108,6 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      # The auth service's launchSettings.json declares an https endpoint. ASP.NET Core
-      # needs a dev cert at ~/.aspnet/https/ to bind it. Linux runners don't ship one;
-      # this generates a self-signed cert in the right place. Trust isn't needed —
-      # Aspire's test HttpClient is configured to bypass cert validation in test mode.
-      - name: Generate ASP.NET Core dev cert
-        run: dotnet dev-certs https
-
       - name: Restore packages
         run: dotnet restore
 
