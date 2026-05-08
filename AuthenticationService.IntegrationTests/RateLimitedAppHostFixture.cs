@@ -13,9 +13,10 @@ namespace AuthenticationService.IntegrationTests;
 public sealed class RateLimitedAppHostFixture : AppHostFixture
 {
     /// <summary>
-    /// No <c>--integration-test</c> flag means the AppHost leaves
-    /// <c>HostingSettings:RateLimitingEnabled</c> at its default of <c>true</c>, and the
-    /// auth service runs with the same rate limiter F5 uses.
+    /// Passes <c>--integration-test</c> (so HTTPS redirection is off and tests can reach
+    /// the auth service over HTTP — same as the default fixture) but deliberately omits
+    /// <c>--rate-limiting-disabled</c>, leaving <c>HostingSettings:RateLimitingEnabled</c>
+    /// at its production default of <c>true</c>.
     /// </summary>
-    protected override string[] AppHostArgs => [];
+    protected override string[] AppHostArgs => ["--integration-test"];
 }

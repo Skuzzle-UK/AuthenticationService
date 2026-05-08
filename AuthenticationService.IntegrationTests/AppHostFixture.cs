@@ -25,12 +25,14 @@ public class AppHostFixture : IAsyncLifetime
         ?? throw new InvalidOperationException("Fixture not initialised — InitializeAsync didn't run.");
 
     /// <summary>
-    /// Args passed to the AppHost when the test fixture boots it. Default disables rate
-    /// limiting via the <c>--integration-test</c> flag the AppHost recognises. Override
-    /// in a subclass to run with different host config — e.g., rate-limiting tests need
-    /// the production-shape configuration where rate limiting is enabled.
+    /// Args passed to the AppHost when the test fixture boots it. Default disables both
+    /// HTTPS redirection (via <c>--integration-test</c> — required for tests to work over
+    /// HTTP, sidesteps the Linux dev-cert dance) and the rate limiter (via
+    /// <c>--rate-limiting-disabled</c> — so back-to-back scenario calls don't trip the
+    /// global 4/10s cap). Subclasses can override to keep rate limiting on; the
+    /// <c>--integration-test</c> flag is universally needed.
     /// </summary>
-    protected virtual string[] AppHostArgs => ["--integration-test"];
+    protected virtual string[] AppHostArgs => ["--integration-test", "--rate-limiting-disabled"];
 
     public async Task InitializeAsync()
     {

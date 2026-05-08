@@ -1,15 +1,21 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
-// Tests pass --integration-test via DistributedApplicationTestingBuilder.CreateAsync.
-// Real F5 doesn't, so production / dev keep their normal limits. The flag flows into
-// the auth project as a HostingSettings override; the rate limiter checks it and
-// installs a no-op limiter when set.
+// Two independent test-mode flags, both passed by integration-test fixtures:
 //
-// Why this is here and not in appsettings: we want F5 to use rate limits (so dev
-// behaviour matches prod) and tests to skip them (so a sequence of credential calls
-// across scenarios doesn't trip the global 4/10s cap). Detecting test mode via args is
-// the cleanest split — appsettings.Development.json would also disable for plain F5.
+//   --integration-test         Transport: forces HTTP-only operation (HTTPS redirect
+//                              off, PublicUrlSettings:BaseUrl points at the http
+//                              endpoint). Avoids the Linux-CI dev-cert dance.
+//                              Every integration-test fixture passes this.
+//
+//   --rate-limiting-disabled   Behaviour: turns the rate limiter into a no-op so a
+//                              sequence of credential calls across scenarios doesn't
+//                              trip the global 4/10s cap. The dedicated rate-limiter
+//                              integration test specifically does NOT pass this so it
+//                              can exercise the real limiter.
+//
+// Real F5 passes neither, so dev / prod behaviour is identical to a plain run.
 var integrationTestMode = args.Contains("--integration-test");
+var rateLimitingDisabled = args.Contains("--rate-limiting-disabled");
 
 var smtp = builder.AddContainer("smtp4dev", "rnwood/smtp4dev")
     .WithEndpoint(name: "smtp", targetPort: 25)
@@ -40,14 +46,27 @@ var auth = builder.AddProject<Projects.AuthenticationService>("auth")
     .WaitFor(redis)
     .WaitFor(smtp);
 
+// Default: BaseUrl points at the https endpoint (production-shape — email links etc.
+// go over HTTPS). Tests override this to the http endpoint just below, because they
+// run over HTTP only.
 auth.WithEnvironment("PublicUrlSettings__BaseUrl", auth.GetEndpoint("https"));
 
 if (integrationTestMode)
 {
-    auth.WithEnvironment("HostingSettings__RateLimitingEnabled", "false");
     // Skip HTTPS redirection in test mode — Linux CI runners struggle with dev certs,
     // and integration tests just need to reach /healthz / controllers, not exercise TLS.
     auth.WithEnvironment("HostingSettings__HttpsRedirectionEnabled", "false");
+
+    // Override the BaseUrl to the http endpoint so email links emitted by the
+    // controllers (password-reset, email-confirmation, lockout) point at the http
+    // transport tests are using. The second WithEnvironment for the same key wins —
+    // overriding the https value set above.
+    auth.WithEnvironment("PublicUrlSettings__BaseUrl", auth.GetEndpoint("http"));
+}
+
+if (rateLimitingDisabled)
+{
+    auth.WithEnvironment("HostingSettings__RateLimitingEnabled", "false");
 }
 
 builder.Build().Run();
