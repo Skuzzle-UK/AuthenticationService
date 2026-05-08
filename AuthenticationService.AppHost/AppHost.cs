@@ -22,6 +22,14 @@ var redis = builder.AddRedis("redis")
     .WithRedisInsight();
 
 var auth = builder.AddProject<Projects.AuthenticationService>("auth")
+    // Force the auth project into Development mode whenever it runs under the AppHost.
+    // The AppHost is dev/test-only (production deploys don't ship it), and several auth
+    // service behaviours gate on Environment.IsDevelopment() — most importantly,
+    // EcdsaKeyProvider auto-generates a dev signing key when there's no PEM in the
+    // configured key directory. Without this env var, CI runners (where ASPNETCORE_ENVIRONMENT
+    // isn't set elsewhere) would fail to start the auth project because there's no key
+    // to sign with.
+    .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
     .WithEnvironment("EmailServerSettings__SmtpServer", smtp.GetEndpoint("smtp").Property(EndpointProperty.Host))
     .WithEnvironment("EmailServerSettings__Port", smtp.GetEndpoint("smtp").Property(EndpointProperty.Port))
     .WithEnvironment("EmailServerSettings__UserName", "")

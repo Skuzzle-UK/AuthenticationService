@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "AuthenticationService": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "launchUrl": "https://localhost:7434/swagger",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:7434;http://localhost:7435"
+    }
+  }
+}
