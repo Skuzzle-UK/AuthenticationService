@@ -1,4 +1,5 @@
 using AuthenticationService.Extensions;
+using AuthenticationService.ServiceDefaults;
 using AuthenticationService.Settings;
 using Serilog;
 
@@ -17,6 +18,8 @@ public class Program
             Log.Information("Starting authentication service.");
 
             var builder = WebApplication.CreateBuilder(args);
+
+            builder.AddServiceDefaults();
 
             builder.Configuration
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)

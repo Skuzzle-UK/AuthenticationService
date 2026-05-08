@@ -13,6 +13,8 @@ namespace AuthenticationService.Services;
 /// </summary>
 public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimiterOptions>
 {
+    private const string RedisKeyPrefix = "AuthenticationService:RateLimit:";
+
     private readonly IConnectionMultiplexer _redis;
 
     public RateLimiterOptionsConfigurator(IConnectionMultiplexer redis)
@@ -34,7 +36,7 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
         {
             var ip = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
             return RedisRateLimitPartition.GetFixedWindowRateLimiter(
-                partitionKey: $"auth-strict:{ip}",
+                partitionKey: $"{RedisKeyPrefix}auth-strict:{ip}",
                 factory: _ => new RedisFixedWindowRateLimiterOptions
                 {
                     ConnectionMultiplexerFactory = () => _redis,
@@ -50,7 +52,7 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
                       ?? context.Connection.RemoteIpAddress?.ToString()
                       ?? "anonymous";
             return RedisRateLimitPartition.GetFixedWindowRateLimiter(
-                partitionKey: $"auth-sensitive:{key}",
+                partitionKey: $"{RedisKeyPrefix}auth-sensitive:{key}",
                 factory: _ => new RedisFixedWindowRateLimiterOptions
                 {
                     ConnectionMultiplexerFactory = () => _redis,
@@ -72,7 +74,7 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
             {
                 var probeIp = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
                 return RedisRateLimitPartition.GetFixedWindowRateLimiter(
-                    partitionKey: $"health:{probeIp}",
+                    partitionKey: $"{RedisKeyPrefix}health:{probeIp}",
                     factory: _ => new RedisFixedWindowRateLimiterOptions
                     {
                         ConnectionMultiplexerFactory = () => _redis,
@@ -89,7 +91,7 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
             {
                 var probeIp = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
                 return RedisRateLimitPartition.GetFixedWindowRateLimiter(
-                    partitionKey: $"well-known:{probeIp}",
+                    partitionKey: $"{RedisKeyPrefix}well-known:{probeIp}",
                     factory: _ => new RedisFixedWindowRateLimiterOptions
                     {
                         ConnectionMultiplexerFactory = () => _redis,
@@ -104,7 +106,7 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
                          ?? "anonymous";
 
             return RedisRateLimitPartition.GetFixedWindowRateLimiter(
-                partitionKey: $"global:{userId}",
+                partitionKey: $"{RedisKeyPrefix}global:{userId}",
                 factory: _ => new RedisFixedWindowRateLimiterOptions
                 {
                     ConnectionMultiplexerFactory = () => _redis,
@@ -126,7 +128,7 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
             {
                 var probeIp = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
                 return RateLimitPartition.GetFixedWindowLimiter(
-                    partitionKey: $"health-fallback:{probeIp}",
+                    partitionKey: $"{RedisKeyPrefix}health-fallback:{probeIp}",
                     factory: _ => new FixedWindowRateLimiterOptions
                     {
                         Window = TimeSpan.FromSeconds(10),
@@ -140,7 +142,7 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
             {
                 var probeIp = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
                 return RateLimitPartition.GetFixedWindowLimiter(
-                    partitionKey: $"well-known-fallback:{probeIp}",
+                    partitionKey: $"{RedisKeyPrefix}well-known-fallback:{probeIp}",
                     factory: _ => new FixedWindowRateLimiterOptions
                     {
                         Window = TimeSpan.FromSeconds(10),
@@ -155,7 +157,7 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
                          ?? "anonymous";
 
             return RateLimitPartition.GetFixedWindowLimiter(
-                partitionKey: $"global-fallback:{userId}",
+                partitionKey: $"{RedisKeyPrefix}global-fallback:{userId}",
                 factory: _ => new FixedWindowRateLimiterOptions
                 {
                     Window = TimeSpan.FromSeconds(10),

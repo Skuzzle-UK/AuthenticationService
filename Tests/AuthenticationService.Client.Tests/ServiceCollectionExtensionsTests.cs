@@ -88,7 +88,7 @@ public class ServiceCollectionExtensionsTests
         tvp.ValidateIssuerSigningKey.Should().BeTrue();
         tvp.ValidIssuer.Should().Be("https://auth.example.com");
         tvp.ValidAudience.Should().Be("platform-api");
-        tvp.ValidAlgorithms.Should().BeEquivalentTo(new[] { SecurityAlgorithms.EcdsaSha256 },
+        tvp.ValidAlgorithms.Should().BeEquivalentTo([SecurityAlgorithms.EcdsaSha256],
             because: "restricting to ES256 prevents algorithm-confusion attacks (e.g. forged HS256 tokens signed with the public key).");
         tvp.NameClaimType.Should().Be(JwtRegisteredClaimNames.Name);
         tvp.RoleClaimType.Should().Be(ClaimConstants.Role,

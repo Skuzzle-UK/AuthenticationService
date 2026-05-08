@@ -1,5 +1,4 @@
-﻿using AuthenticationService.Constants;
-using AuthenticationService.Entities;
+﻿using AuthenticationService.Entities;
 using AuthenticationService.Logging;
 using AuthenticationService.Services;
 using AuthenticationService.Services.HealthChecks;
@@ -19,12 +18,14 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Serilog.Core;
+using StackExchange.Redis;
 using System.Net;
 using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using IPNetwork = System.Net.IPNetwork;
+using Role = AuthenticationService.Entities.Role;
 
 namespace AuthenticationService.Extensions;
 
@@ -36,6 +37,7 @@ public static class HostExtensions
             services.AddValidatedSettings(context);
             services.AddValidators();
             services.AddDatabase(context);
+            services.AddRedis(context);
             services.AddSecurity(context);
             services.AddDataProtectionConfiguration(context);
             services.AddForwardedHeadersConfiguration(context);
@@ -175,6 +177,29 @@ public static class HostExtensions
                 opt.UseMySQL(context.Configuration.GetConnectionString("MySQL")!);
             });
 
+    public static IServiceCollection AddRedis(this IServiceCollection services, HostBuilderContext context)
+    {
+        var redisConnectionString = context.Configuration.GetConnectionString("Redis");
+
+        if (string.IsNullOrWhiteSpace(redisConnectionString))
+        {
+            throw new InvalidOperationException(
+                "ConnectionStrings:Redis must be configured. The data-protection key ring " +
+                "is persisted to Redis so it survives restarts and is shared across replicas; " +
+                "the rate limiter writes its state there too. " +
+                "For local development, run a Redis container (e.g. " +
+                "`docker run -d -p 6379:6379 redis:alpine`) or install Redis locally.");
+        }
+
+        var configOptions = ConfigurationOptions.Parse(redisConnectionString);
+        configOptions.AbortOnConnectFail = false;
+        var redis = ConnectionMultiplexer.Connect(configOptions);
+
+        services.AddSingleton<IConnectionMultiplexer>(redis);
+
+        return services;
+    }
+
     public static IServiceCollection AddSecurity(this IServiceCollection services, HostBuilderContext context)
     {
         // Read at registration time so the values are known before AddIdentity sees them.
@@ -252,27 +277,16 @@ public static class HostExtensions
         HostBuilderContext context)
     {
         var settings = context.Configuration
-            .GetSection(nameof(DataProtectionSettings))
-            .Get<DataProtectionSettings>() ?? new DataProtectionSettings();
+        .GetSection(nameof(DataProtectionSettings))
+        .Get<DataProtectionSettings>() ?? new DataProtectionSettings();
 
-        var redisConnectionString = context.Configuration.GetConnectionString("Redis");
-
-        if (string.IsNullOrWhiteSpace(redisConnectionString))
-        {
-            throw new InvalidOperationException(
-                "ConnectionStrings:Redis must be configured. The data-protection key ring " +
-                "is persisted to Redis so it survives restarts and is shared across replicas; " +
-                "without it, every outstanding email-link token (password reset, email " +
-                "confirmation, MFA, lockout) would be invalidated on each restart. " +
-                "For local development, run a Redis container (e.g. " +
-                "`docker run -d -p 6379:6379 redis:alpine`) or install Redis locally.");
-        }
-
-        var redis = StackExchange.Redis.ConnectionMultiplexer.Connect(redisConnectionString);
-
-        // Register the multiplexer so other components (e.g. the Redis health check) can
-        // share the same connection rather than opening a second one.
-        services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(redis);
+        // Resolve the multiplexer registered by AddRedis. Building a temporary service
+        // provider here is intentional — we need the actual multiplexer instance to pass
+        // to PersistKeysToStackExchangeRedis at config time, and the alternative
+        // (Func<IDatabase> overload that resolves lazily) would build a fresh provider on
+        // every key-ring read. This way it's a single setup-time resolve.
+        using var tempProvider = services.BuildServiceProvider();
+        var redis = tempProvider.GetRequiredService<IConnectionMultiplexer>();
 
         var builder = services.AddDataProtection()
             .SetApplicationName(settings.ApplicationName)

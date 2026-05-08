@@ -38,6 +38,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\AuthenticationService.ServiceDefaults\AuthenticationService.ServiceDefaults.csproj" />
     <ProjectReference Include="..\AuthenticationService.Shared\AuthenticationService.Shared.csproj" />
   </ItemGroup>
 
