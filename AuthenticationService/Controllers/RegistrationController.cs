@@ -180,7 +180,13 @@ public class RegistrationController : ControllerBase
 
     private bool IsAllowedRedirect(string callbackUri)
     {
-        if (!Uri.TryCreate(callbackUri, UriKind.Absolute, out var uri))
+        // Parse as RelativeOrAbsolute first, then explicitly check IsAbsoluteUri. Don't
+        // use UriKind.Absolute directly: it's platform-dependent for paths that start
+        // with '/'. Windows correctly returns false (no scheme); Linux interprets the
+        // leading slash as a Unix path and parses it as a file:// URI, returning true.
+        // The bug shows up in CI (Linux runners) but not on developer Windows boxes —
+        // the kind of regression that's invisible until production / CI catches it.
+        if (!Uri.TryCreate(callbackUri, UriKind.RelativeOrAbsolute, out var uri) || !uri.IsAbsoluteUri)
         {
             return true; // relative URL — stays on our origin, safe
         }
