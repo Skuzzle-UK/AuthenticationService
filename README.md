@@ -603,7 +603,7 @@ spec:
   ports: [...]
 ```
 
-The worker pod still binds web ports and exposes `/healthz` / `/readyz` so K8s can probe it normally — there's no special "worker mode" startup, just a config flag. If the worker pod dies, K8s restarts it; until then the workers aren't running. That's acceptable: the cleanup sweep runs every 12h and the threshold-escalation sweep every minute, so a few-minute worker outage causes at most some delayed audit cleanup and a delayed lock-event for an actively-attacked account. Nothing data-corrupting.
+The worker pod still binds web ports and exposes `/livez` / `/readyz` (plus `/healthz` for ops debugging) so K8s can probe it normally — there's no special "worker mode" startup, just a config flag. If the worker pod dies, K8s restarts it; until then the workers aren't running. That's acceptable: the cleanup sweep runs every 12h and the threshold-escalation sweep every minute, so a few-minute worker outage causes at most some delayed audit cleanup and a delayed lock-event for an actively-attacked account. Nothing data-corrupting.
 
 If you want auto-failover (worker pod dies → another picks up immediately) the right tool is leader election via a Redis-backed distributed lock. Worth the complexity if your platform's SLA demands it; otherwise the single-replica worker pattern is simpler and sufficient for an auth service's background-task volume.
 
@@ -738,7 +738,7 @@ Rate limits are enforced cluster-wide via Redis. With multiple replicas behind a
 | Global default | 4 req / 10s per user (or per IP if anonymous) | Every endpoint as a catch-all |
 | `auth-strict` | 10 req / minute per IP | Unauthenticated credential / link endpoints (login, MFA, register, forgot-password, etc.) |
 | `auth-sensitive` | 10 req / minute per user | Authenticated state-changing endpoints (change-password, enable-MFA) |
-| Health-check carve-out | 30 req / 10s per IP | `/healthz`, `/readyz` — orchestrator probes shouldn't be throttled with API traffic |
+| Health-check carve-out | 30 req / 10s per IP | `/livez`, `/readyz`, `/healthz` — orchestrator probes shouldn't be throttled with API traffic |
 
 The `auth-strict` and `auth-sensitive` policies are applied via `[EnableRateLimiting]` attributes on the controller actions. Most-restrictive across all applicable limiters wins per request.
 

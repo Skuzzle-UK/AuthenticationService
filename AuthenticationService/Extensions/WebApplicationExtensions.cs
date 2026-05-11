@@ -30,8 +30,9 @@ public static class WebApplicationExtensions
         app.UseSerilogRequestLogging(options =>
         {
             options.GetLevel = (httpContext, elapsed, ex) =>
-                httpContext.Request.Path.StartsWithSegments("/healthz")
+                httpContext.Request.Path.StartsWithSegments("/livez")
                 || httpContext.Request.Path.StartsWithSegments("/readyz")
+                || httpContext.Request.Path.StartsWithSegments("/healthz")
                     ? Serilog.Events.LogEventLevel.Verbose
                     : Serilog.Events.LogEventLevel.Information;
         });
@@ -80,24 +81,29 @@ public static class WebApplicationExtensions
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseRateLimiter();
+        app.UseHealthChecks();
+        app.MapControllers();
+        app.MapRazorPages();
 
-        // Health-check endpoints. Anonymous (orchestrators don't carry credentials), but
-        // still rate-limited via the path-based partition in AddRateLimiting — generous
-        // enough for orchestrator probes, tight enough to cap DDoS abuse.
-        app.MapHealthChecks("/healthz", new HealthCheckOptions
+        return app;
+    }
+
+    private static void UseHealthChecks(this WebApplication app)
+    {
+        // K8s restarts the pod if this fails.
+        app.MapHealthChecks("/livez", new HealthCheckOptions
         {
             Predicate = check => check.Tags.Contains("live")
         }).AllowAnonymous();
 
+        // K8s pulls the pod from service routing (but doesn't restart) if this fails.
         app.MapHealthChecks("/readyz", new HealthCheckOptions
         {
             Predicate = check => check.Tags.Contains("ready")
         }).AllowAnonymous();
 
-        app.MapControllers();
-        app.MapRazorPages();
-
-        return app;
+        //Blanket "everything" endpoint for ops debugging.
+        app.MapHealthChecks("/healthz").AllowAnonymous();
     }
 
     private static WebApplication UseApplicationMiddleware(this WebApplication app)

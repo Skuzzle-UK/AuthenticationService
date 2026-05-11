@@ -89,8 +89,9 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
         {
             // Health-check endpoints get a permissive bucket so orchestrator / monitoring
             // probes aren't throttled alongside regular API traffic.
-            if (context.Request.Path.StartsWithSegments("/healthz")
-                || context.Request.Path.StartsWithSegments("/readyz"))
+            if (context.Request.Path.StartsWithSegments("/livez")
+                || context.Request.Path.StartsWithSegments("/readyz")
+                || context.Request.Path.StartsWithSegments("/healthz"))
             {
                 var probeIp = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
                 return RedisRateLimitPartition.GetFixedWindowRateLimiter(
@@ -143,8 +144,9 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
             // when Redis is down. Set roughly equal to the Redis caps, accepting that
             // with N replicas the cluster-wide effective cap during a Redis outage is
             // N× the Redis cap. Acceptable degraded mode.
-            if (context.Request.Path.StartsWithSegments("/healthz")
-                || context.Request.Path.StartsWithSegments("/readyz"))
+            if (context.Request.Path.StartsWithSegments("/livez")
+                || context.Request.Path.StartsWithSegments("/readyz")
+                || context.Request.Path.StartsWithSegments("/healthz"))
             {
                 var probeIp = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
                 return RateLimitPartition.GetFixedWindowLimiter(

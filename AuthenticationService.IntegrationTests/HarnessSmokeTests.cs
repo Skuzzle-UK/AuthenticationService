@@ -1,4 +1,4 @@
-﻿using Aspire.Hosting.Testing;
+using Aspire.Hosting.Testing;
 using AwesomeAssertions;
 
 namespace AuthenticationService.IntegrationTests;
@@ -14,20 +14,17 @@ public class HarnessSmokeTests
     }
 
     [Fact]
-    public async Task AuthService_RespondsToHealthz_OnceFixtureIsReady()
+    public async Task AuthService_RespondsToReadyz_OnceFixtureIsReady()
     {
-        // arrange — fixture has already started everything and waited for /healthz.
+        // arrange — fixture has already started everything and waited for /readyz.
         // This test asserts the harness itself: AppHost boots, containers start, the
-        // auth project comes up, and we can reach it via the Aspire-allocated URL.
-        //
-        // Use the http endpoint to match how every other test reaches the auth service.
-        // Tests run with HostingSettings:HttpsRedirectionEnabled=false (set by the
-        // AppHost when the --integration-test arg is passed) so the http endpoint is
-        // the canonical transport in test mode.
+        // auth project comes up with its dependencies (MySQL, Redis) reachable, and we
+        // can reach it via the Aspire-allocated URL.
+
         using var client = _fixture.App.CreateHttpClient("auth", "http");
 
         // act
-        var response = await client.GetAsync("/healthz");
+        var response = await client.GetAsync("/readyz");
 
         // assert
         response.IsSuccessStatusCode.Should().BeTrue(

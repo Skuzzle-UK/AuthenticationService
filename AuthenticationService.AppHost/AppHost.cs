@@ -54,7 +54,7 @@ auth.WithEnvironment("PublicUrlSettings__BaseUrl", auth.GetEndpoint("https"));
 if (integrationTestMode)
 {
     // Skip HTTPS redirection in test mode — Linux CI runners struggle with dev certs,
-    // and integration tests just need to reach /healthz / controllers, not exercise TLS.
+    // and integration tests just need to reach /livez / controllers, not exercise TLS.
     auth.WithEnvironment("HostingSettings__HttpsRedirectionEnabled", "false");
 
     // Override the BaseUrl to the http endpoint so email links emitted by the
