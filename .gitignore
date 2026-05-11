@@ -365,3 +365,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Claude Code per-user settings (permission overrides etc.) — shared team settings
+# would live in .claude/settings.json (commit that one) but .local.json is per-user noise.
+.claude/settings.local.json

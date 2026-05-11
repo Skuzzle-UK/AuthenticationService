@@ -99,27 +99,37 @@ open-redirect fix, JWKS caching, etc.), and code-smell cleanup (`WaitingForMfa` 
 These are likely real platform requirements once "shared by several apps" becomes more
 than aspirational. None are blockers today; flagged so the design space is visible.
 
-- [ ] **No service-to-service auth flow (client-credentials grant).**
-  Currently consumers forward the user's JWT for downstream calls. Wrong because (a)
-  audit logs show the user not the calling service, (b) services need to call when no
-  user is involved (cron jobs, message handlers).
-  **Standard answer:** client-credentials flow — each service has a `client_id` /
-  `client_secret`, exchanges them for a service-identity JWT with its own claims and
-  audience. Multi-day piece of work.
+- [ ] **No admin operational endpoints + No service-to-service auth flow.**
+  Combined work item — admin endpoints are a prerequisite for the DB-backed
+  client-management surface that service-to-service auth needs.
 
-- [ ] **No admin operational endpoints.**
-  Operational must-haves for an enterprise auth service:
-  - List users
-  - View / modify user details
-  - Manually lock / unlock specific user
-  - Revoke a user's sessions
-  - Reset their MFA
-  - Force password reset
-  - View audit trail for a specific user
-  
-  Currently none exist. Either build them as `[Authorize(Policy="AdminOnly")]` admin
-  endpoints, or document that ops will go via direct DB access (acceptable but
-  unprofessional for a corporate platform).
+  Two planning docs cover the design end-to-end:
+  - [`docs/admin-endpoints-plan.md`](docs/admin-endpoints-plan.md) — Phase 0 detail
+    (admin user-management endpoints + admin-creates-user invitation flow + basic page)
+  - [`docs/service-to-service-auth-plan.md`](docs/service-to-service-auth-plan.md) —
+    overall plan, Phase 1 (s2s auth) detail, Phase 2 hardening sketch
+
+  Design decisions are settled; effort estimate is ~4 focused days split as:
+
+  - **Phase 0** (~2 days) — Admin endpoint foundation:
+    paginated user list / detail / lock-unlock / revoke-sessions / reset-MFA /
+    force-password-reset / audit-trail + admin-creates-user with invitation email and
+    a basic page where the new user sets their initial password. All gated by the
+    existing `[Authorize(Policy = "AdminOnly")]`. Delivers the "admin operational
+    endpoints" item independently. Adds Serilog SQL sink for the audit endpoint.
+
+  - **Phase 1** (~2 days) — Service-to-service auth (DB-driven):
+    `Clients` and `ClientScopes` tables, `POST /oauth/token` endpoint, service-identity
+    JWT shape (sub = client_id, no user claims, scope claim), client library
+    `AddScopePolicy` helper, `ExampleConsumer` demo, OIDC discovery update, integration
+    scenarios 9 & 10. Reuses the admin endpoint surface from Phase 0 for client CRUD.
+
+  - **Phase 2** — Optional hardening (JWT-bearer client assertions, mTLS, dynamic
+    registration). Build when real demand arrives.
+
+  Today's pain: consumers forward the user's JWT for service-to-service calls — audit
+  logs blame the user not the calling service, and there's no story for cron jobs /
+  message handlers / scheduled syncs that have no user in the call chain.
 
 - [ ] **No external IdP integration (SSO).**
   Many corporate apps want "log in with Microsoft / Google / Entra ID." Not in scope
