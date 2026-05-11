@@ -46,14 +46,22 @@ public class JWTService : ITokenService
         _logger = logger;
     }
 
-    public async Task<Token> CreateTokenAsync(User user, IList<string> roles, Guid? familyId = null, string? ipAddress = null)
+    public async Task<Token> CreateTokenAsync(
+        User user,
+        IList<string> roles,
+        Guid? familyId = null,
+        string? ipAddress = null,
+        Guid? refreshTokenId = null)
     {
         var family = familyId ?? Guid.NewGuid();
         var rawRefreshToken = GenerateRefreshToken();
 
         var refreshTokenEntity = new RefreshToken
         {
-            Id = Guid.NewGuid(),
+            // Rotation supplies a pre-allocated Id so it can stamp the predecessor row's
+            // ReplacedByTokenId in the same UPDATE that consumes it (atomic chain link).
+            // Login and other callers leave refreshTokenId null and get a fresh Guid here.
+            Id = refreshTokenId ?? Guid.NewGuid(),
             UserId = user.Id,
             TokenHash = HashRefreshToken(rawRefreshToken),
             FamilyId = family,
@@ -117,13 +125,14 @@ public class JWTService : ITokenService
             return new RefreshResult.NotFound();
         }
 
-        // Two concurrent requests can both update this same refresh token.
-        // Whoever's UPDATE runs first wins; the
-        // other's WHERE clause matches zero rows because ConsumedAt is no longer null by
-        // the time it executes.
+        // Pre-allocate the new row's PK so we can stamp it into the predecessors
+        var newTokenId = Guid.NewGuid();
+
         var rowsClaimed = await _context.RefreshTokens
             .Where(t => t.Id == existing.Id && t.ConsumedAt == null)
-            .ExecuteUpdateAsync(s => s.SetProperty(t => t.ConsumedAt, DateTime.UtcNow));
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(t => t.ConsumedAt, DateTime.UtcNow)
+                .SetProperty(t => t.ReplacedByTokenId, (Guid?)newTokenId));
 
         if (rowsClaimed == 0)
         {
@@ -131,7 +140,7 @@ public class JWTService : ITokenService
         }
 
         var roles = await _userManager.GetRolesAsync(user);
-        var newToken = await CreateTokenAsync(user, roles, existing.FamilyId, ipAddress);
+        var newToken = await CreateTokenAsync(user, roles, existing.FamilyId, ipAddress, newTokenId);
 
         await transaction.CommitAsync();
         return new RefreshResult.Success(newToken);

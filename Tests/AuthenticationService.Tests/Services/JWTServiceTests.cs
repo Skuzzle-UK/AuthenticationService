@@ -210,10 +210,21 @@ public class JWTServiceTests : IDisposable
         // Old row consumed. ExecuteUpdate skips EF's change tracker, so clear it before
         // reading or we'd see the pre-update cached value.
         db.ChangeTracker.Clear();
-        var rows = await db.RefreshTokens.ToListAsync();
+        var rows = await db.RefreshTokens.OrderBy(r => r.CreatedAt).ToListAsync();
         rows.Should().HaveCount(2);
         rows.Should().ContainSingle(r => r.ConsumedAt != null,
             because: "exactly the old row should be consumed; the new row stays active.");
+
+        // ReplacedByTokenId chain link: the consumed (old) row points at the new row's
+        // PK. Lets reuse detection identify the live family member via an explicit FK
+        // rather than ordering by CreatedAt — important when the table is large or when
+        // an audit walks the rotation chain backwards.
+        var original = rows[0];
+        var rotated = rows[1];
+        original.ReplacedByTokenId.Should().Be(rotated.Id,
+            because: "the consume step records which row replaced this one in the same UPDATE that sets ConsumedAt.");
+        rotated.ReplacedByTokenId.Should().BeNull(
+            because: "the live row at the end of the chain has nothing after it yet.");
     }
 
     [Fact]

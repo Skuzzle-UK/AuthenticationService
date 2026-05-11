@@ -73,11 +73,8 @@ public class RefreshTokenRotationTests(AppHostFixture fixture) : IntegrationTest
 
         original.ConsumedAt.Should().NotBeNull(
             because: "the rotated-from row must carry a consumed-at timestamp — that's what reuse detection checks against.");
-        // NOTE: ReplacedByTokenId is on the entity for forensic chain-walking but the
-        // current rotation code doesn't populate it (only ConsumedAt). Worth a follow-up
-        // to fill it in so reuse-detection can identify the live family member without
-        // a join through CreatedAt ordering — but it's a separate concern from
-        // "rotation works." Pinned that the column exists; not asserting the value.
+        original.ReplacedByTokenId.Should().Be(rotated.Id,
+            because: "the consume step records which row replaced this one so reuse detection can identify the live family member via an explicit FK rather than CreatedAt ordering.");
         rotated.ConsumedAt.Should().BeNull(
             because: "the new row is the live refresh token — not yet consumed.");
         rotated.FamilyId.Should().Be(original.FamilyId,

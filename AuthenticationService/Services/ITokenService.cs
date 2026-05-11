@@ -16,8 +16,17 @@ public interface ITokenService
     /// Pass <paramref name="familyId"/> to keep the new pair in an existing refresh-token
     /// family (used during rotation); leave it null on a fresh login so a new family is started.
     /// <paramref name="ipAddress"/> is recorded against the refresh token for audit.
+    /// <paramref name="refreshTokenId"/> lets rotation pre-allocate the new row's PK so it
+    /// can be stamped into the predecessor row's <c>ReplacedByTokenId</c> in the same UPDATE
+    /// that consumes it. Login and other non-rotation callers leave it
+    /// null and get a fresh Guid generated inside the implementation.
     /// </summary>
-    Task<Token> CreateTokenAsync(User user, IList<string> roles, Guid? familyId = null, string? ipAddress = null);
+    Task<Token> CreateTokenAsync(
+        User user,
+        IList<string> roles,
+        Guid? familyId = null,
+        string? ipAddress = null,
+        Guid? refreshTokenId = null);
 
     /// <summary>
     /// Validates a token's signature, issuer and audience but ignores its expiry. Used during
