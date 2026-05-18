@@ -7,6 +7,7 @@ using AuthenticationService.Settings;
 using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
+using AuthenticationService.Tests.Helpers;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -226,7 +227,8 @@ public class AccountControllerMeTests
             deps.TokenService,
             deps.UserService,
             Options.Create(new PublicUrlSettings { BaseUrl = "https://auth.test" }),
-            NullLogger<AccountController>.Instance);
+            NullLogger<AccountController>.Instance,
+            TestMetricsFactory.Create());
 
         // Build a ClaimsPrincipal with (or without) the sub claim.
         var claims = new List<Claim>();

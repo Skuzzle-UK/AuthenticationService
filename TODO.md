@@ -78,19 +78,14 @@ open-redirect fix, JWKS caching, etc.), and code-smell cleanup (`WaitingForMfa` 
   per-jti loop in `RevokedTokenReplayEscalationService.RunSweepAsync`. Each has a code
   comment explaining "this can revert when we move to Pomelo."
 
-- [ ] **No OpenTelemetry / W3C trace propagation.**
-  Auth is the most-logged-against service. Add `services.AddOpenTelemetry()` with
-  ASP.NET Core + EF Core + HttpClient instrumentation; export to whatever the platform's
-  collector is (OTLP). Pairs with the missing-metrics gap below — OTel covers both traces
-  and metrics in the same package.
-
-- [ ] **No metrics emitted.**
-  Logs aren't metrics. For Prometheus / OTLP-style operational dashboards you want
-  counters / histograms for login-success rate, MFA adoption, refresh frequency, lockout
-  rate, threshold-escalation fires. Lights up automatically when OpenTelemetry lands —
-  framework-level metrics for ASP.NET Core / EF Core / HttpClient are built in. Custom
-  business-metrics (e.g. "MFA-enabled user count") would need explicit `Meter` / `Counter`
-  calls.
+- [x] ~~**OpenTelemetry + custom business metrics.**~~ ServiceDefaults wires up
+  ASP.NET Core / HttpClient / Runtime / EF Core instrumentation; `AuthMetrics` adds
+  custom counters + gauges (login rate, MFA, refresh, reuse, lockouts, threshold
+  escalation, total users, MFA adoption, active lockouts). Serilog OTLP sink routes
+  logs to the same backend so trace ↔ log correlation works. AppHost spins up a
+  `grafana/otel-lgtm` container with a pre-provisioned "Auth Service Overview"
+  dashboard for dev. Production exports gated on `OTEL_EXPORTER_OTLP_ENDPOINT` env
+  var. See README "Observability" section.
 
 ---
 
@@ -169,19 +164,11 @@ template needed.)
 
 ## Recommended next-up order
 
-1. **CI workflow** — half-day. Smallest remaining gap before the test suite is fully
-   automated. GitHub Actions yaml that runs unit tests on every push + integration tests
-   on PR/main.
-2. **`ReplacedByTokenId` populate fix** — 30 minutes. Closes the data-integrity gap
-   found by Scenario 2.
-3. **Pomelo migration** — half-day investigation. Removes the three workarounds the
-   integration tests forced us to add. Drops them before they become magical-incantation
-   tech debt.
-4. **OpenTelemetry + metrics** — half-day, lights up dashboards. Pairs with CI since
-   the workflow gives a place to assert metric shape doesn't regress.
-5. **Tier 5** items as real platform requirements arrive — don't pre-build.
+1. **Phase 0 — Admin endpoints** (~2 days). The next big work item. Plan ready in
+   [`docs/admin-endpoints-plan.md`](docs/admin-endpoints-plan.md). Phase 1 (s2s auth)
+   depends on it.
+2. **Pomelo migration** — blocked on Pomelo 10 release; re-check quarterly.
 
-Rough effort estimate to reach "I'd put this in a production gate review with a straight
-face": **a focused day or two for the remaining Tier 4 work.** Most of the heavy lifting
-(unit + integration tests, the bugs they uncovered, the AppHost/ServiceDefaults pattern)
-is now in place.
+The remaining Tier 4 work is all closed — the auth service has the observability,
+test coverage, CI workflow, and data-integrity gates of a production-grade
+microservice. Everything from here is feature work in Tier 5.

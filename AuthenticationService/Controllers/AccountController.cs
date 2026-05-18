@@ -1,6 +1,7 @@
 ﻿using AuthenticationService.Constants;
 using AuthenticationService.Extensions;
 using AuthenticationService.Helpers;
+using AuthenticationService.Observability;
 using AuthenticationService.Services;
 using AuthenticationService.Settings;
 using AuthenticationService.Shared.Constants;
@@ -26,6 +27,7 @@ public class AccountController : ControllerBase
     private readonly IUserService _userService;
     private readonly PublicUrlSettings _publicUrlSettings;
     private readonly ILogger<AccountController> _logger;
+    private readonly AuthMetrics _metrics;
 
     public AccountController(
         IEmailService emailService,
@@ -33,7 +35,8 @@ public class AccountController : ControllerBase
         ITokenService tokenService,
         IUserService userService,
         IOptions<PublicUrlSettings> publicUrlSettings,
-        ILogger<AccountController> logger)
+        ILogger<AccountController> logger,
+        AuthMetrics metrics)
     {
         _emailService = emailService;
         _smsService = smsService;
@@ -41,6 +44,7 @@ public class AccountController : ControllerBase
         _userService = userService;
         _publicUrlSettings = publicUrlSettings.Value;
         _logger = logger;
+        _metrics = metrics;
     }
 
     /// <summary>
@@ -295,6 +299,8 @@ public class AccountController : ControllerBase
             "MFA enabled for {UserId} via {Provider}",
             user.Id,
             user.PreferredMfaProvider);
+        
+        _metrics.MfaEnabled(user.PreferredMfaProvider);
 
         return Ok(response);
     }
@@ -334,6 +340,7 @@ public class AccountController : ControllerBase
             "Password reset requested for {UserId} from {IpAddress}",
             user.Id,
             Request.GetRemoteIpAddress());
+        _metrics.PasswordResetRequested();
 
         return Ok(new ApiResponse());
     }
@@ -387,6 +394,8 @@ public class AccountController : ControllerBase
             "Password reset completed for {UserId} from {IpAddress}",
             user.Id,
             Request.GetRemoteIpAddress());
+        
+        _metrics.PasswordResetCompleted();
 
         return Ok(new ApiResponse());
     }
@@ -463,6 +472,8 @@ public class AccountController : ControllerBase
             "Password changed for {UserId} from {IpAddress}",
             user.Id,
             Request.GetRemoteIpAddress());
+        
+        _metrics.PasswordChanged();
 
         return Ok(new ApiResponse());
     }
@@ -511,6 +522,8 @@ public class AccountController : ControllerBase
             "Account locked by user via email link for {UserId} from {IpAddress}",
             user.Id,
             Request.GetRemoteIpAddress());
+        
+        _metrics.LockoutTriggered("user");
 
         return Ok(new ApiResponse());
     }

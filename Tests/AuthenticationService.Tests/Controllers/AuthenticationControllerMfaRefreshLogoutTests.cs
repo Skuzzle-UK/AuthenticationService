@@ -10,6 +10,7 @@ using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
 using AuthenticationService.Shared.Enums;
 using AuthenticationService.Shared.Models;
+using AuthenticationService.Tests.Helpers;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -413,7 +414,8 @@ public class AuthenticationControllerMfaRefreshLogoutTests
         var controller = new AuthenticationController(
             deps.EmailService, deps.SmsService, deps.TokenService, deps.UserService,
             Options.Create(new PublicUrlSettings { BaseUrl = "https://auth.test" }),
-            NullLogger<AuthenticationController>.Instance);
+            NullLogger<AuthenticationController>.Instance,
+            TestMetricsFactory.Create());
 
         var claims = new List<Claim>();
         if (sub is not null) claims.Add(new Claim(ClaimConstants.Sub, sub));

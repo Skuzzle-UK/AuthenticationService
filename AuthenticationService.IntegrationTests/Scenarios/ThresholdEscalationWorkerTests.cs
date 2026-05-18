@@ -1,6 +1,8 @@
+using System.Diagnostics.Metrics;
 using Aspire.Hosting.Testing;
 using AuthenticationService.Constants;
 using AuthenticationService.Entities;
+using AuthenticationService.Observability;
 using AuthenticationService.Services;
 using AuthenticationService.Services.Hosted;
 using AuthenticationService.Settings;
@@ -121,7 +123,8 @@ public class ThresholdEscalationWorkerTests(AppHostFixture fixture) : Integratio
             NullLogger<RevokedTokenReplayEscalationService>.Instance,
             sp.GetRequiredService<IServiceScopeFactory>(),
             settings,
-            publicUrl);
+            publicUrl,
+            CreateAuthMetrics());
 
         // act — run one sweep against real MySQL.
         await worker.RunSweepAsync(CancellationToken.None);
@@ -158,5 +161,15 @@ public class ThresholdEscalationWorkerTests(AppHostFixture fixture) : Integratio
             user.Email,
             EmailSubjects.SuspiciousActivity,
             Arg.Any<string>());
+    }
+
+    // AuthMetrics needs an IMeterFactory; the scenario fixture's DI graph doesn't
+    // surface one here. A real factory off the default DI extension is fine — the
+    // meter has no listener so the increments are no-ops, but the metric methods
+    // run their full code path which is what we want.
+    private static AuthMetrics CreateAuthMetrics()
+    {
+        var sp = new ServiceCollection().AddMetrics().BuildServiceProvider();
+        return new AuthMetrics(sp.GetRequiredService<IMeterFactory>());
     }
 }

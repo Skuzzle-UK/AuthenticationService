@@ -1,6 +1,7 @@
 ﻿using AuthenticationService.Constants;
 using AuthenticationService.Entities;
 using AuthenticationService.Enums;
+using AuthenticationService.Observability;
 using AuthenticationService.Settings;
 using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Models;
@@ -29,6 +30,7 @@ public class JWTService : ITokenService
     private readonly DatabaseContext _context;
     private readonly IEcdsaKeyProvider _keyProvider;
     private readonly ILogger<JWTService> _logger;
+    private readonly AuthMetrics _metrics;
 
     private static readonly JwtSecurityTokenHandler TokenHandler = new();
 
@@ -37,13 +39,15 @@ public class JWTService : ITokenService
         UserManager<User> userManager,
         DatabaseContext context,
         IEcdsaKeyProvider keyProvider,
-        ILogger<JWTService> logger)
+        ILogger<JWTService> logger,
+        AuthMetrics metrics)
     {
         _jwtSettings = jwtSettings.Value;
         _userManager = userManager;
         _context = context;
         _keyProvider = keyProvider;
         _logger = logger;
+        _metrics = metrics;
     }
 
     public async Task<Token> CreateTokenAsync(
@@ -233,6 +237,8 @@ public class JWTService : ITokenService
             userId,
             ipAddress,
             reason);
+        
+        _metrics.TokenRevoked(reason);
     }
 
     public async Task<RevokedToken?> GetRevokedTokenAsync(string token)
@@ -268,6 +274,8 @@ public class JWTService : ITokenService
             revokedToken.TokenJti,
             ipAddress,
             severity);
+        
+        _metrics.RevokedTokenReplayAttempt(severity.ToString());
 
         var attempt = new RevokedTokenAccessAttempt
         {

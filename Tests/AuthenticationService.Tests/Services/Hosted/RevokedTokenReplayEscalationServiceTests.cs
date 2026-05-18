@@ -5,6 +5,7 @@ using AuthenticationService.Services.Hosted;
 using AuthenticationService.Settings;
 using AuthenticationService.Shared.Constants;
 using AuthenticationService.Storage;
+using AuthenticationService.Tests.Helpers;
 using AwesomeAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -291,7 +292,8 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
             NullLogger<RevokedTokenReplayEscalationService>.Instance,
             sp.GetRequiredService<IServiceScopeFactory>(),
             settings,
-            publicUrl);
+            publicUrl,
+            TestMetricsFactory.Create());
 
         return (service, db, deps);
     }

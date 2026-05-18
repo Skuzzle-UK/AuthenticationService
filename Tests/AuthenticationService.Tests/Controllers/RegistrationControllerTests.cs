@@ -9,6 +9,7 @@ using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
 using AuthenticationService.Shared.Enums;
 using AuthenticationService.Storage;
+using AuthenticationService.Tests.Helpers;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -363,7 +364,8 @@ public class RegistrationControllerTests : IDisposable
             db,
             Options.Create(new PublicUrlSettings { BaseUrl = "https://auth.test" }),
             Options.Create(new CorsSettings { AllowedOrigins = allowedOrigins?.ToList() ?? new List<string>() }),
-            NullLogger<RegistrationController>.Instance);
+            NullLogger<RegistrationController>.Instance,
+            TestMetricsFactory.Create());
 
         var actionDescriptor = new Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor
         {

@@ -3,6 +3,7 @@ using AuthenticationService.Entities;
 using AuthenticationService.Enums;
 using AuthenticationService.Extensions;
 using AuthenticationService.Helpers;
+using AuthenticationService.Observability;
 using AuthenticationService.Services;
 using AuthenticationService.Settings;
 using AuthenticationService.Shared.Constants;
@@ -29,6 +30,7 @@ public class AuthenticationController : ControllerBase
     private readonly IUserService _userService;
     private readonly PublicUrlSettings _publicUrlSettings;
     private readonly ILogger<AuthenticationController> _logger;
+    private readonly AuthMetrics _metrics;
 
     public AuthenticationController(
         IEmailService emailService,
@@ -36,7 +38,8 @@ public class AuthenticationController : ControllerBase
         ITokenService tokenService,
         IUserService userService,
         IOptions<PublicUrlSettings> publicUrlSettings,
-        ILogger<AuthenticationController> logger)
+        ILogger<AuthenticationController> logger,
+        AuthMetrics metrics)
     {
         _emailService = emailService;
         _smsService = smsService;
@@ -44,6 +47,7 @@ public class AuthenticationController : ControllerBase
         _userService = userService;
         _publicUrlSettings = publicUrlSettings.Value;
         _logger = logger;
+        _metrics = metrics;
     }
 
     /// <summary>
@@ -64,6 +68,8 @@ public class AuthenticationController : ControllerBase
                 string.Empty,
                 Request.GetRemoteIpAddress(),
                 LoginFailureReason.BadCredentials);
+            
+            _metrics.LoginFailed(LoginFailureReason.BadCredentials);
 
             return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidRequest));
         }
@@ -76,6 +82,8 @@ public class AuthenticationController : ControllerBase
                 user.Id,
                 Request.GetRemoteIpAddress(),
                 LoginFailureReason.EmailNotConfirmed);
+            
+            _metrics.LoginFailed(LoginFailureReason.EmailNotConfirmed);
 
             return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Email is not confirmed"));
         }
@@ -88,6 +96,8 @@ public class AuthenticationController : ControllerBase
                 user.Id,
                 Request.GetRemoteIpAddress(),
                 LoginFailureReason.AccountLocked);
+            
+            _metrics.LoginFailed(LoginFailureReason.AccountLocked);
 
             return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.AccountLockedFailedAttempts));
         }
@@ -100,6 +110,8 @@ public class AuthenticationController : ControllerBase
                 user.Id,
                 Request.GetRemoteIpAddress(),
                 LoginFailureReason.BadCredentials);
+            
+            _metrics.LoginFailed(LoginFailureReason.BadCredentials);
 
             return await RecordLoginFailedAttempt(user, request.ResetPasswordUri);
         }
@@ -144,6 +156,8 @@ public class AuthenticationController : ControllerBase
                 "MFA challenge issued for {UserId} via {Provider}",
                 user.Id,
                 request.MfaProvider);
+            
+            _metrics.MfaChallengeIssued(request.MfaProvider!.Value);
 
             return Ok(AuthenticationResponse.WithMfaRequired(request.MfaProvider));
         }
@@ -159,6 +173,8 @@ public class AuthenticationController : ControllerBase
             "Login succeeded for {UserId} from {IpAddress}",
             user.Id,
             ipAddress);
+        
+        _metrics.LoginSucceeded(mfaUsed: false);
 
         return Ok(AuthenticationResponse.WithToken(token));
     }
@@ -181,6 +197,8 @@ public class AuthenticationController : ControllerBase
                 string.Empty,
                 Request.GetRemoteIpAddress(),
                 LoginFailureReason.BadCredentials);
+            
+            _metrics.LoginFailed(LoginFailureReason.BadCredentials);
 
             return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidRequest));
         }
@@ -193,6 +211,8 @@ public class AuthenticationController : ControllerBase
                 user.Id,
                 Request.GetRemoteIpAddress(),
                 LoginFailureReason.AccountLocked);
+            
+            _metrics.LoginFailed(LoginFailureReason.AccountLocked);
 
             return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.AccountLockedFailedAttempts));
         }
@@ -204,6 +224,8 @@ public class AuthenticationController : ControllerBase
                 "MFA verification failed for {UserId} from {IpAddress}",
                 user.Id,
                 Request.GetRemoteIpAddress());
+            
+            _metrics.MfaFailed();
 
             return await RecordLoginFailedAttempt(user, request.ResetPasswordUri);
         }
@@ -213,6 +235,8 @@ public class AuthenticationController : ControllerBase
             "MFA verified for {UserId} from {IpAddress}",
             user.Id,
             Request.GetRemoteIpAddress());
+        
+        _metrics.MfaVerified();
 
         var roles = await _userService.GetRolesAsync(user);
         var ipAddress = Request.GetRemoteIpAddress();
@@ -225,6 +249,8 @@ public class AuthenticationController : ControllerBase
             "Login succeeded for {UserId} from {IpAddress}",
             user.Id,
             ipAddress);
+        
+        _metrics.LoginSucceeded(mfaUsed: true);
 
         return Ok(AuthenticationResponse.WithToken(token));
     }
@@ -266,6 +292,8 @@ public class AuthenticationController : ControllerBase
                 "Refresh token rotated for {UserId} from {IpAddress}",
                 _tokenService.GetUserId(token),
                 ipAddress);
+            
+            _metrics.RefreshTokenRotated();
 
             return Ok(AuthenticationResponse.WithToken(success.Token));
         }
@@ -288,6 +316,8 @@ public class AuthenticationController : ControllerBase
             userId,
             familyId,
             ipAddress);
+        
+        _metrics.RefreshTokenReuseDetected();
 
         if (compromisedUser?.Email is null)
         {
@@ -399,6 +429,8 @@ public class AuthenticationController : ControllerBase
                 "Account locked due to failed-login threshold for {UserId} from {IpAddress}",
                 user.Id,
                 Request.GetRemoteIpAddress());
+            
+            _metrics.LockoutTriggered("failed_login");
 
             return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.AccountLockedFailedAttempts));
         }

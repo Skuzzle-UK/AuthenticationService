@@ -7,6 +7,7 @@ using AuthenticationService.Services;
 using AuthenticationService.Settings;
 using AuthenticationService.Shared.Constants;
 using AuthenticationService.Storage;
+using AuthenticationService.Tests.Helpers;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
@@ -701,7 +702,8 @@ public class JWTServiceTests : IDisposable
             userManager,
             db,
             _keyProvider,
-            NullLogger<JWTService>.Instance);
+            NullLogger<JWTService>.Instance,
+            TestMetricsFactory.Create());
         return (service, db, userManager);
     }
 

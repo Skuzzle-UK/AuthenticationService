@@ -2,6 +2,7 @@ using AuthenticationService.Extensions;
 using AuthenticationService.ServiceDefaults;
 using AuthenticationService.Settings;
 using Serilog;
+using Serilog.Sinks.OpenTelemetry;
 
 namespace AuthenticationService;
 
@@ -39,10 +40,32 @@ public class Program
                 opt.Limits.MaxRequestBodySize = (long)hostingSettings.MaxRequestBodySizeInKilobytes * 1024;
             });
 
-            builder.Host.UseSerilog((hostingContext, services, configuration) => configuration
-                .ReadFrom.Configuration(hostingContext.Configuration)
-                .ReadFrom.Services(services)
-                .Enrich.FromLogContext());
+            builder.Host.UseSerilog((hostingContext, services, configuration) =>
+            {
+                configuration
+                    .ReadFrom.Configuration(hostingContext.Configuration)
+                    .ReadFrom.Services(services)
+                    .Enrich.FromLogContext();
+
+                // Without the env var, Serilog stays console-only and logs don't flow to Loki.
+                // Lets operators click from a trace span in Grafana / Tempo into the
+                // log lines emitted during that request, since both share the same
+                // trace_id and span_id.
+                var otlpEndpoint = hostingContext.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"];
+                if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+                {
+                    configuration.WriteTo.OpenTelemetry(opt =>
+                    {
+                        opt.Endpoint = otlpEndpoint;
+                        opt.Protocol = OtlpProtocol.Grpc;
+                        opt.ResourceAttributes = new Dictionary<string, object>
+                        {
+                            ["service.name"] = hostingContext.Configuration["OTEL_SERVICE_NAME"]
+                                ?? "auth"
+                        };
+                    });
+                }
+            });
 
             builder.Host.ConfigureHost();
 

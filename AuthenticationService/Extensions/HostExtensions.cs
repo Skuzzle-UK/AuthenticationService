@@ -1,5 +1,6 @@
 ﻿using AuthenticationService.Entities;
 using AuthenticationService.Logging;
+using AuthenticationService.Observability;
 using AuthenticationService.Services;
 using AuthenticationService.Services.HealthChecks;
 using AuthenticationService.Services.Hosted;
@@ -142,7 +143,8 @@ public static class HostExtensions
             .AddHttpContextAccessor()
             .AddSingleton<ILogEventEnricher, HttpContextLogEnricher>()
             .AddSingleton<QueuedEmailService>()
-            .AddSingleton<IEmailService>(sp => sp.GetRequiredService<QueuedEmailService>());
+            .AddSingleton<IEmailService>(sp => sp.GetRequiredService<QueuedEmailService>())
+            .AddSingleton<AuthMetrics>();
 
         return services;
     }
@@ -167,7 +169,8 @@ public static class HostExtensions
 
         return services
             .AddHostedService<DataRetentionCleanupService>()
-            .AddHostedService<RevokedTokenReplayEscalationService>();
+            .AddHostedService<RevokedTokenReplayEscalationService>()
+            .AddHostedService<UserGaugeRefreshService>();
     }
 
     public static IServiceCollection AddDatabase(this IServiceCollection services, HostBuilderContext context) =>

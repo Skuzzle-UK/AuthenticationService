@@ -8,6 +8,7 @@ using AuthenticationService.Settings;
 using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
+using AuthenticationService.Tests.Helpers;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -428,7 +429,8 @@ public class AccountControllerPasswordTests
         var controller = new AccountController(
             deps.EmailService, deps.SmsService, deps.TokenService, deps.UserService,
             Options.Create(new PublicUrlSettings { BaseUrl = "https://auth.test" }),
-            NullLogger<AccountController>.Instance);
+            NullLogger<AccountController>.Instance,
+            TestMetricsFactory.Create());
 
         var claims = new List<Claim>();
         if (subClaim is not null) claims.Add(new Claim(ClaimConstants.Sub, subClaim));

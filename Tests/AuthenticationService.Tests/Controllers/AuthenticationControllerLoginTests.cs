@@ -10,6 +10,7 @@ using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
 using AuthenticationService.Shared.Enums;
 using AuthenticationService.Shared.Models;
+using AuthenticationService.Tests.Helpers;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -316,7 +317,8 @@ public class AuthenticationControllerLoginTests
             deps.TokenService,
             deps.UserService,
             Options.Create(new PublicUrlSettings { BaseUrl = "https://auth.test" }),
-            NullLogger<AuthenticationController>.Instance);
+            NullLogger<AuthenticationController>.Instance,
+            TestMetricsFactory.Create());
 
         controller.ControllerContext = new ControllerContext
         {

@@ -1,6 +1,7 @@
 ﻿using AuthenticationService.Constants;
 using AuthenticationService.Entities;
 using AuthenticationService.Extensions;
+using AuthenticationService.Observability;
 using AuthenticationService.Services;
 using AuthenticationService.Settings;
 using AuthenticationService.Shared.Constants;
@@ -24,6 +25,7 @@ public class RegistrationController : ControllerBase
     private readonly PublicUrlSettings _publicUrlSettings;
     private readonly CorsSettings _corsSettings;
     private readonly ILogger<RegistrationController> _logger;
+    private readonly AuthMetrics _metrics;
 
     public RegistrationController(
         IUserService userService,
@@ -31,7 +33,8 @@ public class RegistrationController : ControllerBase
         DatabaseContext dbContext,
         IOptions<PublicUrlSettings> publicUrlSettings,
         IOptions<CorsSettings> corsSettings,
-        ILogger<RegistrationController> logger)
+        ILogger<RegistrationController> logger,
+        AuthMetrics metrics)
     {
         _userService = userService;
         _emailService = emailService;
@@ -39,6 +42,7 @@ public class RegistrationController : ControllerBase
         _publicUrlSettings = publicUrlSettings.Value;
         _corsSettings = corsSettings.Value;
         _logger = logger;
+        _metrics = metrics;
     }
 
     /// <summary>
@@ -97,6 +101,8 @@ public class RegistrationController : ControllerBase
                 SecurityEventIds.RegistrationCompleted,
                 "Registration completed for {UserId}",
                 user.Id);
+            
+            _metrics.RegistrationCompleted();
 
             return Created();
         }
@@ -149,6 +155,8 @@ public class RegistrationController : ControllerBase
             SecurityEventIds.EmailConfirmed,
             "Email confirmed for {UserId}",
             user.Id);
+        
+        _metrics.EmailConfirmed();
 
         return Redirect(ResolveSafeCallback(callbackUri));
     }

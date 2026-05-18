@@ -1,3 +1,7 @@
+using AuthenticationService.AppHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
 var builder = DistributedApplication.CreateBuilder(args);
 
 // Two independent test-mode flags, both passed by integration-test fixtures:
@@ -27,6 +31,40 @@ var authDb = mysql.AddDatabase("AuthenticationService");
 var redis = builder.AddRedis("redis")
     .WithRedisInsight();
 
+// Local observability stack — grafana/otel-lgtm bundles Grafana + Tempo (traces) +
+// Loki (logs) + Prometheus (metrics) in one container. Receives OTLP on 4317 (gRPC)
+// and 4318 (HTTP); Grafana UI is on 3000 with datasources preconfigured. Skipped
+// under --integration-test because (a) tests don't care about telemetry and (b) the
+// extra container slows down test boot. The auth service won't emit anywhere when
+// OTEL_EXPORTER_OTLP_ENDPOINT is unset (ServiceDefaults gates the exporter on it),
+// so leaving the env var off in test mode cleanly disables export.
+IResourceBuilder<ContainerResource>? lgtm = null;
+if (!integrationTestMode)
+{
+    lgtm = builder.AddContainer("grafana", "grafana/otel-lgtm")
+        .WithEndpoint(name: "grafana-ui", targetPort: 3000, port: 3000, scheme: "http")
+        // scheme: "http" is load-bearing — OTLP gRPC is HTTP/2 over TCP, and the
+        // .NET Grpc.Net.Client (used by Serilog's OTLP sink) only resolves http://,
+        // https://, and dns:// schemes. Default-scheme tcp:// from WithEndpoint
+        // throws "No address resolver configured for the scheme 'tcp'."
+        .WithEndpoint(name: "otlp-grpc", targetPort: 4317, scheme: "http")
+        .WithEndpoint(name: "otlp-http", targetPort: 4318, scheme: "http");
+
+    // Auto-import the "Auth Service Overview" dashboard via Grafana's HTTP API once
+    // the container reports ready. File-based provisioning (bind-mount of the JSON)
+    // works on Linux but Docker Desktop on Windows rejects single-file bind mounts
+    // with "mount path must be absolute"; the HTTP-API route side-steps that.
+    var appHostRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
+    var dashboardPath = Path.Combine(appHostRoot, "grafana", "dashboards", "auth-overview.json");
+
+    builder.Eventing.Subscribe<ResourceReadyEvent>(lgtm.Resource, async (evt, ct) =>
+    {
+        var grafanaUrl = lgtm.GetEndpoint("grafana-ui").Url;
+        var logger = evt.Services.GetRequiredService<ILogger<DistributedApplication>>();
+        await GrafanaDashboardProvisioner.ImportDashboardAsync(grafanaUrl, dashboardPath, logger, ct);
+    });
+}
+
 var auth = builder.AddProject<Projects.AuthenticationService>("auth")
     // Force the auth project into Development mode whenever it runs under the AppHost.
     // The AppHost is dev/test-only (production deploys don't ship it), and several auth
@@ -45,6 +83,21 @@ var auth = builder.AddProject<Projects.AuthenticationService>("auth")
     .WaitFor(authDb)
     .WaitFor(redis)
     .WaitFor(smtp);
+
+if (lgtm is not null)
+{
+    // ServiceDefaults' ConfigureOpenTelemetry gates the OTLP exporter on this env var
+    // being set — so configuring it here flips the exporter on. Point at the gRPC
+    // endpoint (the .NET OTel SDK defaults to gRPC, no need to set _PROTOCOL).
+    //
+    // Deliberately NOT WaitFor(lgtm) — telemetry is fire-and-forget; if Grafana takes
+    // a few seconds longer to start than auth, the OTel SDK queues + retries failed
+    // exports silently. Blocking auth start on the dashboard container would be
+    // backwards.
+    auth
+        .WithEnvironment("OTEL_EXPORTER_OTLP_ENDPOINT", lgtm.GetEndpoint("otlp-grpc"))
+        .WithEnvironment("OTEL_SERVICE_NAME", "auth");
+}
 
 // Default: BaseUrl points at the https endpoint (production-shape — email links etc.
 // go over HTTPS). Tests override this to the http endpoint just below, because they

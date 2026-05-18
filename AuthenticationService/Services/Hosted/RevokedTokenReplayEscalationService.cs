@@ -1,6 +1,7 @@
 using AuthenticationService.Constants;
 using AuthenticationService.Entities;
 using AuthenticationService.Helpers;
+using AuthenticationService.Observability;
 using AuthenticationService.Settings;
 using AuthenticationService.Storage;
 using Microsoft.AspNetCore.WebUtilities;
@@ -33,17 +34,20 @@ public class RevokedTokenReplayEscalationService : BackgroundService
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly ThresholdEscalationSettings _settings;
     private readonly PublicUrlSettings _publicUrlSettings;
+    private readonly AuthMetrics _metrics;
 
     public RevokedTokenReplayEscalationService(
         ILogger<RevokedTokenReplayEscalationService> logger,
         IServiceScopeFactory serviceScopeFactory,
         IOptions<ThresholdEscalationSettings> settings,
-        IOptions<PublicUrlSettings> publicUrlSettings)
+        IOptions<PublicUrlSettings> publicUrlSettings,
+        AuthMetrics metrics)
     {
         _logger = logger;
         _serviceScopeFactory = serviceScopeFactory;
         _settings = settings.Value;
         _publicUrlSettings = publicUrlSettings.Value;
+        _metrics = metrics;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -165,6 +169,8 @@ public class RevokedTokenReplayEscalationService : BackgroundService
                 revokedToken.TokenJti,
                 attemptCount,
                 _settings.WindowInMinutes);
+            
+            _metrics.ThresholdEscalationFired("warned");
 
             revokedToken.WarnedAt = DateTime.UtcNow;
         }
@@ -218,6 +224,9 @@ public class RevokedTokenReplayEscalationService : BackgroundService
             revokedToken.TokenJti,
             attemptCount,
             _settings.WindowInMinutes);
+       
+        _metrics.ThresholdEscalationFired("locked"); 
+        _metrics.LockoutTriggered("threshold_escalation");
     }
 
     private async Task SendLockNotificationEmailAsync(

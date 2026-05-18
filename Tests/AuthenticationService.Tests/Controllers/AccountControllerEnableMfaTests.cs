@@ -8,6 +8,7 @@ using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
 using AuthenticationService.Shared.Enums;
+using AuthenticationService.Tests.Helpers;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -283,7 +284,8 @@ public class AccountControllerEnableMfaTests
         var controller = new AccountController(
             deps.EmailService, deps.SmsService, deps.TokenService, deps.UserService,
             Options.Create(new PublicUrlSettings { BaseUrl = "https://auth.test" }),
-            NullLogger<AccountController>.Instance);
+            NullLogger<AccountController>.Instance,
+            TestMetricsFactory.Create());
 
         controller.ControllerContext = new ControllerContext
         {

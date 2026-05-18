@@ -270,11 +270,12 @@ runs reuse them and finish in under a minute.
 
 Hitting F5 on `AuthenticationService.AppHost` is the cleanest dev workflow:
 
-1. Aspire boots MySQL, Redis, and smtp4dev as containers.
-2. Connection strings flow into the auth project as env-var overrides — no manual config.
+1. Aspire boots MySQL, Redis, smtp4dev, and the `grafana/otel-lgtm` observability stack as containers.
+2. Connection strings + OTLP endpoint flow into the auth project as env-var overrides — no manual config.
 3. The auth service runs as a normal `dotnet run` process so debugger / edit-and-continue work.
 4. Aspire dashboard opens in a browser showing live logs, traces, metrics, and clickable
-   endpoints to each container's UI (e.g., the smtp4dev inbox).
+   endpoints to each container's UI (the smtp4dev inbox, RedisInsight, and Grafana at
+   `:3000` with the "Auth Service Overview" dashboard auto-imported on container ready).
 
 Plain `dotnet run --project AuthenticationService` still works against any MySQL / Redis
 / SMTP you've configured in `appsettings.json` — Aspire is just an alternative dev
@@ -297,6 +298,110 @@ semantics between SQLite-InMemory and Oracle's `MySql.EntityFrameworkCore`):
 
 All three would be obviated by migrating to `Pomelo.EntityFrameworkCore.MySql` — see
 [`TODO.md`](TODO.md) Tier 4.
+
+---
+
+## Observability
+
+The auth service emits **traces, metrics, and logs** via OpenTelemetry. Production
+exports to whatever OTLP collector the platform provides. Locally, the Aspire AppHost
+spins up a Grafana / Tempo / Loki / Prometheus stack so you can see everything in
+context while developing.
+
+### Local stack via Aspire
+
+Hitting F5 on `AuthenticationService.AppHost` brings up an extra container alongside
+the existing MySQL / Redis / smtp4dev:
+
+| Container | Image | Endpoints |
+|---|---|---|
+| `grafana` | `grafana/otel-lgtm` | Grafana UI on `:3000`, OTLP gRPC on `:4317`, OTLP HTTP on `:4318` |
+
+The LGTM image bundles all four signals — Loki (logs), Grafana (UI), Tempo (traces),
+Mimir/Prometheus (metrics) — in one container with datasources pre-wired. The auth
+service exports OTLP to the container's gRPC endpoint, gated on
+`OTEL_EXPORTER_OTLP_ENDPOINT` being set (Aspire wires this automatically).
+
+**Skip in test mode**: integration tests pass `--integration-test`, which omits the
+container — telemetry isn't part of what they assert and the extra container slows
+boot.
+
+**Open the UI**: `http://localhost:3000`. The Prometheus / Tempo / Loki datasources
+are pre-wired — metrics, traces, and logs are immediately visible via the Explore
+tab without any config on our end.
+
+**Starter dashboard** at
+[`AuthenticationService.AppHost/grafana/dashboards/auth-overview.json`](AuthenticationService.AppHost/grafana/dashboards/auth-overview.json)
+— twelve panels covering login rate, MFA adoption, refresh-token reuse fires,
+threshold-escalation locks, request latency p95, EF Core query durations, and more.
+**Auto-imported** by the AppHost via Grafana's HTTP API once the container reports
+ready — see `GrafanaDashboardProvisioner.cs`. The import is idempotent
+(`overwrite: true`), so iterating on the dashboard JSON and re-running the AppHost
+applies the updates. (File-based provisioning via bind-mount would be the cleaner
+route but Docker Desktop on Windows rejects single-file mounts; the HTTP-API import
+sidesteps that.)
+
+### What's instrumented
+
+| Signal | Source | Where |
+|---|---|---|
+| Traces — HTTP requests | `OpenTelemetry.Instrumentation.AspNetCore` | All controllers, filters out `/livez` `/readyz` `/healthz` to keep probe noise out of Tempo |
+| Traces — outbound HTTP | `OpenTelemetry.Instrumentation.Http` | Email / SMS / any HttpClient |
+| Traces — EF Core queries | `OpenTelemetry.Instrumentation.EntityFrameworkCore` | Every DB query nested under the request that issued it |
+| Metrics — framework | ASP.NET Core / HttpClient / Runtime instrumentation | Per-endpoint latency, GC, etc. |
+| Metrics — custom | `AuthenticationService.Observability.AuthMetrics` | Login rate, MFA, refresh, lockouts, reuse, etc. — see table below |
+| Logs | Serilog → OTLP sink | Routed to Loki, correlated with trace IDs |
+
+All instrumentation lives in `AuthenticationService.ServiceDefaults/Extensions.cs`'s
+`ConfigureOpenTelemetry`. Custom metrics in
+`AuthenticationService/Observability/AuthMetrics.cs`.
+
+### Custom business metrics
+
+Counters fire alongside the existing `_logger.Log(SecurityEventIds.X, ...)` calls.
+Every emit-site is in the controllers / `JWTService` / `RevokedTokenReplayEscalationService`.
+
+| Metric | Tags | What |
+|---|---|---|
+| `auth.logins.total` | `result`, `mfa_used` (success), `reason` (failure) | Login attempts |
+| `auth.mfa.challenges.total` | `provider` | MFA challenges issued |
+| `auth.mfa.verifications.total` | `result` | MFA code verification outcomes |
+| `auth.refreshes.total` | — | Refresh-token rotations |
+| `auth.refresh.reuse_detected.total` | — | Reuse cascade fires (every increment is a security incident) |
+| `auth.lockouts.total` | `trigger` (`failed_login` / `user` / `threshold_escalation`) | Account lockouts |
+| `auth.password_changes.total` | — | Authenticated password changes |
+| `auth.password_resets.total` | `stage` (`requested` / `completed`) | Forgot-password milestones |
+| `auth.mfa.enabled.total` | `provider` | MFA-enable events (counter, NOT the running total — see gauges) |
+| `auth.tokens.revoked.total` | `reason` | Access-token revocations |
+| `auth.revoked_token.replay.total` | `severity` | Revoked-token replay attempts |
+| `auth.threshold_escalation.fires.total` | `level` (`warned` / `locked`) | Escalation worker fires |
+
+Plus three observable gauges refreshed every 60s by `UserGaugeRefreshService`:
+
+| Gauge | What |
+|---|---|
+| `auth.users.total` | Total registered users |
+| `auth.users.mfa_enabled.total` | Users with MFA currently enabled |
+| `auth.users.locked.total` | Users in an active lockout |
+
+The refresh service is gated on `HostingSettings:BackgroundWorkersEnabled` — in a
+multi-replica deployment, only the worker pod needs to run it (every replica would
+return the same global count from the same DB).
+
+### Trace ↔ log correlation
+
+Serilog's OTLP sink picks up the active `Activity`'s `trace_id` and `span_id` from
+context, so log records in Loki carry the same trace IDs as the spans in Tempo.
+Clicking a span in Grafana surfaces the logs emitted during that request without
+needing a separate join.
+
+### Production wiring
+
+Set `OTEL_EXPORTER_OTLP_ENDPOINT` on the auth service to your platform's OTLP
+collector endpoint (e.g., `http://otel-collector.platform:4317`). The same exporter
+serves traces + metrics + logs; no separate per-signal config needed. Skip the env
+var entirely (default for plain `dotnet run`) and the service runs console-only —
+no failed-export retries, no telemetry costs.
 
 ---
 
