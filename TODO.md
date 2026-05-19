@@ -44,12 +44,10 @@ open-redirect fix, JWKS caching, etc.), and code-smell cleanup (`WaitingForMfa` 
   `ubuntu-latest` (Docker pre-installed). Status badge in README. Concurrency group
   cancels superseded runs to avoid queueing duplicate work on noisy push cycles.
 
-- [ ] **`RefreshToken.ReplacedByTokenId` never populated** (found by Scenario 2 of the
-  integration tests). The column exists on the entity for forensic chain-walking but
-  the rotation logic only stamps `ConsumedAt` — without the back-pointer, reuse
-  detection has to walk the chain via `CreatedAt` ordering rather than following an
-  explicit link. Small fix, ~30 minutes — just set the field during rotation in
-  `JWTService.RotateRefreshTokenAsync`.
+- [x] ~~**`RefreshToken.ReplacedByTokenId` populate fix.**~~ Rotation now stamps the
+  back-pointer in the same race-protected UPDATE as `ConsumedAt`, in
+  `JWTService.RotateRefreshTokenAsync`. Reuse-detection no longer needs to walk the
+  chain via `CreatedAt` ordering.
 
 - [ ] **Consider migrating from `MySql.EntityFrameworkCore` (Oracle) to `Pomelo.EntityFrameworkCore.MySql`** _(blocked: waiting on Pomelo 10 release)._
   All three integration-test bugs trace back to limitations in Oracle's provider that
@@ -94,37 +92,37 @@ open-redirect fix, JWKS caching, etc.), and code-smell cleanup (`WaitingForMfa` 
 These are likely real platform requirements once "shared by several apps" becomes more
 than aspirational. None are blockers today; flagged so the design space is visible.
 
-- [ ] **No admin operational endpoints + No service-to-service auth flow.**
-  Combined work item — admin endpoints are a prerequisite for the DB-backed
-  client-management surface that service-to-service auth needs.
+- [x] ~~**Admin operational endpoints + Service-to-service auth flow.**~~ Both phases
+  shipped:
+  - **Phase 0** (admin endpoints): paginated user list / detail / lock / unlock /
+    revoke-sessions / reset-MFA / force-password-reset / audit / admin-creates-user
+    with invitation flow. Plus the `SecurityEventSink` audit pipeline. Plan doc:
+    [`docs/admin-endpoints-plan.md`](docs/admin-endpoints-plan.md).
+  - **Phase 1** (s2s auth): `Clients` + `ClientScopes` tables, `POST /oauth/token`
+    client-credentials endpoint, service-JWT shape, admin client CRUD, OIDC discovery
+    advertises `token_endpoint`, `AddScopePolicy` helper in
+    `AuthenticationService.Client`, `ExampleConsumer` demo. Plan doc:
+    [`docs/service-to-service-auth-plan.md`](docs/service-to-service-auth-plan.md).
+  - **Phase 2** (optional hardening — JWT-bearer client assertions, mTLS, dynamic
+    registration) deferred until real demand arrives.
 
-  Two planning docs cover the design end-to-end:
-  - [`docs/admin-endpoints-plan.md`](docs/admin-endpoints-plan.md) — Phase 0 detail
-    (admin user-management endpoints + admin-creates-user invitation flow + basic page)
-  - [`docs/service-to-service-auth-plan.md`](docs/service-to-service-auth-plan.md) —
-    overall plan, Phase 1 (s2s auth) detail, Phase 2 hardening sketch
+- [ ] **No outgoing-token client helper for consuming services.**
+  Phase 1 shipped the resource-server side (`AddScopePolicy`) but not the
+  client side. Consuming services that want to call other services have to write
+  their own token-fetch + cache + DelegatingHandler boilerplate. Standard .NET
+  pattern; the absence forces every new consumer team to re-implement it (badly,
+  five times across the platform).
 
-  Design decisions are settled; effort estimate is ~4 focused days split as:
-
-  - **Phase 0** (~2 days) — Admin endpoint foundation:
-    paginated user list / detail / lock-unlock / revoke-sessions / reset-MFA /
-    force-password-reset / audit-trail + admin-creates-user with invitation email and
-    a basic page where the new user sets their initial password. All gated by the
-    existing `[Authorize(Policy = "AdminOnly")]`. Delivers the "admin operational
-    endpoints" item independently. Adds Serilog SQL sink for the audit endpoint.
-
-  - **Phase 1** (~2 days) — Service-to-service auth (DB-driven):
-    `Clients` and `ClientScopes` tables, `POST /oauth/token` endpoint, service-identity
-    JWT shape (sub = client_id, no user claims, scope claim), client library
-    `AddScopePolicy` helper, `ExampleConsumer` demo, OIDC discovery update, integration
-    scenarios 9 & 10. Reuses the admin endpoint surface from Phase 0 for client CRUD.
-
-  - **Phase 2** — Optional hardening (JWT-bearer client assertions, mTLS, dynamic
-    registration). Build when real demand arrives.
-
-  Today's pain: consumers forward the user's JWT for service-to-service calls — audit
-  logs blame the user not the calling service, and there's no story for cron jobs /
-  message handlers / scheduled syncs that have no user in the call chain.
+  Plan ready: [`docs/service-token-client-plan.md`](docs/service-token-client-plan.md).
+  ~half a day, scoped to `AuthenticationService.Client`. Adds `IServiceTokenProvider`,
+  `ServiceTokenHandler`, `AddServiceToken(audience, scopes)` extension on
+  `IHttpClientBuilder`. Settings file extends the existing options. End-state:
+  ```csharp
+  services.AddAuthenticationServiceTokenClient(config.GetSection("AuthenticationService"));
+  services.AddHttpClient<InventoryClient>()
+      .AddServiceToken("inventory-api", ["inventory.read"]);
+  ```
+  and the handler stamps the Bearer header on every outgoing call.
 
 - [ ] **No external IdP integration (SSO).**
   Many corporate apps want "log in with Microsoft / Google / Entra ID." Not in scope
@@ -164,11 +162,19 @@ template needed.)
 
 ## Recommended next-up order
 
-1. **Phase 0 — Admin endpoints** (~2 days). The next big work item. Plan ready in
-   [`docs/admin-endpoints-plan.md`](docs/admin-endpoints-plan.md). Phase 1 (s2s auth)
-   depends on it.
-2. **Pomelo migration** — blocked on Pomelo 10 release; re-check quarterly.
+1. **Outgoing-token client helper** (~half day). Plan ready in
+   [`docs/service-token-client-plan.md`](docs/service-token-client-plan.md). Small
+   ergonomics win that closes the consumer-side gap left by Phase 1. Pick this up
+   the moment a real consumer service is being wired in — the friction will be
+   visible immediately.
+2. **External IdP / SSO** — no plan yet. Wait until there's a concrete need (which
+   provider, what claim mapping, what account-linking semantics).
+3. **`OPERATIONS.md` runbook** — write when an actual ops person is about to join.
+   Premature writing means the doc drifts before it's ever read.
+4. **Pomelo migration** — blocked on Pomelo 10 release; re-check quarterly.
 
-The remaining Tier 4 work is all closed — the auth service has the observability,
-test coverage, CI workflow, and data-integrity gates of a production-grade
-microservice. Everything from here is feature work in Tier 5.
+Phase 0 (admin endpoints), Phase 1 (s2s auth), Tier 4 observability, and the
+data-integrity fixes are all shipped. The auth service has the observability, test
+coverage (412 unit + 13 integration), CI workflow, audit pipeline, admin surface,
+service-identity story, and consumer client lib of a production-grade microservice.
+Remaining items are all "build when real demand arrives."
