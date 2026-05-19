@@ -59,25 +59,32 @@ public class AppHostFixture : IAsyncLifetime
     private async Task WaitForAuthServiceReadyAsync()
     {
         using var client = App.CreateHttpClient("auth", "http");
+        // Per-request timeout shorter than the deadline so a single hung probe doesn't
+        // burn the whole wait budget — useful when the readyz health-check stalls on
+        // a slow dependency (DB or Redis) rather than returning a quick 503.
+        client.Timeout = TimeSpan.FromSeconds(5);
         var deadline = DateTime.UtcNow.AddSeconds(120);
+        string lastResponse = "no response yet";
+
         while (DateTime.UtcNow < deadline)
         {
             try
             {
                 var response = await client.GetAsync("/readyz");
+                lastResponse = $"{(int)response.StatusCode} {response.StatusCode}";
                 if (response.IsSuccessStatusCode)
                 {
                     return;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Auth service still starting — keep polling.
+                lastResponse = $"{ex.GetType().Name}: {ex.Message}";
             }
             await Task.Delay(500);
         }
 
         throw new InvalidOperationException(
-            "Auth service didn't become ready within 120s. Check the auth resource's logs.");
+            $"Auth service didn't become ready within 120s. Last /readyz response: {lastResponse}.");
     }
 }

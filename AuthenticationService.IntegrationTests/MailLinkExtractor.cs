@@ -15,12 +15,19 @@ public static partial class MailLinkExtractor
     /// All absolute URLs found in <paramref name="body"/>, in order of appearance.
     /// Strings that match the pattern but fail <see cref="Uri.TryCreate"/> are skipped
     /// (defensive against half-formed matches at the regex boundary).
+    ///
+    /// <para>Trailing sentence punctuation (<c>.,;:!?)]}'"</c>) is stripped — email bodies
+    /// commonly say "click the following link: {url}. If you ..." and the regex's lazy
+    /// boundary captures the trailing dot which then ends up inside the URL's last
+    /// query-value (visible as <c>email=alice@example.com.</c>). Stripping here keeps the
+    /// callers honest without each having to remember to chop punctuation off.</para>
     /// </summary>
     public static IEnumerable<Uri> ExtractUrls(string body)
     {
         foreach (Match m in UrlPattern.Matches(body))
         {
-            if (Uri.TryCreate(m.Value, UriKind.Absolute, out var uri))
+            var trimmed = m.Value.TrimEnd('.', ',', ';', ':', '!', '?', ')', ']', '}', '\'', '"');
+            if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
             {
                 yield return uri;
             }
