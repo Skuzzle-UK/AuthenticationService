@@ -7,6 +7,7 @@ using AuthenticationService.Shared.Dtos.Response;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 
 namespace AuthenticationService.Controllers;
 
@@ -14,6 +15,7 @@ namespace AuthenticationService.Controllers;
 /// Admin user-management endpoints. All actions require the <see cref="PolicyConstants.AdminOnly"/>
 /// policy (which ties to the <c>Admin</c> role on the calling principal). Destructive
 /// actions refuse self-target so an admin can't fat-finger themselves out of the system.
+/// </summary>
 [Route("api/[controller]")]
 [ApiController]
 [Authorize(Policy = PolicyConstants.AdminOnly)]
@@ -21,10 +23,20 @@ namespace AuthenticationService.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly IAdminService _adminService;
+    private readonly IClientService _clientService;
+    private readonly Storage.DatabaseContext _db;
+    private readonly ILogger<AdminController> _logger;
 
-    public AdminController(IAdminService adminService)
+    public AdminController(
+        IAdminService adminService,
+        IClientService clientService,
+        Storage.DatabaseContext db,
+        ILogger<AdminController> logger)
     {
         _adminService = adminService;
+        _clientService = clientService;
+        _db = db;
+        _logger = logger;
     }
 
     /// <summary>
@@ -284,5 +296,245 @@ public class AdminController : ControllerBase
         }
         response = null!;
         return false;
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────────
+    // OAuth client management (s2s) — see docs/service-to-service-auth-plan.md Phase 1
+    // ────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Creates a new OAuth client. The plaintext secret is generated server-side and
+    /// returned <em>once</em> in the response — admins must capture it now; only the
+    /// hash is persisted.
+    /// </summary>
+    [HttpPost("clients")]
+    public async Task<IActionResult> CreateClientAsync(
+        [FromBody] AdminCreateClientDto request,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Id) || string.IsNullOrWhiteSpace(request.Name))
+        {
+            return BadRequest(new ApiResponse().AddError("validation", "Id and Name are required."));
+        }
+
+        var scopes = (request.Scopes ?? [])
+            .Where(s => !string.IsNullOrWhiteSpace(s.Audience) && !string.IsNullOrWhiteSpace(s.Scope))
+            .Select(s => (s.Audience!, s.Scope!))
+            .ToList();
+
+        var rawSecret = GenerateSecret();
+        var client = await _clientService.CreateAsync(request.Id, request.Name, rawSecret, request.Description, scopes, ct);
+
+        _logger.LogInformation(
+            SecurityEventIds.AdminCreatedClient,
+            "Admin {AdminUserId} created client {ClientId} with {ScopeCount} scopes from {IpAddress}",
+            GetCurrentAdminId(),
+            client.Id,
+            scopes.Count,
+            Request.GetRemoteIpAddress());
+
+        var response = new ClientCreatedResponse
+        {
+            Id = client.Id,
+            Name = client.Name,
+            ClientSecret = rawSecret,
+        };
+        return Created($"/api/Admin/clients/{client.Id}", response);
+    }
+
+    /// <summary>
+    /// Paginated list of clients with optional <c>activeOnly</c> filter.
+    /// </summary>
+    [HttpGet("clients")]
+    public async Task<IActionResult> ListClientsAsync(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = AdminListFilter.DefaultPageSize,
+        [FromQuery] bool activeOnly = false,
+        CancellationToken ct = default)
+    {
+        var p = Math.Max(1, page);
+        var ps = Math.Clamp(pageSize, 1, AdminListFilter.MaxPageSize);
+
+        var query = _db.Clients.AsNoTracking();
+        if (activeOnly)
+        {
+            query = query.Where(c => !c.IsDisabled);
+        }
+
+        var totalCount = await query.CountAsync(ct);
+        var results = await query
+            .OrderByDescending(c => c.CreatedAt)
+            .Skip((p - 1) * ps)
+            .Take(ps)
+            .Select(c => new ClientSummaryDto
+            {
+                Id = c.Id,
+                Name = c.Name,
+                IsDisabled = c.IsDisabled,
+                CreatedAt = c.CreatedAt,
+                LastUsedAt = c.LastUsedAt,
+                Description = c.Description,
+            })
+            .ToListAsync(ct);
+
+        return Ok(new PagedResponse<ClientSummaryDto>
+        {
+            Results = results,
+            TotalCount = totalCount,
+            Page = p,
+            PageSize = ps,
+        });
+    }
+
+    /// <summary>Full detail for a single client — metadata + scopes list. Never includes the secret hash.</summary>
+    [HttpGet("clients/{id}")]
+    public async Task<IActionResult> GetClientAsync(string id, CancellationToken ct)
+    {
+        var client = await _db.Clients
+            .AsNoTracking()
+            .Include(c => c.Scopes)
+            .FirstOrDefaultAsync(c => c.Id == id, ct);
+
+        if (client is null)
+        {
+            return NotFound();
+        }
+
+        return Ok(new ClientDetailDto
+        {
+            Id = client.Id,
+            Name = client.Name,
+            IsDisabled = client.IsDisabled,
+            CreatedAt = client.CreatedAt,
+            LastUsedAt = client.LastUsedAt,
+            Description = client.Description,
+            Scopes = client.Scopes
+                .Select(s => new AdminClientScopeDto { Audience = s.Audience, Scope = s.Scope })
+                .ToList(),
+        });
+    }
+
+    /// <summary>
+    /// Generates a fresh secret and overwrites the stored hash. Response carries the
+    /// new plaintext secret — same one-time-display contract as create.
+    /// </summary>
+    [HttpPost("clients/{id}/rotate-secret")]
+    public async Task<IActionResult> RotateClientSecretAsync(string id, CancellationToken ct)
+    {
+        var rawSecret = GenerateSecret();
+        var client = await _clientService.RotateSecretAsync(id, rawSecret, ct);
+        if (client is null)
+        {
+            return NotFound();
+        }
+
+        _logger.LogWarning(
+            SecurityEventIds.AdminRotatedClientSecret,
+            "Admin {AdminUserId} rotated secret for client {ClientId} from {IpAddress}",
+            GetCurrentAdminId(),
+            client.Id,
+            Request.GetRemoteIpAddress());
+
+        return Ok(new ClientCreatedResponse
+        {
+            Id = client.Id,
+            Name = client.Name,
+            ClientSecret = rawSecret,
+        });
+    }
+
+    /// <summary>
+    /// Soft-disable the client. Subsequent <c>/oauth/token</c> attempts return
+    /// <c>invalid_client</c>; the row stays for audit and can be re-enabled out-of-band.
+    /// Idempotent — disabling an already-disabled client returns 200 with no further effect.
+    /// </summary>
+    [HttpPost("clients/{id}/disable")]
+    public async Task<IActionResult> DisableClientAsync(string id, CancellationToken ct)
+    {
+        var changed = await _clientService.DisableAsync(id, ct);
+        if (!changed)
+        {
+            // Could be "no such client" OR "already disabled". Differentiate so the
+            // admin tooling can give a precise message.
+            var exists = await _db.Clients.AsNoTracking().AnyAsync(c => c.Id == id, ct);
+            return exists ? Ok(new ApiResponse()) : NotFound();
+        }
+
+        _logger.LogWarning(
+            SecurityEventIds.AdminDisabledClient,
+            "Admin {AdminUserId} disabled client {ClientId} from {IpAddress}",
+            GetCurrentAdminId(),
+            id,
+            Request.GetRemoteIpAddress());
+
+        return Ok(new ApiResponse());
+    }
+
+    /// <summary>
+    /// Add a (audience, scope) tuple to a client. Idempotent — adding a duplicate is a
+    /// no-op success.
+    /// </summary>
+    [HttpPost("clients/{id}/scopes")]
+    public async Task<IActionResult> AddClientScopeAsync(
+        string id,
+        [FromBody] AdminClientScopeDto request,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Audience) || string.IsNullOrWhiteSpace(request.Scope))
+        {
+            return BadRequest(new ApiResponse().AddError("validation", "Audience and Scope are required."));
+        }
+
+        var added = await _clientService.AddScopeAsync(id, request.Audience, request.Scope, ct);
+        if (added)
+        {
+            _logger.LogInformation(
+                SecurityEventIds.AdminAddedClientScope,
+                "Admin {AdminUserId} added scope {Audience}/{Scope} to client {ClientId} from {IpAddress}",
+                GetCurrentAdminId(),
+                request.Audience,
+                request.Scope,
+                id,
+                Request.GetRemoteIpAddress());
+        }
+
+        return Ok(new ApiResponse());
+    }
+
+    /// <summary>Remove a (audience, scope) tuple from a client. Returns 404 if the tuple wasn't present.</summary>
+    [HttpDelete("clients/{id}/scopes/{audience}/{scope}")]
+    public async Task<IActionResult> RemoveClientScopeAsync(
+        string id,
+        string audience,
+        string scope,
+        CancellationToken ct)
+    {
+        var removed = await _clientService.RemoveScopeAsync(id, audience, scope, ct);
+        if (!removed)
+        {
+            return NotFound();
+        }
+
+        _logger.LogWarning(
+            SecurityEventIds.AdminRemovedClientScope,
+            "Admin {AdminUserId} removed scope {Audience}/{Scope} from client {ClientId} from {IpAddress}",
+            GetCurrentAdminId(),
+            audience,
+            scope,
+            id,
+            Request.GetRemoteIpAddress());
+
+        return Ok(new ApiResponse());
+    }
+
+    /// <summary>
+    /// Generates a cryptographically-random client secret. 32 bytes / 256 bits of
+    /// entropy → 43 chars Base64URL — long enough that brute-force is infeasible and
+    /// short enough to paste into config without folding.
+    /// </summary>
+    private static string GenerateSecret()
+    {
+        var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+        return Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(bytes);
     }
 }

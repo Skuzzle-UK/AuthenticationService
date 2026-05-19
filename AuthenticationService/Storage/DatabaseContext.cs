@@ -17,6 +17,8 @@ public class DatabaseContext : IdentityDbContext<User, Role, string>
     public DbSet<RevokedTokenAccessAttempt> RevokedTokenAccessAttempts { get; set; }
     public DbSet<RefreshToken> RefreshTokens { get; set; }
     public DbSet<SecurityEvent> SecurityEvents { get; set; }
+    public DbSet<Client> Clients { get; set; }
+    public DbSet<ClientScope> ClientScopes { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -66,6 +68,28 @@ public class DatabaseContext : IdentityDbContext<User, Role, string>
             // and orders by Timestamp DESC.
             entity.HasIndex(e => new { e.UserId, e.Timestamp });
             entity.HasIndex(e => e.EventId);
+        });
+
+        builder.Entity<Client>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            // IsDisabled gets indexed — admin list-clients endpoint commonly filters by
+            // active-only.
+            entity.HasIndex(e => e.IsDisabled);
+        });
+
+        builder.Entity<ClientScope>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            // Composite uniqueness: a client can only have one row per
+            // (Audience, Scope) tuple. Trying to add the same scope twice should be a
+            // no-op (or a 409 at the admin endpoint), never a duplicate row.
+            entity.HasIndex(e => new { e.ClientId, e.Audience, e.Scope }).IsUnique();
+            entity.HasIndex(e => e.ClientId);
+            entity.HasOne(e => e.Client)
+                  .WithMany(c => c.Scopes)
+                  .HasForeignKey(e => e.ClientId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

@@ -5,6 +5,7 @@ using AuthenticationService.Services;
 using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
+using Microsoft.EntityFrameworkCore;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -312,6 +313,135 @@ public class AdminControllerTests
     }
 
     // ──────────────────────────────────────────────────────────────────────────────
+    // OAuth client management (Phase 1)
+    // ──────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateClientAsync_HappyPath_Returns201WithPlaintextSecret()
+    {
+        var (controller, deps) = BuildController();
+        // All Arg.Any specifiers — NSubstitute requires uniform specifiers when any
+        // argument of a given type uses one.
+        deps.ClientService.CreateAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(),
+                Arg.Any<IEnumerable<(string, string)>>(), Arg.Any<CancellationToken>())
+            .Returns(new AuthenticationService.Entities.Client
+            {
+                Id = "c",
+                Name = "Test",
+                ClientSecretHash = "hash",
+            });
+
+        var result = await controller.CreateClientAsync(
+            new AdminCreateClientDto { Id = "c", Name = "Test" }, CancellationToken.None);
+
+        var created = result.Should().BeOfType<CreatedResult>().Subject;
+        var body = created.Value.Should().BeOfType<ClientCreatedResponse>().Subject;
+        body.Id.Should().Be("c");
+        body.ClientSecret.Should().NotBeNullOrEmpty(
+            because: "create-client must return the plaintext secret in the response (one-time display).");
+    }
+
+    [Fact]
+    public async Task CreateClientAsync_MissingId_Returns400()
+    {
+        var (controller, _) = BuildController();
+
+        var result = await controller.CreateClientAsync(
+            new AdminCreateClientDto { Id = null, Name = "Test" }, CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task RotateClientSecretAsync_UnknownClient_Returns404()
+    {
+        var (controller, deps) = BuildController();
+        deps.ClientService.RotateSecretAsync("ghost", Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((AuthenticationService.Entities.Client?)null);
+
+        var result = await controller.RotateClientSecretAsync("ghost", CancellationToken.None);
+
+        result.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public async Task RotateClientSecretAsync_HappyPath_ReturnsNewSecret()
+    {
+        var (controller, deps) = BuildController();
+        deps.ClientService.RotateSecretAsync("c", Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AuthenticationService.Entities.Client { Id = "c", Name = "T", ClientSecretHash = "h" });
+
+        var result = await controller.RotateClientSecretAsync("c", CancellationToken.None);
+
+        var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+        var body = ok.Value.Should().BeOfType<ClientCreatedResponse>().Subject;
+        body.ClientSecret.Should().NotBeNullOrEmpty(
+            because: "rotate-secret returns the new plaintext (same one-time-display contract as create).");
+    }
+
+    [Fact]
+    public async Task DisableClientAsync_ChangedFlag_ReturnsOk()
+    {
+        var (controller, deps) = BuildController();
+        deps.ClientService.DisableAsync("c", Arg.Any<CancellationToken>()).Returns(true);
+
+        var result = await controller.DisableClientAsync("c", CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Fact]
+    public async Task AddClientScopeAsync_ValidationFailure_Returns400()
+    {
+        var (controller, _) = BuildController();
+
+        var result = await controller.AddClientScopeAsync(
+            "c", new AdminClientScopeDto { Audience = null, Scope = null }, CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task AddClientScopeAsync_HappyPath_DelegatesAndReturnsOk()
+    {
+        var (controller, deps) = BuildController();
+        deps.ClientService.AddScopeAsync("c", "aud", "scope", Arg.Any<CancellationToken>()).Returns(true);
+
+        var result = await controller.AddClientScopeAsync(
+            "c", new AdminClientScopeDto { Audience = "aud", Scope = "scope" }, CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+        await deps.ClientService.Received(1).AddScopeAsync("c", "aud", "scope", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RemoveClientScopeAsync_NotPresent_Returns404()
+    {
+        var (controller, deps) = BuildController();
+        deps.ClientService.RemoveScopeAsync(
+                "c", "aud", "scope", Arg.Any<CancellationToken>())
+            .Returns(false);
+
+        var result = await controller.RemoveClientScopeAsync("c", "aud", "scope", CancellationToken.None);
+
+        result.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public async Task RemoveClientScopeAsync_HappyPath_ReturnsOk()
+    {
+        var (controller, deps) = BuildController();
+        deps.ClientService.RemoveScopeAsync(
+                "c", "aud", "scope", Arg.Any<CancellationToken>())
+            .Returns(true);
+
+        var result = await controller.RemoveClientScopeAsync("c", "aud", "scope", CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────────────────────────
 
@@ -320,9 +450,26 @@ public class AdminControllerTests
         var deps = new Deps
         {
             AdminService = Substitute.For<IAdminService>(),
+            ClientService = Substitute.For<IClientService>(),
         };
 
-        var controller = new AdminController(deps.AdminService);
+        // In-memory SQLite for the (rare) tests that exercise the client-list /
+        // client-detail endpoints which query DatabaseContext directly. Most tests in
+        // this class go through IAdminService / IClientService stubs and never touch
+        // the DbContext, so the empty DB is fine.
+        var connection = new Microsoft.Data.Sqlite.SqliteConnection("DataSource=:memory:");
+        connection.Open();
+        var dbOpt = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<AuthenticationService.Storage.DatabaseContext>()
+            .UseSqlite(connection)
+            .Options;
+        var db = new AuthenticationService.Storage.DatabaseContext(dbOpt);
+        db.Database.EnsureCreated();
+
+        var controller = new AdminController(
+            deps.AdminService,
+            deps.ClientService,
+            db,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<AdminController>.Instance);
 
         var claims = new[] { new Claim(ClaimConstants.Sub, AdminId) };
         controller.ControllerContext = new ControllerContext
@@ -339,5 +486,6 @@ public class AdminControllerTests
     private sealed class Deps
     {
         public IAdminService AdminService { get; set; } = default!;
+        public IClientService ClientService { get; set; } = default!;
     }
 }

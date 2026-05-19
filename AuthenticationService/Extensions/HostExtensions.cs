@@ -109,6 +109,11 @@ public static class HostExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<ClientCredentialsSettings>()
+            .Bind(context.Configuration.GetSection(nameof(ClientCredentialsSettings)))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         return services;
     }
 
@@ -145,7 +150,12 @@ public static class HostExtensions
             .AddSingleton<QueuedEmailService>()
             .AddSingleton<IEmailService>(sp => sp.GetRequiredService<QueuedEmailService>())
             .AddSingleton<AuthMetrics>()
-            .AddScoped<IAdminService, AdminService>();
+            .AddScoped<IAdminService, AdminService>()
+            // ClientService is scoped (uses DatabaseContext). IPasswordHasher<Client>
+            // reuses Identity's standard password-hasher so s2s client secrets land in
+            // the DB with the same algorithm + iteration count as user passwords.
+            .AddScoped<IClientService, ClientService>()
+            .AddScoped<IPasswordHasher<Client>, PasswordHasher<Client>>();
 
         return services;
     }

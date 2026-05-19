@@ -36,6 +36,7 @@ public sealed class AuthMetrics
     private readonly Counter<long> _tokensRevoked;           // 4001
     private readonly Counter<long> _revokedTokenReplays;     // 4002
     private readonly Counter<long> _thresholdEscalations;    // 4004 / 4005
+    private readonly Counter<long> _clientCredentialsTokens; // 6001 / 6002 — s2s OAuth token endpoint
 
     // --- Observable gauges ---
     // Snapshot values refreshed periodically by UserGaugeRefreshService. Volatile reads
@@ -99,6 +100,10 @@ public sealed class AuthMetrics
         _thresholdEscalations = m.CreateCounter<long>(
             name: "auth.threshold_escalation.fires.total",
             description: "Threshold-escalation worker fires. Tagged level=warned|locked. The 'locked' level is alert-worthy.");
+
+        _clientCredentialsTokens = m.CreateCounter<long>(
+            name: "auth.client_credentials.total",
+            description: "OAuth client-credentials token requests. Tagged result=success|failure. On failure, reason carries the RFC 6749 error code (invalid_client / invalid_scope / unsupported_grant_type / invalid_request).");
 
         // Observable gauges — callback fires on each SDK collection cycle and reports
         // the most recently cached value. Volatile.Read pairs with Volatile.Write in
@@ -242,4 +247,14 @@ public sealed class AuthMetrics
     /// </summary>
     public void ThresholdEscalationFired(string level) =>
         _thresholdEscalations.Add(1, new KeyValuePair<string, object?>("level", level));
+
+    /// <summary>Records a successful client-credentials token issuance.</summary>
+    public void ClientCredentialsTokenIssued() =>
+        _clientCredentialsTokens.Add(1, new KeyValuePair<string, object?>("result", "success"));
+
+    /// <summary>Records a denied client-credentials token request. <paramref name="reason"/> is the RFC 6749 error code returned to the caller.</summary>
+    public void ClientCredentialsTokenDenied(string reason) =>
+        _clientCredentialsTokens.Add(1,
+            new KeyValuePair<string, object?>("result", "failure"),
+            new KeyValuePair<string, object?>("reason", reason));
 }

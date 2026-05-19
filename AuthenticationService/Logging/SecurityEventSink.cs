@@ -36,8 +36,8 @@ public sealed class SecurityEventSink : ILogEventSink
     /// <summary>Lower bound (inclusive) of the security EventId range. Matches the 1000s "Authentication" block in <c>SecurityEventIds</c>.</summary>
     public const int MinSecurityEventId = 1000;
 
-    /// <summary>Upper bound (exclusive) of the security EventId range. Leaves room above the current 5000s "Admin actions" block for future categories without re-tuning the filter.</summary>
-    public const int MaxSecurityEventId = 6000;
+    /// <summary>Upper bound (exclusive) of the security EventId range. Leaves room above the current 6000s "Service-to-service auth" block for future categories without re-tuning the filter.</summary>
+    public const int MaxSecurityEventId = 7000;
 
     private readonly IServiceScopeFactory _scopeFactory;
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = false };

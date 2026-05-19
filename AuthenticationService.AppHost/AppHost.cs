@@ -110,6 +110,11 @@ if (integrationTestMode)
     // and integration tests just need to reach /livez / controllers, not exercise TLS.
     auth.WithEnvironment("HostingSettings__HttpsRedirectionEnabled", "false");
 
+    // Same reasoning for the OAuth token endpoint — it's hard-gated on HTTPS by
+    // default in production but tests run over the http transport, so flip it off
+    // alongside the redirection toggle.
+    auth.WithEnvironment("ClientCredentialsSettings__RequireHttps", "false");
+
     // Override the BaseUrl to the http endpoint so email links emitted by the
     // controllers (password-reset, email-confirmation, lockout) point at the http
     // transport tests are using. The second WithEnvironment for the same key wins —

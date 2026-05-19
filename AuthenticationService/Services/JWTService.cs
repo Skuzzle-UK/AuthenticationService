@@ -26,6 +26,7 @@ namespace AuthenticationService.Services;
 public class JWTService : ITokenService
 {
     private readonly JWTSettings _jwtSettings;
+    private readonly ClientCredentialsSettings _clientCredentialsSettings;
     private readonly UserManager<User> _userManager;
     private readonly DatabaseContext _context;
     private readonly IEcdsaKeyProvider _keyProvider;
@@ -36,6 +37,7 @@ public class JWTService : ITokenService
 
     public JWTService(
         IOptions<JWTSettings> jwtSettings,
+        IOptions<ClientCredentialsSettings> clientCredentialsSettings,
         UserManager<User> userManager,
         DatabaseContext context,
         IEcdsaKeyProvider keyProvider,
@@ -43,6 +45,7 @@ public class JWTService : ITokenService
         AuthMetrics metrics)
     {
         _jwtSettings = jwtSettings.Value;
+        _clientCredentialsSettings = clientCredentialsSettings.Value;
         _userManager = userManager;
         _context = context;
         _keyProvider = keyProvider;
@@ -89,6 +92,45 @@ public class JWTService : ITokenService
             RefreshToken = rawRefreshToken,
             RefreshTokenExpiresAt = refreshTokenEntity.ExpiresAt,
         };
+    }
+
+    public Task<Token> CreateServiceTokenAsync(string clientId, string audience, IEnumerable<string> scopes)
+    {
+        var scopeList = scopes.ToList();
+        var expiresAt = DateTime.UtcNow.AddHours(_clientCredentialsSettings.TokenLifetimeInHours);
+
+        var claims = new List<Claim>
+        {
+            // sub = client_id by design — consumers distinguish service tokens from
+            // user tokens by absence of the email / sid claims AND by sub being a
+            // client_id rather than a user id.
+            new(ClaimConstants.Sub, clientId),
+            new(ClaimConstants.ClientId, clientId),
+            new(ClaimConstants.Azp, clientId),
+            new(ClaimConstants.Jti, Guid.NewGuid().ToString()),
+            // Space-separated per OAuth convention. Consumers parse via the
+            // AddScopePolicy helper in AuthenticationService.Client.
+            new(ClaimConstants.Scope, string.Join(' ', scopeList)),
+        };
+
+        var tokenOptions = new JwtSecurityToken(
+            issuer: _jwtSettings.ValidIssuer,
+            // Per-service audience (e.g. "inventory-api"). Consumers configure their
+            // ValidAudience to match.
+            audience: audience,
+            claims: claims,
+            expires: expiresAt,
+            signingCredentials: _keyProvider.SigningCredentials);
+
+        return Task.FromResult(new Token
+        {
+            Type = AuthSchemeConstants.Bearer,
+            Value = TokenHandler.WriteToken(tokenOptions),
+            Expires = expiresAt,
+            // No refresh half — service tokens re-authenticate from scratch.
+            RefreshToken = null,
+            RefreshTokenExpiresAt = null,
+        });
     }
 
     public async Task<RefreshResult> RotateRefreshTokenAsync(string accessToken, string rawRefreshToken, string ipAddress)

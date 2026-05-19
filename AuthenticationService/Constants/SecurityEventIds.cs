@@ -31,6 +31,7 @@ namespace AuthenticationService.Constants;
 ///   <item><description><b>3000s</b> — Account management</description></item>
 ///   <item><description><b>4000s</b> — Token state</description></item>
 ///   <item><description><b>5000s</b> — Admin actions (admin-initiated user-management operations)</description></item>
+///   <item><description><b>6000s</b> — Service-to-service auth (OAuth client-credentials grant)</description></item>
 /// </list>
 /// </summary>
 public static class SecurityEventIds
@@ -207,4 +208,32 @@ public static class SecurityEventIds
 
     /// <summary>An admin re-sent the invitation email for a user who never clicked their original link (still in pending-invitation state).</summary>
     public static readonly EventId AdminResentInvitation = new(5007, nameof(AdminResentInvitation));
+
+    // ------------------------------------------------------------------
+    // 6000s — Service-to-service auth (OAuth client-credentials grant)
+    //
+    // Token-endpoint events log {ClientId}, {Audience}, {Scopes}, {IpAddress}.
+    // Client-management events log {AdminUserId}, {ClientId}, {IpAddress}.
+    // ------------------------------------------------------------------
+
+    /// <summary>A client successfully exchanged credentials at <c>/oauth/token</c> and was issued a service-identity JWT.</summary>
+    public static readonly EventId ClientCredentialsTokenIssued = new(6001, nameof(ClientCredentialsTokenIssued));
+
+    /// <summary>A token-endpoint request was rejected. Reason in <c>{Reason}</c> (invalid_client / invalid_scope / unsupported_grant_type / invalid_request).</summary>
+    public static readonly EventId ClientCredentialsTokenDenied = new(6002, nameof(ClientCredentialsTokenDenied));
+
+    /// <summary>An admin created a new s2s client via <c>POST /api/Admin/clients</c>. The plaintext secret is shown to the admin in the response (one-time display); only the hash is persisted.</summary>
+    public static readonly EventId AdminCreatedClient = new(6101, nameof(AdminCreatedClient));
+
+    /// <summary>An admin rotated a client's secret. The previous hash is overwritten; the new plaintext is shown once in the response.</summary>
+    public static readonly EventId AdminRotatedClientSecret = new(6102, nameof(AdminRotatedClientSecret));
+
+    /// <summary>An admin soft-disabled a client. Subsequent <c>/oauth/token</c> attempts return <c>invalid_client</c>; the row stays for audit / re-enable.</summary>
+    public static readonly EventId AdminDisabledClient = new(6103, nameof(AdminDisabledClient));
+
+    /// <summary>An admin added a (audience, scope) tuple to a client's scope list.</summary>
+    public static readonly EventId AdminAddedClientScope = new(6104, nameof(AdminAddedClientScope));
+
+    /// <summary>An admin removed a (audience, scope) tuple from a client's scope list.</summary>
+    public static readonly EventId AdminRemovedClientScope = new(6105, nameof(AdminRemovedClientScope));
 }

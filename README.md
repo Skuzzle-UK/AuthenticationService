@@ -168,13 +168,15 @@ dotnet run --project AuthenticationService    # https://localhost:53217
 dotnet run --project ExampleConsumer          # https://localhost:50500
 ```
 
-The example consumer's Swagger lives at `https://localhost:50500/swagger`. It exposes three endpoints:
+The example consumer's Swagger lives at `https://localhost:50500/swagger`. It exposes five endpoints:
 
 | Endpoint | Auth | Behaviour |
 |---|---|---|
 | `GET /` | Anonymous | Returns a hello message. |
 | `GET /me` | Authenticated | Returns the caller's identity (name, roles, jti, sub) from the validated token. |
 | `GET /admin` | Admin role | Restricted to tokens whose `role` claim contains `Admin`. |
+| `GET /example-read` | Scope `example.read` | Service-to-service demo. Gated by the `example.read` scope claim on the JWT — see [Service-to-service walk-through](#service-to-service-walk-through) below. |
+| `POST /example-write` | Scope `example.write` | Same shape, `example.write` scope. Gives the "got the read scope but not the write scope" denial demo when called with a token missing it. |
 
 ### Walk-through
 
@@ -209,6 +211,89 @@ When you start the consumer:
 > **Common gotcha:** if the consumer's `Authority` setting points at the wrong port, OIDC discovery silently fails — JwtBearer catches the connection error and carries on with no signing keys. The result is a `401` with `"The signature key was not found"` on every request, even with a perfectly valid token. Always verify that `Authority` in `ExampleConsumer/appsettings.json` (and in any new consumer service) matches the port reported by the auth service's `launchSettings.json` (`AuthenticationService/Properties/launchSettings.json`). The `Issuer` value must also match `JWTSettings.ValidIssuer` in the auth service's `appsettings.json`.
 
 There is **no shared secret** between the two services. The consumer never sees the signing key.
+
+### Service-to-service walk-through
+
+The `/example-read` and `/example-write` endpoints demonstrate the OAuth client-credentials flow — the same one a real downstream service (Inventory, Orders, etc.) uses when it needs to call another service *without a user in the loop* (a cron job, a message handler, a scheduled sync).
+
+The shape is: the consuming service holds a `client_id` + `client_secret`, exchanges them at the auth service's `POST /oauth/token` endpoint for a short-lived JWT, then sends that JWT as the `Authorization: Bearer ...` header on calls to other services. The other services validate it the same way as a user token (signature + issuer + audience + expiry via JWKS) plus check the `scope` claim against the policy on the endpoint.
+
+**1. Create a client (one-time admin step).**
+
+The auth service admin creates the client via `POST /api/Admin/clients` (use Swagger, authenticated as the seeded admin):
+
+```json
+{
+  "id": "example-consumer",
+  "name": "Example consumer service",
+  "description": "Demo client for the s2s walk-through",
+  "scopes": [
+    { "audience": "example-consumer", "scope": "example.read" }
+  ]
+}
+```
+
+The response carries the **plaintext client secret** — capture it now, it's never shown again. Only the hash is persisted.
+
+**2. Get a token.**
+
+The consuming service POSTs form-encoded credentials to `/oauth/token`:
+
+```bash
+curl -X POST https://localhost:53217/oauth/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -u "example-consumer:<the-secret-from-step-1>" \
+  -d "grant_type=client_credentials&audience=example-consumer&scope=example.read"
+```
+
+The response is the standard OAuth shape:
+
+```json
+{
+  "access_token": "eyJhbGciOi...",
+  "token_type": "Bearer",
+  "expires_in": 43200,
+  "scope": "example.read"
+}
+```
+
+**3. Call the consumer with the service token.**
+
+```bash
+curl https://localhost:50500/example-read \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+Returns 200 with the client_id + granted scopes from the token.
+
+**4. Negative test: scope-denied.**
+
+Try the same token against `/example-write`:
+
+```bash
+curl -X POST https://localhost:50500/example-write \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+Returns **403 Forbidden** — the token doesn't carry `example.write`. To make it work, the admin would need to add the `(example-consumer, example.write)` scope to the client (`POST /api/Admin/clients/example-consumer/scopes`), then the consumer would request a fresh token with both scopes in the request.
+
+**5. Discovery / configuration.**
+
+The token endpoint is advertised in the OIDC discovery doc at `/.well-known/openid-configuration`:
+
+```json
+{
+  "issuer": "https://auth.example.com",
+  "token_endpoint": "https://localhost:53217/oauth/token",
+  "grant_types_supported": ["client_credentials"],
+  "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"],
+  ...
+}
+```
+
+Consumers that already configure `Authority` for JWKS automatically pick this up.
+
+> **Distinguishing user tokens from service tokens.** Both kinds are signed by the same auth service and validate via the same JWKS — consumers don't need separate validation pipelines. The difference is in the claim shape: service tokens carry `client_id` + `scope` and have no `email`, `name`, `role`, or `sid`. The `sub` claim is the client_id rather than a user id. Use `User.HasClaim("scope", ...)` (or the `AddScopePolicy` helper from `AuthenticationService.Client`) to gate machine-only endpoints.
 
 ---
 

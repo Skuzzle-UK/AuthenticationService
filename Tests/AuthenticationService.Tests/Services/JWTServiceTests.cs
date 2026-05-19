@@ -678,6 +678,80 @@ public class JWTServiceTests : IDisposable
         act.Should().Throw<Microsoft.IdentityModel.Tokens.SecurityTokenMalformedException>();
     }
 
+    // ─── CreateServiceTokenAsync — OAuth client-credentials service tokens ────────────────
+
+    [Fact]
+    public async Task CreateServiceToken_HappyPath_EmitsExpectedClaimShape()
+    {
+        // arrange — pin the contract that consumers rely on for distinguishing service
+        // tokens from user tokens.
+        var (service, _, _) = BuildService();
+
+        // act
+        var token = await service.CreateServiceTokenAsync(
+            clientId: "inventory-api",
+            audience: "orders-api",
+            scopes: new[] { "orders.read", "orders.write" });
+
+        // assert — JWT shape per docs/service-to-service-auth-plan.md.
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token.Value);
+        ReadClaim(token.Value, ClaimConstants.Sub).Should().Be("inventory-api",
+            because: "sub on a service token is the client_id, not a user id.");
+        ReadClaim(token.Value, ClaimConstants.ClientId).Should().Be("inventory-api");
+        ReadClaim(token.Value, ClaimConstants.Azp).Should().Be("inventory-api");
+        ReadClaim(token.Value, ClaimConstants.Scope).Should().Be("orders.read orders.write",
+            because: "scope is a single space-separated claim per OAuth convention.");
+        jwt.Audiences.Should().Contain("orders-api",
+            because: "aud is the requested audience, not the platform-wide ValidAudience.");
+    }
+
+    [Fact]
+    public async Task CreateServiceToken_OmitsUserClaims_SoConsumersCanDistinguishTokenKind()
+    {
+        // The load-bearing contract: consumers must be able to write something like
+        // `if (user.HasClaim("email")) ...` to know they're dealing with a user token
+        // rather than a service token. If we accidentally added email or sid or role
+        // claims to service tokens, that check would break.
+        var (service, _, _) = BuildService();
+
+        var token = await service.CreateServiceTokenAsync("a-client", "an-aud", new[] { "a.scope" });
+
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token.Value);
+        jwt.Claims.Should().NotContain(c => c.Type == ClaimConstants.Email,
+            because: "email is a user-only claim.");
+        jwt.Claims.Should().NotContain(c => c.Type == ClaimConstants.Name,
+            because: "name is a user-only claim.");
+        jwt.Claims.Should().NotContain(c => c.Type == ClaimConstants.Role,
+            because: "role is a user-only claim.");
+        jwt.Claims.Should().NotContain(c => c.Type == ClaimConstants.Sid,
+            because: "sid (refresh-token family) is a user-token concept; service tokens have no refresh half.");
+    }
+
+    [Fact]
+    public async Task CreateServiceToken_NoRefreshHalf()
+    {
+        var (service, _, _) = BuildService();
+
+        var token = await service.CreateServiceTokenAsync("c", "a", new[] { "s" });
+
+        token.RefreshToken.Should().BeNull(
+            because: "service tokens have no refresh half — the client re-requests when the access token expires.");
+        token.RefreshTokenExpiresAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CreateServiceToken_ExpiryFollowsConfiguredLifetime()
+    {
+        // The test fixture sets TokenLifetimeInHours = 12 via the default
+        // ClientCredentialsSettings constructor. Token must expire ~12h out.
+        var (service, _, _) = BuildService();
+
+        var token = await service.CreateServiceTokenAsync("c", "a", new[] { "s" });
+
+        token.Expires.Should().NotBeNull();
+        token.Expires!.Value.Should().BeCloseTo(DateTime.UtcNow.AddHours(12), TimeSpan.FromSeconds(5));
+    }
+
     // ─── helpers ────────────────────────────────────────────────────────────────────────
 
     private (JWTService service, DatabaseContext db, UserManager<User> userManager) BuildService()
@@ -699,6 +773,7 @@ public class JWTServiceTests : IDisposable
         var userManager = StubUserManager();
         var service = new JWTService(
             Options.Create(_settings),
+            Options.Create(new ClientCredentialsSettings()),
             userManager,
             db,
             _keyProvider,

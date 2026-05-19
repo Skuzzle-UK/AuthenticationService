@@ -54,11 +54,18 @@ public class WellKnownController : ControllerBase
         // that doesn't preserve Host (we deliberately don't honour X-Forwarded-Host —
         // host-header attack surface).
         var jwksUri = $"{_publicUrlSettings.BaseUrl}/{WellKnownPaths.Prefix}/{WellKnownPaths.Jwks}";
+        var tokenEndpoint = $"{_publicUrlSettings.BaseUrl}/oauth/token";
 
         return Ok(new
         {
             issuer = _jwtSettings.ValidIssuer,
             jwks_uri = jwksUri,
+            // OAuth 2.0 token endpoint — RFC 8414 §2. Only client_credentials is
+            // supported today (no password grant; user login goes through
+            // /api/Authentication/authenticate which isn't an OAuth-shaped endpoint).
+            token_endpoint = tokenEndpoint,
+            grant_types_supported = new[] { "client_credentials" },
+            token_endpoint_auth_methods_supported = new[] { "client_secret_basic", "client_secret_post" },
             id_token_signing_alg_values_supported = new[] { SecurityAlgorithms.EcdsaSha256 },
         });
     }

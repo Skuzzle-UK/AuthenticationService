@@ -60,7 +60,7 @@ public class SecurityEventSinkTests : IDisposable
     [Theory]
     [InlineData(0, "Unset")]
     [InlineData(999, "JustBelowRange")]
-    [InlineData(6000, "JustAboveRange")]
+    [InlineData(7000, "JustAboveRange")]
     [InlineData(20402, "EfMigrationApplied")]
     public void Emit_EventIdOutsideSecurityRange_SkipsWrite(int eventIdValue, string eventName)
     {

@@ -29,6 +29,20 @@ public interface ITokenService
         Guid? refreshTokenId = null);
 
     /// <summary>
+    /// Issues a service-identity JWT for the OAuth client-credentials grant. Deliberately
+    /// distinct from <see cref="CreateTokenAsync(User, IList{string}, Guid?, string?, Guid?)"/>:
+    /// no refresh-token pairing, no user / role / email claims, single per-service
+    /// <paramref name="audience"/>, scopes encoded as a space-separated <c>scope</c> claim.
+    /// Lifetime comes from <c>ClientCredentialsSettings.TokenLifetimeInHours</c>.
+    ///
+    /// <para>Consumers can tell the two token kinds apart by the presence of
+    /// <see cref="AuthenticationService.Shared.Constants.ClaimConstants.Email"/> /
+    /// <see cref="AuthenticationService.Shared.Constants.ClaimConstants.Sid"/> — both
+    /// user-only — and by <c>sub</c> being the client_id rather than a user id.</para>
+    /// </summary>
+    Task<Token> CreateServiceTokenAsync(string clientId, string audience, IEnumerable<string> scopes);
+
+    /// <summary>
     /// Validates a token's signature, issuer and audience but ignores its expiry. Used during
     /// the refresh flow where we expect the access token to have already expired.
     /// </summary>
