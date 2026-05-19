@@ -33,4 +33,17 @@ public class User : IdentityUser
 
     [MaxLength(60)]
     public string? City { get; set; }
+
+    /// <summary>
+    /// Stamped at object construction time and persisted on the first SaveChanges. Pinned
+    /// here on the entity (rather than via a DB-side <c>DEFAULT</c>) so the model stays
+    /// provider-agnostic — SQLite-backed unit tests, MySQL-backed integration tests, and
+    /// production all see the same shape.
+    ///
+    /// <para>The corresponding migration adds the column with a MySQL <c>DEFAULT
+    /// (UTC_TIMESTAMP(6))</c> for backfilling existing rows at migrate time. That default
+    /// only matters during the migration itself — every subsequent INSERT carries this
+    /// initializer's value because EF always sends a non-default property in the INSERT.</para>
+    /// </summary>
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

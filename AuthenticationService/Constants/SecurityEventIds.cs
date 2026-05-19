@@ -30,6 +30,7 @@ namespace AuthenticationService.Constants;
 ///   <item><description><b>2000s</b> — Registration</description></item>
 ///   <item><description><b>3000s</b> — Account management</description></item>
 ///   <item><description><b>4000s</b> — Token state</description></item>
+///   <item><description><b>5000s</b> — Admin actions (admin-initiated user-management operations)</description></item>
 /// </list>
 /// </summary>
 public static class SecurityEventIds
@@ -107,6 +108,12 @@ public static class SecurityEventIds
     /// </summary>
     public static readonly EventId EmailConfirmationFailed = new(2003, nameof(EmailConfirmationFailed));
 
+    /// <summary>
+    /// An admin-invited user clicked their invitation link and set their initial password.
+    /// Account is now active (email confirmed + password hash present) and ready to log in.
+    /// </summary>
+    public static readonly EventId InvitationAccepted = new(2004, nameof(InvitationAccepted));
+
     // ------------------------------------------------------------------
     // 3000s — Account management
     // ------------------------------------------------------------------
@@ -171,4 +178,33 @@ public static class SecurityEventIds
     /// The threshold-escalation worker locked an account due to sustained replay of a revoked token. Account is now indefinitely locked; user must reset password to recover. <b>Critical level</b> — page on every occurrence.
     /// </summary>
     public static readonly EventId RevokedTokenReplayThresholdLocked = new(4005, nameof(RevokedTokenReplayThresholdLocked));
+
+    // ------------------------------------------------------------------
+    // 5000s — Admin actions
+    //
+    // All admin events log {AdminUserId} (the actor) and {TargetUserId} (who they
+    // acted on) so SIEM can group by either dimension and answer "what did this
+    // admin do?" / "what's been done to this user?" independently.
+    // ------------------------------------------------------------------
+
+    /// <summary>An admin manually locked a user account (indefinite lockout).</summary>
+    public static readonly EventId AdminLockedAccount = new(5001, nameof(AdminLockedAccount));
+
+    /// <summary>An admin lifted an active lockout and reset the failed-attempt counter.</summary>
+    public static readonly EventId AdminUnlockedAccount = new(5002, nameof(AdminUnlockedAccount));
+
+    /// <summary>An admin revoked all refresh-token families for a user and rotated the security stamp ("sign out everywhere" hammer).</summary>
+    public static readonly EventId AdminRevokedSessions = new(5003, nameof(AdminRevokedSessions));
+
+    /// <summary>An admin cleared a user's MFA configuration (typically helpdesk handling a lost-phone case). Sessions are revoked implicitly.</summary>
+    public static readonly EventId AdminResetMfa = new(5004, nameof(AdminResetMfa));
+
+    /// <summary>An admin triggered a password reset on a user — a reset email goes to the user and existing sessions are revoked.</summary>
+    public static readonly EventId AdminForcedPasswordReset = new(5005, nameof(AdminForcedPasswordReset));
+
+    /// <summary>An admin created a new user via the invite flow. <c>EmailConfirmed</c> is false and no password is set until the user clicks the invitation link.</summary>
+    public static readonly EventId AdminCreatedUser = new(5006, nameof(AdminCreatedUser));
+
+    /// <summary>An admin re-sent the invitation email for a user who never clicked their original link (still in pending-invitation state).</summary>
+    public static readonly EventId AdminResentInvitation = new(5007, nameof(AdminResentInvitation));
 }

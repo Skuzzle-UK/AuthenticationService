@@ -18,6 +18,12 @@ public interface IUserService
     Task<IdentityResult> CreateAsync(User user, string password);
 
     /// <summary>
+    /// Creates a new user with no password — used by the admin-invitation flow. The user
+    /// can't authenticate until they set a password via <c>POST /api/registration/accept-invitation</c>.
+    /// </summary>
+    Task<IdentityResult> CreateAsync(User user);
+
+    /// <summary>
     /// Adds the user to a role. The role must already exist.
     /// </summary>
     Task AddToRoleAsync(User user, string role);

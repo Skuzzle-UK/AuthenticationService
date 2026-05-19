@@ -46,4 +46,11 @@ public class EmailSubjects
     /// compromised; you must reset your password to recover."
     /// </summary>
     public const string SuspiciousActivity = "Suspicious activity detected on your account";
+
+    /// <summary>
+    /// Admin-creates-user invitation — sent on admin user creation, and again on
+    /// resend-invitation. Carries the AcceptInvitation link for the user to set their
+    /// initial password.
+    /// </summary>
+    public const string AccountInvitation = "Account invitation - set your password";
 }

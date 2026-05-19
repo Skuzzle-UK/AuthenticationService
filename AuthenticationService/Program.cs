@@ -1,4 +1,5 @@
 using AuthenticationService.Extensions;
+using AuthenticationService.Logging;
 using AuthenticationService.ServiceDefaults;
 using AuthenticationService.Settings;
 using Serilog;
@@ -65,6 +66,13 @@ public class Program
                         };
                     });
                 }
+
+                // Custom DB sink for the admin audit endpoint. Only persists events
+                // tagged with a SecurityEventIds EventId — everything else passes through
+                // to console / OTLP unchanged. Per-event write via a scoped DbContext;
+                // failures swallow into Serilog SelfLog rather than blocking the request.
+                var scopeFactory = services.GetRequiredService<IServiceScopeFactory>();
+                configuration.WriteTo.Sink(new SecurityEventSink(scopeFactory));
             });
 
             builder.Host.ConfigureHost();

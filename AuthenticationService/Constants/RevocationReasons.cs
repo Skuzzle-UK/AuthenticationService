@@ -46,4 +46,19 @@ public static class RevocationReasons
     /// Token presented for a user that no longer exists in the database.
     /// </summary>
     public const string UserNotFound = "user_not_found";
+
+    /// <summary>
+    /// Admin manually revoked the user's sessions via the admin endpoints.
+    /// </summary>
+    public const string AdminRevokedSessions = "admin_revoked_sessions";
+
+    /// <summary>
+    /// Admin cleared the user's MFA configuration — sessions revoked as defence in depth.
+    /// </summary>
+    public const string AdminResetMfa = "admin_reset_mfa";
+
+    /// <summary>
+    /// Admin triggered a forced password reset on the user.
+    /// </summary>
+    public const string AdminForcedPasswordReset = "admin_forced_password_reset";
 }

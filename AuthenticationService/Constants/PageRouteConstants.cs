@@ -21,4 +21,10 @@ public class PageRouteConstants
     /// Generic "your action completed" landing page — shown when a flow has nowhere else to redirect to.
     /// </summary>
     public const string ActionComplete = "/ActionComplete";
+
+    /// <summary>
+    /// Landing page for the admin-creates-user invitation flow — where the user sets
+    /// their initial password after clicking the invitation link.
+    /// </summary>
+    public const string AcceptInvitation = "/AcceptInvitation";
 }

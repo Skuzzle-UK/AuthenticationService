@@ -90,5 +90,9 @@ public class DataRetentionCleanupService : BackgroundService
         await context.RefreshTokens
             .Where(x => x.ExpiresAt < now)
             .ExecuteDeleteAsync(stoppingToken);
+
+        await context.SecurityEvents
+            .Where(x => x.Timestamp.AddDays(_settings.SecurityEventTTLInDays) < now)
+            .ExecuteDeleteAsync(stoppingToken);
     }
 }

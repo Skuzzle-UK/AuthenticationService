@@ -16,6 +16,7 @@ public class DatabaseContext : IdentityDbContext<User, Role, string>
     public DbSet<RevokedToken> RevokedTokens { get; set; }
     public DbSet<RevokedTokenAccessAttempt> RevokedTokenAccessAttempts { get; set; }
     public DbSet<RefreshToken> RefreshTokens { get; set; }
+    public DbSet<SecurityEvent> SecurityEvents { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -56,6 +57,15 @@ public class DatabaseContext : IdentityDbContext<User, Role, string>
                   .WithMany()
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<SecurityEvent>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            // Composite descending index — the audit endpoint always filters by UserId
+            // and orders by Timestamp DESC.
+            entity.HasIndex(e => new { e.UserId, e.Timestamp });
+            entity.HasIndex(e => e.EventId);
         });
     }
 }

@@ -40,6 +40,9 @@ public class UserService : IUserService
     public async Task<IdentityResult> CreateAsync(User user, string password) =>
         await _userManager.CreateAsync(user, password);
 
+    public async Task<IdentityResult> CreateAsync(User user) =>
+        await _userManager.CreateAsync(user);
+
     public async Task<User?> FindByEmailAsync(string email) =>
         await _userManager.FindByEmailAsync(email);
 
