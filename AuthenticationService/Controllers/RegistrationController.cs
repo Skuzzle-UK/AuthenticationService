@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
+using System.Text;
 
 namespace AuthenticationService.Controllers;
 
@@ -201,6 +202,65 @@ public class RegistrationController : ControllerBase
 
         var origin = uri.GetLeftPart(UriPartial.Authority);
         return _corsSettings.AllowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Completes the admin-creates-user invitation flow. The user lands here from the
+    /// AcceptInvitation page after the admin invited them — supplies a new password +
+    /// the Identity reset token from their invitation email. On success: password is
+    /// set AND email is confirmed in one step.
+    ///
+    /// <para>Returns <c>400 invitation_invalid</c> when the email is unknown or the token
+    /// invalid (single shape for both — don't leak which emails exist). Returns
+    /// <c>409 invitation_already_used</c> when the user has already activated their
+    /// account, so reuse-of-token can't reset an established password.</para>
+    /// </summary>
+    [HttpPost("accept-invitation")]
+    [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
+    public async Task<IActionResult> AcceptInvitationAsync([FromBody] AcceptInvitationDto request)
+    {
+        var user = await _userService.FindByEmailAsync(request.Email!);
+        if (user is null)
+        {
+            return BadRequest(new ApiResponse().AddError("invitation_invalid", ErrorMessages.InvalidRequest));
+        }
+
+        // Pending-invitation guard — email not confirmed AND no password set. Anything
+        // else means the invitation is no longer valid for this user.
+        if (user.EmailConfirmed || !string.IsNullOrEmpty(user.PasswordHash))
+        {
+            return Conflict(new ApiResponse().AddError(
+                "invitation_already_used",
+                "User has already activated their account; invitation no longer applies."));
+        }
+
+        var decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(request.Token!));
+
+        var resetResult = await _userService.ResetPasswordAsync(user, decodedToken, request.NewPassword!);
+        if (!resetResult.Succeeded)
+        {
+            var errors = resetResult.Errors.ToDictionary(e => e.Code, e => e.Description);
+            return BadRequest(new ApiResponse().AddErrors(errors));
+        }
+
+        user.EmailConfirmed = true;
+        await _userService.UpdateAsync(user);
+
+        _logger.LogInformation(
+            SecurityEventIds.InvitationAccepted,
+            "Invitation accepted by {UserId} from {IpAddress}",
+            user.Id,
+            Request.GetRemoteIpAddress());
+
+        // Redirect-shape if the client supplied a callback; otherwise the standard 200.
+        // The Razor page submits this endpoint via JS and uses its own success handling,
+        // but a non-JS / direct caller can also follow the redirect.
+        if (!string.IsNullOrWhiteSpace(request.CallbackUri))
+        {
+            return Ok(new { redirect = ResolveSafeCallback(request.CallbackUri) });
+        }
+
+        return Ok(new ApiResponse());
     }
 
     /// <summary>

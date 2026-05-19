@@ -144,7 +144,8 @@ public static class HostExtensions
             .AddSingleton<ILogEventEnricher, HttpContextLogEnricher>()
             .AddSingleton<QueuedEmailService>()
             .AddSingleton<IEmailService>(sp => sp.GetRequiredService<QueuedEmailService>())
-            .AddSingleton<AuthMetrics>();
+            .AddSingleton<AuthMetrics>()
+            .AddScoped<IAdminService, AdminService>();
 
         return services;
     }

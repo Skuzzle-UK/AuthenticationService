@@ -338,6 +338,140 @@ public class RegistrationControllerTests : IDisposable
             Arg.Is<string>(body => body.Contains("new-tok")));
     }
 
+    // ─── AcceptInvitation ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AcceptInvitation_UnknownEmail_Returns400()
+    {
+        // Defensive: don't leak which emails exist — same shape for "no such user" and
+        // "token didn't validate" so an attacker can't enumerate accounts.
+        var (controller, deps) = BuildController();
+        deps.UserService.FindByEmailAsync(Arg.Any<string>()).Returns((User?)null);
+
+        var result = await controller.AcceptInvitationAsync(new AcceptInvitationDto
+        {
+            Email = "ghost@example.com",
+            Token = "dGVzdA",
+            NewPassword = "NewPassword1!",
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        await deps.UserService.DidNotReceiveWithAnyArgs().ResetPasswordAsync(default!, default!, default!);
+    }
+
+    [Fact]
+    public async Task AcceptInvitation_UserAlreadyConfirmed_Returns409()
+    {
+        // User already activated (clicked invitation before, or registered via the normal
+        // flow). Invitation token must not be reusable to reset an established password.
+        var (controller, deps) = BuildController();
+        var user = new User { Id = "u1", Email = "alice@example.com", EmailConfirmed = true, PasswordHash = null };
+        deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
+
+        var result = await controller.AcceptInvitationAsync(new AcceptInvitationDto
+        {
+            Email = "alice@example.com",
+            Token = "dGVzdA",
+            NewPassword = "NewPassword1!",
+        });
+
+        result.Should().BeOfType<ConflictObjectResult>();
+        await deps.UserService.DidNotReceiveWithAnyArgs().ResetPasswordAsync(default!, default!, default!);
+    }
+
+    [Fact]
+    public async Task AcceptInvitation_UserHasPasswordHash_Returns409()
+    {
+        // The other half of the pending-invitation guard — if a password is already set
+        // (legacy account or someone bypassing the flow) the invitation has no business
+        // overwriting it.
+        var (controller, deps) = BuildController();
+        var user = new User { Id = "u1", Email = "alice@example.com", EmailConfirmed = false, PasswordHash = "existing-hash" };
+        deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
+
+        var result = await controller.AcceptInvitationAsync(new AcceptInvitationDto
+        {
+            Email = "alice@example.com",
+            Token = "dGVzdA",
+            NewPassword = "NewPassword1!",
+        });
+
+        result.Should().BeOfType<ConflictObjectResult>();
+    }
+
+    [Fact]
+    public async Task AcceptInvitation_ResetPasswordFails_ReturnsIdentityErrors()
+    {
+        var (controller, deps) = BuildController();
+        var user = new User { Id = "u1", Email = "alice@example.com", EmailConfirmed = false, PasswordHash = null };
+        deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
+        deps.UserService.ResetPasswordAsync(user, Arg.Any<string>(), "NewPassword1!")
+            .Returns(IdentityResult.Failed(new IdentityError { Code = "PasswordTooShort", Description = "Too short" }));
+
+        var result = await controller.AcceptInvitationAsync(new AcceptInvitationDto
+        {
+            Email = "alice@example.com",
+            Token = "dGVzdA",
+            NewPassword = "NewPassword1!",
+        });
+
+        var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        bad.Value.Should().BeOfType<ApiResponse>().Which.Errors.Should().ContainKey("PasswordTooShort");
+        user.EmailConfirmed.Should().BeFalse(
+            because: "if the password reset failed, we shouldn't flip EmailConfirmed");
+    }
+
+    [Fact]
+    public async Task AcceptInvitation_HappyPath_FlipsEmailConfirmedAndUpdates()
+    {
+        // The load-bearing one: a successful invitation acceptance has to do BOTH set
+        // the password AND mark the email confirmed. Forgetting either leaves the user
+        // in a stuck state.
+        var (controller, deps) = BuildController();
+        var user = new User { Id = "u1", Email = "alice@example.com", EmailConfirmed = false, PasswordHash = null };
+        deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
+        deps.UserService.ResetPasswordAsync(user, Arg.Any<string>(), "NewPassword1!")
+            .Returns(IdentityResult.Success);
+
+        var result = await controller.AcceptInvitationAsync(new AcceptInvitationDto
+        {
+            Email = "alice@example.com",
+            Token = "dGVzdA",
+            NewPassword = "NewPassword1!",
+        });
+
+        result.Should().BeOfType<OkObjectResult>();
+        user.EmailConfirmed.Should().BeTrue(
+            because: "successful invitation accept must mark the user's email as confirmed in one shot");
+        await deps.UserService.Received(1).UpdateAsync(user);
+    }
+
+    [Fact]
+    public async Task AcceptInvitation_HappyPath_WithCallback_ReturnsRedirectPayload()
+    {
+        // When the admin supplied a callbackUri on user creation, the invitation form
+        // carries it through and we echo it back so the page can redirect.
+        var (controller, deps) = BuildController(allowedOrigins: new[] { "https://app.example.com" });
+        var user = new User { Id = "u1", Email = "alice@example.com", EmailConfirmed = false, PasswordHash = null };
+        deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
+        deps.UserService.ResetPasswordAsync(user, Arg.Any<string>(), Arg.Any<string>()).Returns(IdentityResult.Success);
+
+        var result = await controller.AcceptInvitationAsync(new AcceptInvitationDto
+        {
+            Email = "alice@example.com",
+            Token = "dGVzdA",
+            NewPassword = "NewPassword1!",
+            CallbackUri = "https://app.example.com/welcome",
+        });
+
+        var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+        // The anonymous-object body has a `redirect` property pointing at the safe callback.
+        var redirectProp = ok.Value!.GetType().GetProperty("redirect");
+        redirectProp.Should().NotBeNull(
+            because: "the response body must carry the redirect target so the JS form handler can navigate after success");
+        redirectProp!.GetValue(ok.Value).Should().Be("https://app.example.com/welcome");
+    }
+
     // ─── helpers ────────────────────────────────────────────────────────────────────────
 
     private (RegistrationController controller, ControllerDeps deps) BuildController(
