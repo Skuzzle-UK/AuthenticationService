@@ -5,7 +5,9 @@ using AuthenticationService.Shared.Constants;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.Tokens;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 namespace AuthenticationService.Tests.Middleware;
 
@@ -124,6 +126,56 @@ public class RevokedTokenMiddlewareTests
     }
 
     [Fact]
+    public async Task NonBearerAuthorizationHeader_PassesThroughToNext_AndDoesNotJwtParse()
+    {
+        // arrange — /oauth/token requests carry `Authorization: Basic <base64>` per
+        // RFC 6749 §2.3.1. The middleware MUST recognise this as a non-JWT scheme and
+        // skip the deny-list lookup; previously it did a blanket .Replace("Bearer ", "")
+        // which left the Basic header intact, then handed it to JwtSecurityTokenHandler
+        // which threw SecurityTokenMalformedException → 500 on a perfectly legitimate
+        // /oauth/token request.
+        var (middleware, tokenService, nextCalled) = BuildMiddleware();
+        var context = new DefaultHttpContext();
+        context.Request.Headers.Authorization = "Basic dGVzdC1jbGllbnQ6dGVzdC1zZWNyZXQ=";
+
+        // act
+        var act = async () => await middleware.InvokeAsync(context);
+
+        // assert — must NOT throw + must pass through + must not even ask the token service.
+        await act.Should().NotThrowAsync(
+            because: "Basic auth on /oauth/token is correct per RFC 6749; the middleware can't 500 on it.");
+        nextCalled().Should().BeTrue();
+        await tokenService.DidNotReceive().GetRevokedTokenAsync(Arg.Any<string>());
+        context.Response.StatusCode.Should().Be(StatusCodes.Status200OK,
+            because: "non-Bearer headers are not the middleware's concern; whatever handler authenticates them sets the eventual status.");
+    }
+
+    [Fact]
+    public async Task BearerHeaderWithMalformedJwt_PassesThroughToNext_RatherThan500()
+    {
+        // arrange — a "Bearer " header followed by garbage (fuzzer, broken client, etc.).
+        // Previously the middleware would call ReadJwtToken on it, throw
+        // SecurityTokenMalformedException, and 500 the whole pipeline. The middleware now
+        // catches the throw and lets JwtBearer respond with 401 cleanly instead.
+        var (middleware, tokenService, nextCalled) = BuildMiddleware();
+        tokenService
+            .GetRevokedTokenAsync("not-a-jwt")
+            .Throws(new SecurityTokenMalformedException("IDX12709"));
+
+        var context = new DefaultHttpContext();
+        context.Request.Headers.Authorization = AuthSchemeConstants.BearerPrefix + "not-a-jwt";
+
+        // act
+        var act = async () => await middleware.InvokeAsync(context);
+
+        // assert — graceful pass-through; JwtBearer downstream will issue the actual 401.
+        await act.Should().NotThrowAsync();
+        nextCalled().Should().BeTrue();
+        context.Response.StatusCode.Should().Be(StatusCodes.Status200OK,
+            because: "a malformed JWT must not 500 — the auth pipeline rejects it cleanly via JwtBearer.");
+    }
+
+    [Fact]
     public async Task RevokedToken_NoRemoteIp_RecordsEmptyIpRatherThanThrow()
     {
         // arrange — Connection.RemoteIpAddress can be null in test scenarios / behind some
@@ -148,10 +200,13 @@ public class RevokedTokenMiddlewareTests
     private static (RevokedTokenMiddleware middleware, ITokenService tokenService, Func<bool> nextCalled) BuildMiddleware()
     {
         // arrange — wire up a real DI scope factory because the middleware uses
-        // CreateScope() directly. We register a substituted ITokenService.
+        // CreateScope() directly. We register a substituted ITokenService + a logging
+        // factory (the middleware resolves a logger from the per-request scope on the
+        // malformed-JWT defensive path).
         var tokenService = Substitute.For<ITokenService>();
         var services = new ServiceCollection();
         services.AddScoped(_ => tokenService);
+        services.AddLogging();
         var sp = services.BuildServiceProvider();
 
         var nextCalled = false;

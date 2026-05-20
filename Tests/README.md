@@ -34,8 +34,8 @@ dotnet test
 | `AuthenticationService.TokenValidationLib` | 10 |
 | `AuthenticationService.TokenClientLib` | 38 |
 | `AuthenticationService.Shared` | 78 |
-| `AuthenticationService` | 412 |
-| **Total** | **538** |
+| `AuthenticationService` | 415 |
+| **Total** | **541** |
 
 ## What's covered
 

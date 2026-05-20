@@ -48,10 +48,35 @@ public class AdminServiceTests : IDisposable
         result.Results.Should().ContainSingle(r => r.UserName == "alice");
     }
 
-    [Fact(Skip = "SQLite EF provider doesn't translate DateTimeOffset binary comparisons " +
-                  "on User.LockoutEnd. Covered end-to-end against real MySQL by integration " +
-                  "scenario 11 (admin locks user → user can't log in).")]
-    public Task ListUsersAsync_LockedOnly_FiltersToLockedAccounts() => Task.CompletedTask;
+    [Fact]
+    public async Task ListUsersAsync_LockedOnly_FiltersToLockedAccounts()
+    {
+        // arrange — three users: one locked indefinitely, one locked-but-already-expired
+        // (i.e. effectively unlocked), one never locked. The filter must surface ONLY the
+        // currently-locked one. Locking is "LockoutEnd in the future" — Identity uses a
+        // far-future sentinel (LockoutDurations.Indefinite) for the "permanently locked"
+        // shape rather than null-means-locked.
+        var (svc, db, _) = BuildService();
+        var locked = await SeedUserAsync(db, "locked", "locked@example.com");
+        locked.LockoutEnd = DateTimeOffset.UtcNow.AddYears(10);
+        var expired = await SeedUserAsync(db, "expired", "expired@example.com");
+        expired.LockoutEnd = DateTimeOffset.UtcNow.AddDays(-1);
+        await SeedUserAsync(db, "active", "active@example.com");
+        await db.SaveChangesAsync();
+
+        // act
+        var result = await svc.ListUsersAsync(new AdminListFilter { LockedOnly = true }, CancellationToken.None);
+
+        // assert — only the user whose LockoutEnd is in the future should be returned.
+        // The IsLocked projection field must also be true for the surfaced row. If the
+        // production query ever stops comparing against UtcNow correctly this test catches
+        // the regression locally, without waiting for the slow MySQL-backed integration scenario.
+        result.TotalCount.Should().Be(1);
+        result.Results.Should().ContainSingle();
+        result.Results[0].UserName.Should().Be("locked");
+        result.Results[0].IsLocked.Should().BeTrue(
+            because: "the IsLocked projection mirrors the same LockoutEnd > now comparison used by the filter.");
+    }
 
     [Fact]
     public async Task ListUsersAsync_PageSizeClampedToMax()
@@ -419,8 +444,12 @@ public class AdminServiceTests : IDisposable
         connection.Open();
         _connections.Add(connection);
 
-        var options = new DbContextOptionsBuilder<DatabaseContext>().UseSqlite(connection).Options;
-        var db = new DatabaseContext(options);
+        // Use the test-only DatabaseContext subclass so the LockoutEnd → UtcTicks value
+        // converter is applied — the LockedOnly filter test does a DateTimeOffset binary
+        // comparison that the SQLite EF provider can't translate against the unconverted
+        // column. See TestDatabaseContext for the full story.
+        var options = new DbContextOptionsBuilder<TestDatabaseContext>().UseSqlite(connection).Options;
+        var db = new TestDatabaseContext(options);
         db.Database.EnsureCreated();
         _contexts.Add(db);
 

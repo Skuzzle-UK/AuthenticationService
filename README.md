@@ -29,8 +29,8 @@ sharing secrets.
 | `Tests/AuthenticationService.TokenValidationLib.Tests` | Unit tests for the token-validation library (10 tests). |
 | `Tests/AuthenticationService.TokenClientLib.Tests` | Unit tests for the token-client library — provider cache + refresh + discovery + retry behaviours and the `DelegatingHandler` 401-retry contract (38 tests). |
 | `Tests/AuthenticationService.Shared.Tests` | Unit tests for the shared DTOs / constants (78 tests). |
-| `Tests/AuthenticationService.Tests` | Unit tests for the auth service — every controller endpoint, validator, middleware, helper, hosted-service sweep, etc. (412 tests). |
-| `AuthenticationService.IntegrationTests` | End-to-end scenario tests using `Aspire.Hosting.Testing` to boot the whole AppHost graph in-process. Real MySQL, Redis, smtp4dev. (16 tests, see [Testing](#testing) below.) |
+| `Tests/AuthenticationService.Tests` | Unit tests for the auth service — every controller endpoint, validator, middleware, helper, hosted-service sweep, etc. (415 tests). |
+| `AuthenticationService.IntegrationTests` | End-to-end scenario tests using `Aspire.Hosting.Testing` to boot the whole AppHost graph in-process. Real MySQL, Redis, smtp4dev. (15 tests, see [Testing](#testing) below.) |
 
 ---
 
@@ -376,7 +376,7 @@ public class GrpcInventoryClient(IServiceTokenProvider tokenProvider, Inventory.
 
 ## Testing
 
-Five test projects, ~538 unit tests total. Two layers — fast unit tests for everyday feedback,
+Five test projects, ~541 unit tests total. Two layers — fast unit tests for everyday feedback,
 slower integration tests for the cross-cutting / DB-shape stuff.
 
 ### Layout
@@ -386,8 +386,8 @@ slower integration tests for the cross-cutting / DB-shape stuff.
 | `Tests/AuthenticationService.TokenValidationLib.Tests` | Unit | 10 | ~0.2s | Every commit |
 | `Tests/AuthenticationService.TokenClientLib.Tests` | Unit | 38 | ~1s | Every commit |
 | `Tests/AuthenticationService.Shared.Tests` | Unit | 78 | ~0.1s | Every commit |
-| `Tests/AuthenticationService.Tests` | Unit | 412 | ~3s | Every commit |
-| `AuthenticationService.IntegrationTests` | Integration | 16 | ~60s | Every PR |
+| `Tests/AuthenticationService.Tests` | Unit | 415 | ~3s | Every commit |
+| `AuthenticationService.IntegrationTests` | Integration | 15 | ~60s | Every PR |
 
 Stack: **xUnit** runner, **AwesomeAssertions** for fluent assertions, **NSubstitute**
 for mocking, **EF Core SQLite InMemory** for unit tests that need EF, **.NET Aspire**

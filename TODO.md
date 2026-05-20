@@ -28,7 +28,7 @@ open-redirect fix, JWKS caching, etc.), and code-smell cleanup (`WaitingForMfa` 
   driven through an in-process `HttpMessageHandler` stub. Detailed coverage map in
   [`Tests/README.md`](Tests/README.md).
 
-- [x] ~~**Integration tests landed.**~~ 16 scenario tests in
+- [x] ~~**Integration tests landed.**~~ 15 scenario tests in
   `AuthenticationService.IntegrationTests/` driven by **.NET Aspire 13** (the AppHost
   project orchestrates real MySQL, Redis, and smtp4dev containers + the auth project as
   a normal process). Tests use `Aspire.Hosting.Testing` to boot the same graph
@@ -185,6 +185,6 @@ blocks adopting the auth service in a new microservice today.
 
 Phase 0 (admin endpoints), Phase 1 (s2s auth), Tier 4 observability, and the
 data-integrity fixes are all shipped. The auth service has the observability, test
-coverage (538 unit + 16 integration), CI workflow, audit pipeline, admin surface,
+coverage (541 unit + 15 integration, zero skipped), CI workflow, audit pipeline, admin surface,
 service-identity story, and consumer client lib of a production-grade microservice.
 Remaining items are all "build when real demand arrives."
