@@ -109,7 +109,7 @@ public class JWTService : ITokenService
             new(ClaimConstants.Azp, clientId),
             new(ClaimConstants.Jti, Guid.NewGuid().ToString()),
             // Space-separated per OAuth convention. Consumers parse via the
-            // AddScopePolicy helper in AuthenticationService.Client.
+            // AddScopePolicy helper in AuthenticationService.TokenValidationLib.
             new(ClaimConstants.Scope, string.Join(' ', scopeList)),
         };
 

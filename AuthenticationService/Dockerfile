@@ -13,7 +13,6 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["AuthenticationService/AuthenticationService.csproj", "AuthenticationService/"]
-COPY ["AuthenticationService.Client/AuthenticationService.Client.csproj", "AuthenticationService.Client/"]
 COPY ["AuthenticationService.Shared/AuthenticationService.Shared.csproj", "AuthenticationService.Shared/"]
 RUN dotnet restore "./AuthenticationService/AuthenticationService.csproj"
 COPY . .

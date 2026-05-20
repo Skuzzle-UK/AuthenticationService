@@ -63,7 +63,7 @@ Settled with the project owner (2026-05-08):
 | 5 | Client auth method | **Client secret** | Sent via HTTP Basic header (RFC 6749 §2.3.1). Other methods (JWT-bearer, mTLS) deferred to Phase 3+ |
 | 6 | Audience model | **Per-service** (e.g., `inventory-api`) | Token is scoped to one audience. Multi-audience requests issued as separate tokens |
 | 7 | OIDC discovery update | **Yes** | Adds `token_endpoint` and `grant_types_supported` to `/.well-known/openid-configuration` |
-| 8 | Client library helper | **Yes** | `AuthenticationService.Client` exposes `AddScopePolicy(name, requiredScope)` |
+| 8 | Client library helper | **Yes** | `AuthenticationService.TokenValidationLib` exposes `AddScopePolicy(name, requiredScope)` |
 | 9 | `ExampleConsumer` updates | **Yes** | Adds a `[Authorize(Policy = "example.read")]` endpoint as a demo |
 | 10 | Integration tests | **Yes** | Scenario 9 (token endpoint happy path) + Scenario 10 (consumer rejects on missing scope) |
 
@@ -210,7 +210,7 @@ Standard RFC error codes: `invalid_request`, `invalid_client`, `invalid_grant`, 
 
 ### Client library helper
 
-Consumers need to enforce scope-based authorization without writing custom handlers. The `AuthenticationService.Client` library exposes:
+Consumers need to enforce scope-based authorization without writing custom handlers. The `AuthenticationService.TokenValidationLib` library exposes:
 
 ```csharp
 services.AddAuthorization(opt =>
@@ -369,7 +369,7 @@ For Phase 1:
 - `Clients` + `ClientScopes` tables migrated
 - `/oauth/token` endpoint serves valid client_credentials grants
 - Service-JWT claim shape passes consumer validation
-- `AuthenticationService.Client` exposes `AddScopePolicy` helper
+- `AuthenticationService.TokenValidationLib` exposes `AddScopePolicy` helper
 - `ExampleConsumer` demonstrates scope-gated endpoints
 - Admin endpoints for client CRUD live
 - Scenarios 9 & 10 green in CI

@@ -1,7 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using AwesomeAssertions;
 
-namespace AuthenticationService.Client.Tests;
+namespace AuthenticationService.TokenValidationLib.Tests;
 
 /// <summary>
 /// <para>The options class is consumed via <c>AddOptions&lt;T&gt;.ValidateDataAnnotations()</c>

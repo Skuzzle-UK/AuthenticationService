@@ -22,6 +22,13 @@
     <ProjectReference Include="..\AuthenticationService.AppHost\AuthenticationService.AppHost.csproj" />
     <ProjectReference Include="..\AuthenticationService\AuthenticationService.csproj" />
     <ProjectReference Include="..\AuthenticationService.Shared\AuthenticationService.Shared.csproj" />
+    <!--
+      Scenario 15 exercises the TokenClientLib end-to-end against the live auth service.
+      Other scenarios POST directly to /oauth/token via the raw HttpClient; this one drives
+      the same flow through the public consumer API (AddAuthenticationServiceTokenClient +
+      AddServiceToken).
+    -->
+    <ProjectReference Include="..\AuthenticationService.TokenClientLib\AuthenticationService.TokenClientLib.csproj" />
   </ItemGroup>
 
   <ItemGroup>

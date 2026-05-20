@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\AuthenticationService.Client\AuthenticationService.Client.csproj" />
+    <ProjectReference Include="..\..\AuthenticationService.TokenValidationLib\AuthenticationService.TokenValidationLib.csproj" />
   </ItemGroup>
 
 </Project>

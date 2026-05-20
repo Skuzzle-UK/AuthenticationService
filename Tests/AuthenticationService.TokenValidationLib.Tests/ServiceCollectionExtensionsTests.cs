@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 
-namespace AuthenticationService.Client.Tests;
+namespace AuthenticationService.TokenValidationLib.Tests;
 
 /// <summary>
 /// <para>This extension is the public entry-point consumers call to wire up JwtBearer against

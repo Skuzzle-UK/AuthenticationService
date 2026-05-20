@@ -53,7 +53,7 @@ public static class ClaimConstants
     /// Space-separated list of granted scopes (resource-action style, e.g.
     /// <c>"inventory.read inventory.write"</c>). Present on service-identity tokens.
     /// Consumers parse and check via the <c>AddScopePolicy</c> helper in
-    /// <c>AuthenticationService.Client</c>.
+    /// <c>AuthenticationService.TokenValidationLib</c>.
     /// </summary>
     public const string Scope = "scope";
 

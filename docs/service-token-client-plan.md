@@ -1,9 +1,19 @@
 # Service-Token Client Helper — Implementation Plan
 
-**Status:** Draft, not yet started
-**Estimated effort:** ~0.5 day
+**Status:** Shipped (2026-05-20)
+**Estimated effort:** ~0.5 day (actual: comparable)
 **Depends on:** Phase 1 of [`service-to-service-auth-plan.md`](service-to-service-auth-plan.md) (committed)
-**Last updated:** 2026-05-19
+**Last updated:** 2026-05-20
+
+> **Done:** lib split into `AuthenticationService.TokenValidationLib` (incoming JWTs +
+> `AddScopePolicy`) and `AuthenticationService.TokenClientLib` (outgoing service tokens).
+> 38 unit tests in `Tests/AuthenticationService.TokenClientLib.Tests/` cover the provider
+> cache + refresh + discovery + retry contract and the handler 401-retry path. Two
+> end-to-end integration tests in `AuthenticationService.IntegrationTests/Scenarios/ServiceTokenClientIntegrationTests.cs`
+> exercise the full flow against the live auth service + an in-process TestServer
+> downstream (cache-hit verification via jti equality, retry-on-401 via jti inequality).
+> Main README has a "Same flow from .NET — the typed-client shape" subsection beside the
+> existing curl walkthrough.
 
 ---
 
@@ -20,7 +30,7 @@ What we *don't* have is the consumer-side ergonomics. When a real service (Order
 5. Stamp `Authorization: Bearer ...` on every outgoing `HttpClient` call
 6. Detect downstream 401 and refresh
 
-That's the kind of boilerplate that gets re-implemented badly across the platform. The standard .NET pattern is a typed `DelegatingHandler` + cache that consumers wire into their existing `HttpClient` registrations. This plan adds exactly that, in `AuthenticationService.Client`.
+That's the kind of boilerplate that gets re-implemented badly across the platform. The standard .NET pattern is a typed `DelegatingHandler` + cache that consumers wire into their existing `HttpClient` registrations. This plan adds exactly that, in `AuthenticationService.TokenClientLib`.
 
 End-state ergonomics for a consumer:
 
@@ -43,7 +53,7 @@ services.AddHttpClient<InventoryClient>(c =>
 
 ## High-level shape
 
-Three moving pieces inside `AuthenticationService.Client`:
+Three moving pieces inside `AuthenticationService.TokenClientLib`:
 
 | Component | Responsibility |
 |---|---|
@@ -57,9 +67,9 @@ Plus config: a `ServiceTokenClientOptions` settings class extending what's alrea
 
 ## Confirmed design decisions
 
-Settle these before coding (currently my recommendations — discuss before locking):
+Settled with the project owner (2026-05-19):
 
-| # | Decision | Recommendation | Notes |
+| # | Decision | Choice | Notes |
 |---|---|---|---|
 | 1 | Token cache scope | **In-memory singleton, per-process** | Each consuming process holds its own tokens. Multi-replica deployments will each cache independently — that's fine, tokens are cheap to mint. No Redis/external cache. |
 | 2 | Refresh trigger | **Proactive at 80% of `expires_in`** | A handler that sees a token with <20% lifetime remaining triggers a background refresh, returns the still-valid current token, swaps when refresh completes. Falls back to synchronous refresh when token is already expired (cold start, long-idle process). |
@@ -76,7 +86,9 @@ Settle these before coding (currently my recommendations — discuss before lock
 
 ## Implementation plan
 
-### New files in `AuthenticationService.Client/`
+### New files in `AuthenticationService.TokenClientLib/`
+
+(Newly created sibling project — split out from the original combined `AuthenticationService.Client` so consumers can opt into the validation lib, the client lib, or both, independently.)
 
 | File | Purpose |
 |---|---|
@@ -216,7 +228,9 @@ public class GrpcInventoryClient
 
 ## Tests
 
-### Unit tests (`Tests/AuthenticationService.Client.Tests/`)
+### Unit tests (`Tests/AuthenticationService.TokenClientLib.Tests/`)
+
+(New test project — counterpart of the existing `Tests/AuthenticationService.TokenValidationLib.Tests/` for the renamed validation lib.)
 
 The client lib already has a test project. Add to it:
 
@@ -277,7 +291,7 @@ Could also exercise the 401-retry path by having the mock reject the first token
 
 ## Definition of done
 
-- `AuthenticationService.Client` has `IServiceTokenProvider`, `ServiceTokenHandler`, `ServiceTokenException`, plus the two extension methods (`AddAuthenticationServiceTokenClient`, `AddServiceToken`)
+- `AuthenticationService.TokenClientLib` has `IServiceTokenProvider`, `ServiceTokenHandler`, `ServiceTokenException`, plus the two extension methods (`AddAuthenticationServiceTokenClient`, `AddServiceToken`)
 - Settings class binds + validates at startup (missing `ClientSecret` is a startup-time exception, not a runtime surprise)
 - OIDC discovery used by default; override available for tests
 - 401-invalid_token retry once works end-to-end

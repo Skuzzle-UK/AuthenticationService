@@ -7,7 +7,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthenticationService", "Au
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthenticationService.Shared", "AuthenticationService.Shared\AuthenticationService.Shared.csproj", "{82BA9A9C-EA9B-4E84-8182-8B9159B088BF}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthenticationService.Client", "AuthenticationService.Client\AuthenticationService.Client.csproj", "{C5D7E9A1-3F4B-48C2-9E61-B7A8D2F4C0E1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthenticationService.TokenValidationLib", "AuthenticationService.TokenValidationLib\AuthenticationService.TokenValidationLib.csproj", "{C5D7E9A1-3F4B-48C2-9E61-B7A8D2F4C0E1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthenticationService.TokenClientLib", "AuthenticationService.TokenClientLib\AuthenticationService.TokenClientLib.csproj", "{A9E4F7B2-1C8D-4D5A-9F36-7E2B8C5A1D4F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExampleConsumer", "ExampleConsumer\ExampleConsumer.csproj", "{D8F2A1B6-5C4E-4A93-8B71-2E9F3C5D6A12}"
 EndProject
@@ -24,7 +26,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthenticationService.Client.Tests", "Tests\AuthenticationService.Client.Tests\AuthenticationService.Client.Tests.csproj", "{B15E9781-1D72-4183-BF3B-F11DDFC58439}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthenticationService.TokenValidationLib.Tests", "Tests\AuthenticationService.TokenValidationLib.Tests\AuthenticationService.TokenValidationLib.Tests.csproj", "{B15E9781-1D72-4183-BF3B-F11DDFC58439}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthenticationService.TokenClientLib.Tests", "Tests\AuthenticationService.TokenClientLib.Tests\AuthenticationService.TokenClientLib.Tests.csproj", "{F7D2A9C4-3B5E-4D8A-9C61-2F8B7E4A1D62}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthenticationService.Shared.Tests", "Tests\AuthenticationService.Shared.Tests\AuthenticationService.Shared.Tests.csproj", "{E8F9ECD2-9BE9-4169-B5E9-BCFFA064E8B9}"
 EndProject
@@ -82,6 +86,18 @@ Global
 		{C5D7E9A1-3F4B-48C2-9E61-B7A8D2F4C0E1}.Release|x64.Build.0 = Release|Any CPU
 		{C5D7E9A1-3F4B-48C2-9E61-B7A8D2F4C0E1}.Release|x86.ActiveCfg = Release|Any CPU
 		{C5D7E9A1-3F4B-48C2-9E61-B7A8D2F4C0E1}.Release|x86.Build.0 = Release|Any CPU
+		{A9E4F7B2-1C8D-4D5A-9F36-7E2B8C5A1D4F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A9E4F7B2-1C8D-4D5A-9F36-7E2B8C5A1D4F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A9E4F7B2-1C8D-4D5A-9F36-7E2B8C5A1D4F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A9E4F7B2-1C8D-4D5A-9F36-7E2B8C5A1D4F}.Debug|x64.Build.0 = Debug|Any CPU
+		{A9E4F7B2-1C8D-4D5A-9F36-7E2B8C5A1D4F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A9E4F7B2-1C8D-4D5A-9F36-7E2B8C5A1D4F}.Debug|x86.Build.0 = Debug|Any CPU
+		{A9E4F7B2-1C8D-4D5A-9F36-7E2B8C5A1D4F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A9E4F7B2-1C8D-4D5A-9F36-7E2B8C5A1D4F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A9E4F7B2-1C8D-4D5A-9F36-7E2B8C5A1D4F}.Release|x64.ActiveCfg = Release|Any CPU
+		{A9E4F7B2-1C8D-4D5A-9F36-7E2B8C5A1D4F}.Release|x64.Build.0 = Release|Any CPU
+		{A9E4F7B2-1C8D-4D5A-9F36-7E2B8C5A1D4F}.Release|x86.ActiveCfg = Release|Any CPU
+		{A9E4F7B2-1C8D-4D5A-9F36-7E2B8C5A1D4F}.Release|x86.Build.0 = Release|Any CPU
 		{D8F2A1B6-5C4E-4A93-8B71-2E9F3C5D6A12}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{D8F2A1B6-5C4E-4A93-8B71-2E9F3C5D6A12}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D8F2A1B6-5C4E-4A93-8B71-2E9F3C5D6A12}.Debug|x64.ActiveCfg = Debug|Any CPU
@@ -106,6 +122,18 @@ Global
 		{B15E9781-1D72-4183-BF3B-F11DDFC58439}.Release|x64.Build.0 = Release|Any CPU
 		{B15E9781-1D72-4183-BF3B-F11DDFC58439}.Release|x86.ActiveCfg = Release|Any CPU
 		{B15E9781-1D72-4183-BF3B-F11DDFC58439}.Release|x86.Build.0 = Release|Any CPU
+		{F7D2A9C4-3B5E-4D8A-9C61-2F8B7E4A1D62}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F7D2A9C4-3B5E-4D8A-9C61-2F8B7E4A1D62}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F7D2A9C4-3B5E-4D8A-9C61-2F8B7E4A1D62}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F7D2A9C4-3B5E-4D8A-9C61-2F8B7E4A1D62}.Debug|x64.Build.0 = Debug|Any CPU
+		{F7D2A9C4-3B5E-4D8A-9C61-2F8B7E4A1D62}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F7D2A9C4-3B5E-4D8A-9C61-2F8B7E4A1D62}.Debug|x86.Build.0 = Debug|Any CPU
+		{F7D2A9C4-3B5E-4D8A-9C61-2F8B7E4A1D62}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F7D2A9C4-3B5E-4D8A-9C61-2F8B7E4A1D62}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F7D2A9C4-3B5E-4D8A-9C61-2F8B7E4A1D62}.Release|x64.ActiveCfg = Release|Any CPU
+		{F7D2A9C4-3B5E-4D8A-9C61-2F8B7E4A1D62}.Release|x64.Build.0 = Release|Any CPU
+		{F7D2A9C4-3B5E-4D8A-9C61-2F8B7E4A1D62}.Release|x86.ActiveCfg = Release|Any CPU
+		{F7D2A9C4-3B5E-4D8A-9C61-2F8B7E4A1D62}.Release|x86.Build.0 = Release|Any CPU
 		{E8F9ECD2-9BE9-4169-B5E9-BCFFA064E8B9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{E8F9ECD2-9BE9-4169-B5E9-BCFFA064E8B9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E8F9ECD2-9BE9-4169-B5E9-BCFFA064E8B9}.Debug|x64.ActiveCfg = Debug|Any CPU
@@ -172,6 +200,7 @@ Global
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{B15E9781-1D72-4183-BF3B-F11DDFC58439} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{F7D2A9C4-3B5E-4D8A-9C61-2F8B7E4A1D62} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{E8F9ECD2-9BE9-4169-B5E9-BCFFA064E8B9} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{55EF81F0-3CE2-4598-B184-046D38BCE31E} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{916394CA-8090-4109-AD59-9ABF2148C91A} = {0AB3BF05-4346-4AA6-1389-037BE0695223}

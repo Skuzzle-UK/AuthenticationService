@@ -27,7 +27,7 @@ env:
 jobs:
   # ---------------------------------------------------------------------------
   # Unit tests — fast feedback on every push.
-  # All 396 unit tests across the three test projects. No external dependencies
+  # All 538 unit tests across the four test projects. No external dependencies
   # (substituted services + SQLite in-memory). Each project is tested explicitly
   # because `dotnet test` against a folder requires exactly one csproj IN that
   # folder — pointing it at the parent `Tests/` directory fails to discover the
@@ -52,12 +52,20 @@ jobs:
       - name: Build (Release)
         run: dotnet build --no-restore --configuration Release
 
-      - name: Run AuthenticationService.Client.Tests
+      - name: Run AuthenticationService.TokenValidationLib.Tests
         run: >-
-          dotnet test Tests/AuthenticationService.Client.Tests/AuthenticationService.Client.Tests.csproj
+          dotnet test Tests/AuthenticationService.TokenValidationLib.Tests/AuthenticationService.TokenValidationLib.Tests.csproj
           --no-build
           --configuration Release
-          --logger "trx;LogFileName=client-results.trx"
+          --logger "trx;LogFileName=token-validation-results.trx"
+          --results-directory ${{ github.workspace }}/TestResults
+
+      - name: Run AuthenticationService.TokenClientLib.Tests
+        run: >-
+          dotnet test Tests/AuthenticationService.TokenClientLib.Tests/AuthenticationService.TokenClientLib.Tests.csproj
+          --no-build
+          --configuration Release
+          --logger "trx;LogFileName=token-client-results.trx"
           --results-directory ${{ github.workspace }}/TestResults
 
       - name: Run AuthenticationService.Shared.Tests

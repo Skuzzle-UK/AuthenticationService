@@ -5,7 +5,7 @@ namespace AuthenticationService.Shared.Dtos.Response;
 /// <summary>
 /// Success response from <c>POST /oauth/token</c>. Wire format per RFC 6749 §5.1 —
 /// snake_case field names are part of the OAuth contract; consumers (including the
-/// <c>AuthenticationService.Client</c> helpers) deserialise against this shape.
+/// <c>AuthenticationService.TokenClientLib</c> helpers) deserialise against this shape.
 /// </summary>
 public class OAuthTokenResponse
 {

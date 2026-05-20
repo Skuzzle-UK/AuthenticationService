@@ -1,5 +1,5 @@
-using AuthenticationService.Client;
 using AuthenticationService.Shared.Constants;
+using AuthenticationService.TokenValidationLib;
 using Microsoft.OpenApi;
 using System.Security.Claims;
 

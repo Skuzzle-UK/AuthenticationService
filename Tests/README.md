@@ -17,8 +17,9 @@ indicates a regression or a deliberate behaviour change.
 ## Running
 
 ```bash
-# all three projects
-dotnet test Tests/AuthenticationService.Client.Tests/
+# all four projects
+dotnet test Tests/AuthenticationService.TokenValidationLib.Tests/
+dotnet test Tests/AuthenticationService.TokenClientLib.Tests/
 dotnet test Tests/AuthenticationService.Shared.Tests/
 dotnet test Tests/AuthenticationService.Tests/
 
@@ -30,16 +31,25 @@ dotnet test
 
 | Project | Tests |
 |---|---|
-| `AuthenticationService.Client` | 10 |
+| `AuthenticationService.TokenValidationLib` | 10 |
+| `AuthenticationService.TokenClientLib` | 38 |
 | `AuthenticationService.Shared` | 78 |
-| `AuthenticationService` | 308 |
-| **Total** | **396** |
+| `AuthenticationService` | 412 |
+| **Total** | **538** |
 
 ## What's covered
 
-### `AuthenticationService.Client.Tests`
+### `AuthenticationService.TokenValidationLib.Tests`
 - `AuthenticationServiceOptions` — DataAnnotation Required-field gating, default `RequireHttpsMetadata = true`.
 - `ServiceCollectionExtensions.AddAuthenticationServiceJwt` — option binding, JwtBearer registration as default scheme, `TokenValidationParameters` shape (issuer/audience/algorithm/role-claim/MapInboundClaims false), HTTPS override propagation, fluent return.
+
+### `AuthenticationService.TokenClientLib.Tests`
+HTTP-level interactions are driven through a `StubHttpMessageHandler` test double rather than spinning up a real server — deterministic timing, single-process, no fixtures.
+- `ServiceTokenClientOptions` — DataAnnotation Required-field gating on `Authority` / `ClientId` / `ClientSecret`, defaults for `RequireHttpsMetadata` / `RefreshAtFractionOfLifetime` (0.8) / `MaxRetriesOnTransient` (3), `[Range]` enforcement on the refresh fraction and retry cap.
+- `ServiceCollectionExtensions.AddAuthenticationServiceTokenClient` — provider registered as **singleton** (cache survival depends on this), same instance across scopes, options bound from configuration, named `HttpClient` registered under `ServiceTokenProvider.HttpClientName` with the configured 30s timeout, fluent return.
+- `HttpClientBuilderExtensions.AddServiceToken` — empty audience throws, no-scopes throws, `ServiceTokenHandler` actually lands in the typed client's pipeline.
+- `ServiceTokenProvider` — first call fetches, second call within lifetime cache-hits, past-expiry slow-refresh, past-proactive-threshold returns current + background-refreshes, 50 concurrent callers converge on one HTTP hit (thundering-herd protection), different `(audience, scopes)` tuples cache independently, scope-order invariance, `Invalidate` causes refetch, 4xx surfaces OAuth code + does not retry, 5xx retries up to the configured cap + then throws `transient_failure`, 5xx-then-success recovers, OIDC discovery hit once + cached, `TokenEndpointOverride` skips discovery. Also pins the wire format (Basic auth + `grant_type=client_credentials` body) so we can't silently break the auth service contract.
+- `ServiceTokenHandler` — stamps `Authorization: Bearer <token>`, downstream 401 with RFC 6750 `invalid_token` hint invalidates cache + retries once with a fresh token (header inspected per attempt, not just count), plain 401 without the hint passes through unchanged, two consecutive token-shaped 401s bubble the second up, provider exceptions bubble up before any outgoing call is made.
 
 ### `AuthenticationService.Shared.Tests`
 - All **DTOs** — DataAnnotation rules pinned (Required, MaxLength, Compare, Phone, EmailAddress) for `RegistrationDto`, `UpdateProfileDto`, `ChangePasswordDto`, `ResetForgottenPasswordDto`, `AuthenticationDto`, `MfaAuthenticationDto`, `ForgotPasswordDto`, `LockAccountDto`, `RefreshTokenDto`, `ResendEmailConfirmationDto`, `EnableMfaRequest`.
@@ -150,3 +160,17 @@ The following are pure DI / pipeline registration with no testable behaviour bey
    `[InternalsVisibleTo("AuthenticationService.Tests")]` rather than spinning up the
    timer loop (see `DataRetentionCleanupServiceTests` /
    `RevokedTokenReplayEscalationServiceTests` for the pattern).
+
+## A note on the two client libs
+
+The auth service ships **two** consumer NuGets, with separate test projects per the
+"one test project per source project" rule:
+
+| Source project | Test project | What it does |
+|---|---|---|
+| `AuthenticationService.TokenValidationLib` | `Tests/AuthenticationService.TokenValidationLib.Tests` | Validates incoming JWTs (`AddAuthenticationServiceJwt`) + scope policies (`AddScopePolicy`). |
+| `AuthenticationService.TokenClientLib` | `Tests/AuthenticationService.TokenClientLib.Tests` (pending) | Acquires outgoing service-identity tokens via client-credentials (`AddAuthenticationServiceTokenClient` + `AddServiceToken`). |
+
+Consumers reference only the lib they need. A pure resource server pulls
+TokenValidationLib only. A pure outgoing caller (cron worker, message handler) pulls
+TokenClientLib only. A service that does both pulls both — the two are independent.

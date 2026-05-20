@@ -15,20 +15,22 @@ sharing secrets.
 | Project | Purpose |
 |---|---|
 | `AuthenticationService` | The HTTP API: registration, login, MFA, refresh (with rotation + reuse detection), per-device & all-device logout, password reset (which is also the account-unlock path), JWKS/OIDC discovery. |
-| `AuthenticationService.Shared` | DTOs, view models, and wire-contract constants (claim names, role values, policy names, auth scheme). Shared between the API, the client library, and any non-.NET clients (mobile, frontend, etc). |
-| `AuthenticationService.Client` | The drop-in NuGet/project reference for **other microservices** that need to validate tokens. Provides `AddAuthenticationServiceJwt(...)` and brings `AuthenticationService.Shared` in transitively so consumers get the constants without an extra reference. |
+| `AuthenticationService.Shared` | DTOs, view models, and wire-contract constants (claim names, role values, policy names, auth scheme). Shared between the API, the client libraries, and any non-.NET clients (mobile, frontend, etc). |
+| `AuthenticationService.TokenValidationLib` | The drop-in NuGet/project reference for **other microservices** that need to validate incoming JWTs. Provides `AddAuthenticationServiceJwt(...)` and `AddScopePolicy(...)`. Brings `AuthenticationService.Shared` in transitively so consumers get the constants without an extra reference. |
+| `AuthenticationService.TokenClientLib` | Companion drop-in NuGet/project reference for services that need to **call other services** — gets a service-identity token via OAuth client-credentials, caches it, and stamps `Authorization: Bearer` on outgoing `HttpClient` calls. Provides `AddAuthenticationServiceTokenClient(...)` + `AddServiceToken("aud", scopes)`. Independent of the validation lib — consumers pick either, or both. |
 | `AuthenticationService.ServiceDefaults` | Shared library that wires OpenTelemetry / health-checks / service-discovery defaults into any .NET project that joins the Aspire AppHost graph. Currently only the auth service itself; future microservices reference this for free. Production deploys do **not** ship Aspire — ServiceDefaults still adds OTel without it. |
-| `ExampleConsumer` | A small minimal-API microservice that demonstrates the client library end-to-end. Useful as a smoke test and as a copy-paste starting point for new services. See [Try it end-to-end](#try-it-end-to-end). |
+| `ExampleConsumer` | A small minimal-API microservice that demonstrates the validation lib end-to-end. Useful as a smoke test and as a copy-paste starting point for new services. See [Try it end-to-end](#try-it-end-to-end). |
 
 ### Dev / test orchestration (not deployed)
 
 | Project | Purpose |
 |---|---|
 | `AuthenticationService.AppHost` | .NET Aspire orchestrator. Hitting F5 here launches the auth service as a normal .NET process and spins up MySQL / Redis / smtp4dev as containers with connection strings auto-injected. Aspire dashboard at `https://localhost:17282` shows live traces, logs, and metrics from every resource in the graph. **Dev/test only — never deployed.** |
-| `Tests/AuthenticationService.Client.Tests` | Unit tests for the client library (10 tests). |
+| `Tests/AuthenticationService.TokenValidationLib.Tests` | Unit tests for the token-validation library (10 tests). |
+| `Tests/AuthenticationService.TokenClientLib.Tests` | Unit tests for the token-client library — provider cache + refresh + discovery + retry behaviours and the `DelegatingHandler` 401-retry contract (38 tests). |
 | `Tests/AuthenticationService.Shared.Tests` | Unit tests for the shared DTOs / constants (78 tests). |
-| `Tests/AuthenticationService.Tests` | Unit tests for the auth service — every controller endpoint, validator, middleware, helper, hosted-service sweep, etc. (308 tests). |
-| `AuthenticationService.IntegrationTests` | End-to-end scenario tests using `Aspire.Hosting.Testing` to boot the whole AppHost graph in-process. Real MySQL, Redis, smtp4dev. (8 scenarios, see [Testing](#testing) below.) |
+| `Tests/AuthenticationService.Tests` | Unit tests for the auth service — every controller endpoint, validator, middleware, helper, hosted-service sweep, etc. (412 tests). |
+| `AuthenticationService.IntegrationTests` | End-to-end scenario tests using `Aspire.Hosting.Testing` to boot the whole AppHost graph in-process. Real MySQL, Redis, smtp4dev. (16 tests, see [Testing](#testing) below.) |
 
 ---
 
@@ -293,23 +295,99 @@ The token endpoint is advertised in the OIDC discovery doc at `/.well-known/open
 
 Consumers that already configure `Authority` for JWKS automatically pick this up.
 
-> **Distinguishing user tokens from service tokens.** Both kinds are signed by the same auth service and validate via the same JWKS — consumers don't need separate validation pipelines. The difference is in the claim shape: service tokens carry `client_id` + `scope` and have no `email`, `name`, `role`, or `sid`. The `sub` claim is the client_id rather than a user id. Use `User.HasClaim("scope", ...)` (or the `AddScopePolicy` helper from `AuthenticationService.Client`) to gate machine-only endpoints.
+**6. Same flow from .NET — the typed-client shape (production-ready).**
+
+The curl walkthrough above is the wire-level view. In real consumer code you don't hand-roll Basic auth + form encoding + cache + concurrent-refresh protection + 401 retry — you use the **`AuthenticationService.TokenClientLib`** drop-in, which handles all of that and exposes a one-line `AddServiceToken("audience", "scope")` extension on `IHttpClientBuilder`.
+
+```jsonc
+// Orders service's appsettings.json — same config section as the validation lib.
+// The ClientSecret should come from user-secrets / env var / secret store in real deployments.
+"AuthenticationService": {
+  "Authority": "https://auth.example.com",
+  "Audience": "orders-api",                  // for AddAuthenticationServiceJwt (incoming validation)
+  "Issuer":   "https://auth.example.com",
+  "ClientId":     "example-consumer",        // for AddAuthenticationServiceTokenClient (outgoing fetch)
+  "ClientSecret": "<the-secret-from-step-1>" // ← keep this out of source control
+}
+```
+
+```csharp
+// Program.cs
+using AuthenticationService.TokenClientLib;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Outgoing-token plumbing. Provider is a singleton (process-wide cache); discovery doc +
+// token endpoint are resolved on the first call and cached for the process lifetime.
+builder.Services.AddAuthenticationServiceTokenClient(
+    builder.Configuration.GetSection("AuthenticationService"));
+
+// Typed client for the downstream we want to call. Anything injected with InventoryClient
+// gets an HttpClient that auto-stamps `Authorization: Bearer <jwt>` on every outgoing
+// request. Audience + scopes are baked in at registration — if you call two services with
+// different scope sets, register two typed clients.
+builder.Services
+    .AddHttpClient<InventoryClient>(c => c.BaseAddress = new Uri("https://inventory.example.com"))
+    .AddServiceToken(audience: "inventory-api", scopes: "inventory.read");
+
+// (The above is independent of AddAuthenticationServiceJwt — register that too if the same
+// service ALSO needs to validate incoming tokens.)
+
+var app = builder.Build();
+app.Run();
+```
+
+```csharp
+// InventoryClient.cs — written by the consumer team. No auth code anywhere.
+public class InventoryClient(HttpClient http)
+{
+    public Task<InventoryItem?> GetItemAsync(int id, CancellationToken ct = default)
+        => http.GetFromJsonAsync<InventoryItem>($"items/{id}", ct);
+    //   ↑ Authorization: Bearer <fresh service JWT> gets stamped automatically by the handler.
+}
+```
+
+That's the whole consumer side. What the lib gives you for free over the raw curl flow:
+
+- **In-memory token cache keyed by `(audience, scopes)`** — every call after the first hits the cache, the auth service is bothered exactly once per `expires_in` (default 12h).
+- **Proactive refresh at 80% of lifetime** — the token swap happens in the background; user-facing calls never block on the refresh.
+- **Per-key `SemaphoreSlim`** — a thundering herd at expiry hits `/oauth/token` exactly once. The other callers wake up and find the freshly-minted token in the cache.
+- **Stale-token recovery** — if a downstream returns 401 with `WWW-Authenticate: Bearer error="invalid_token"` (RFC 6750 §3), the handler invalidates the cached token and retries once with a fresh one. A second 401 bubbles up — credentials don't work and re-fetching can't fix it.
+- **OIDC discovery** — `token_endpoint` is resolved via `/.well-known/openid-configuration` on the first call, cached after. Operators can change the URL on the auth service without redeploying consumers.
+- **Bounded retries on 5xx / transient network** — exponential backoff (250ms, 500ms, 1s, …, capped 30s) up to `MaxRetriesOnTransient` (default 3). 4xx responses bubble up immediately — they indicate config / credential errors retrying can't fix.
+
+For non-HttpClient callers (gRPC, SignalR, …) you can also inject `IServiceTokenProvider` directly and ask for a token by hand:
+
+```csharp
+public class GrpcInventoryClient(IServiceTokenProvider tokenProvider, Inventory.InventoryClient grpc)
+{
+    public async Task<Item> GetItemAsync(int id, CancellationToken ct = default)
+    {
+        var token = await tokenProvider.GetTokenAsync("inventory-api", ["inventory.read"], ct);
+        var headers = new Metadata { { "Authorization", $"Bearer {token}" } };
+        return await grpc.GetItemAsync(new GetItemRequest { Id = id }, headers, cancellationToken: ct);
+    }
+}
+```
+
+> **Distinguishing user tokens from service tokens.** Both kinds are signed by the same auth service and validate via the same JWKS — consumers don't need separate validation pipelines. The difference is in the claim shape: service tokens carry `client_id` + `scope` and have no `email`, `name`, `role`, or `sid`. The `sub` claim is the client_id rather than a user id. Use `User.HasClaim("scope", ...)` (or the `AddScopePolicy` helper from `AuthenticationService.TokenValidationLib`) to gate machine-only endpoints.
 
 ---
 
 ## Testing
 
-Four test projects, ~404 tests total. Two layers — fast unit tests for everyday feedback,
+Five test projects, ~538 unit tests total. Two layers — fast unit tests for everyday feedback,
 slower integration tests for the cross-cutting / DB-shape stuff.
 
 ### Layout
 
 | Project | Type | Tests | Duration | When |
 |---|---|---|---|---|
-| `Tests/AuthenticationService.Client.Tests` | Unit | 10 | ~0.2s | Every commit |
+| `Tests/AuthenticationService.TokenValidationLib.Tests` | Unit | 10 | ~0.2s | Every commit |
+| `Tests/AuthenticationService.TokenClientLib.Tests` | Unit | 38 | ~1s | Every commit |
 | `Tests/AuthenticationService.Shared.Tests` | Unit | 78 | ~0.1s | Every commit |
-| `Tests/AuthenticationService.Tests` | Unit | 308 | ~3s | Every commit |
-| `AuthenticationService.IntegrationTests` | Integration | 8 | ~60s | Every PR |
+| `Tests/AuthenticationService.Tests` | Unit | 412 | ~3s | Every commit |
+| `AuthenticationService.IntegrationTests` | Integration | 16 | ~60s | Every PR |
 
 Stack: **xUnit** runner, **AwesomeAssertions** for fluent assertions, **NSubstitute**
 for mocking, **EF Core SQLite InMemory** for unit tests that need EF, **.NET Aspire**
@@ -338,7 +416,7 @@ runs reuse them and finish in under a minute.
   validators, middleware, helpers, hosted services. Coverage map at
   [`Tests/README.md`](Tests/README.md).
 
-- **Integration tests** cover seven end-to-end scenarios that exercise real
+- **Integration tests** cover the end-to-end scenarios that exercise real
   infrastructure (real MySQL, real Redis, real SMTP via smtp4dev):
 
   | # | Scenario | Asserts |
@@ -350,6 +428,11 @@ runs reuse them and finish in under a minute.
   | 5 | Rate limiter integration | Burst against `/authenticate` trips the global 4/10s cap (real Redis Lua scripts) |
   | 6 | Threshold escalation worker | `RunSweepAsync` against real MySQL stamps `LockedAt` + fires lock cascade |
   | 7 | JWKS / OIDC discovery | A consumer using only the published JWKS can validate a JWT issued by the auth service — the actual production contract |
+  | 8 | Admin invitation flow | Admin POSTs `/api/Admin/users`, invitee receives email + sets initial password, lock/unlock round-trip persists in MySQL |
+  | 9 | Admin force-password-reset | Admin triggers reset, email lands with link, user resets, old refresh tokens revoked |
+  | 10 | OAuth client-credentials happy path | Admin creates client → `/oauth/token` issues service JWT with the expected claim shape + LastUsedAt stamped |
+  | 11 | OAuth scope authorisation | Requesting an unauthorised scope returns `invalid_scope`; the same client's authorised scope still works; partial scope requests fail all-or-nothing |
+  | 12 | **Service-token client end-to-end** | A typed client wired with `AddServiceToken("aud", "scope")` fetches a real token via the live auth service, two calls share one token (cache hit), and an `invalid_token` 401 from the downstream triggers invalidate-and-retry-once with a freshly-minted token (different jti). |
 
 ### About `.NET Aspire`
 
@@ -980,15 +1063,20 @@ Every response carries a small set of security headers as defence-in-depth backs
 
 ## Wiring up a consuming microservice
 
-Microservices that need to authenticate users by validating tokens issued here use the **`AuthenticationService.Client`** library. They never see the signing key — they fetch the public key from `/.well-known/jwks.json`.
+Microservices that need to authenticate users by validating tokens issued here use the **`AuthenticationService.TokenValidationLib`** library. They never see the signing key — they fetch the public key from `/.well-known/jwks.json`.
+
+If the consuming service also needs to **call other services** under its own identity (cron worker, message handler, service-to-service HTTP), it also references **`AuthenticationService.TokenClientLib`**. The two libraries are independent — pick whichever set fits the service.
 
 ### 1. Add the project / package reference
 
 ```xml
-<ProjectReference Include="..\AuthenticationService.Client\AuthenticationService.Client.csproj" />
+<ProjectReference Include="..\AuthenticationService.TokenValidationLib\AuthenticationService.TokenValidationLib.csproj" />
+
+<!-- Only if the service makes outgoing service-to-service calls: -->
+<ProjectReference Include="..\AuthenticationService.TokenClientLib\AuthenticationService.TokenClientLib.csproj" />
 ```
 
-(Once published as a NuGet package, switch to `<PackageReference Include="AuthenticationService.Client" />`.)
+(Once published as NuGet packages, switch to `<PackageReference Include="AuthenticationService.TokenValidationLib" />` / `<PackageReference Include="AuthenticationService.TokenClientLib" />`.)
 
 ### 2. Configure
 
@@ -1014,8 +1102,8 @@ Microservices that need to authenticate users by validating tokens issued here u
 ### 3. Wire it up
 
 ```csharp
-using AuthenticationService.Client;
 using AuthenticationService.Shared.Constants;
+using AuthenticationService.TokenValidationLib;
 
 var builder = WebApplication.CreateBuilder(args);
 

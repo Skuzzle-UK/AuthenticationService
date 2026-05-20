@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <!--
+    FrameworkReference on Microsoft.AspNetCore.App brings in IHttpClientFactory,
+    DelegatingHandler, and the IHttpClientBuilder extension surface without
+    pulling individual NuGet packages. Consumers only pay for what they use.
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!--
+    Shared DTOs (OAuthTokenResponse, OAuthErrorResponse) are deserialised by
+    the provider. The Shared project carries no AspNetCore dependency, so a
+    project reference here is the right shape.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\AuthenticationService.Shared\AuthenticationService.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

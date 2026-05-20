@@ -1,7 +1,7 @@
 using AuthenticationService.Shared.Constants;
 using Microsoft.AspNetCore.Authorization;
 
-namespace AuthenticationService.Client;
+namespace AuthenticationService.TokenValidationLib;
 
 /// <summary>
 /// Extensions for scope-based authorization on top of the auth service's service-identity

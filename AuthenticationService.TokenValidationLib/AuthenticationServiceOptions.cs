@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace AuthenticationService.Client;
+namespace AuthenticationService.TokenValidationLib;
 
 /// <summary>
 /// Settings consumed by <c>AddAuthenticationServiceJwt</c> to validate access tokens
