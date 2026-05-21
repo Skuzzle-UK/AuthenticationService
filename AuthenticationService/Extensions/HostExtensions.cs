@@ -188,7 +188,18 @@ public static class HostExtensions
         services
             .AddDbContext<DatabaseContext>(opt =>
             {
-                opt.UseMySQL(context.Configuration.GetConnectionString("MySQL")!);
+                opt.UseMySQL(
+                    context.Configuration.GetConnectionString("MySQL")!,
+                    mysql =>
+                    {
+                        // Retry transient MySQL errors with exponential backoff. Oracle's
+                        // MySql.EntityFrameworkCore doesn't ship Pomelo's EnableRetryOnFailure
+                        // equivalent, so without this any connection blip (deploy rollout,
+                        // network hiccup, lock-wait, server-gone-away) fails the user's request
+                        // AND can silently kill background workers. See
+                        // Storage/MySqlRetryingExecutionStrategy.cs for the full rationale.
+                        mysql.ExecutionStrategy(deps => new MySqlRetryingExecutionStrategy(deps));
+                    });
             });
 
     public static IServiceCollection AddRedis(this IServiceCollection services, HostBuilderContext context)
