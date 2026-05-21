@@ -7,6 +7,13 @@
 keys/
 *.pem
 
+# Backstage app scaffolded by scripts/setup-local-backstage.{ps1,sh}. The source-
+# of-truth for our customisations is AuthenticationService.AppHost/backstage/
+# (the overlay app-config); the entire local-backstage/ tree is regenerable from
+# the setup script + our overlay, and it's huge (~500MB after install). Not
+# committed.
+local-backstage/
+
 # User-specific files
 *.rsuser
 *.suo

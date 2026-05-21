@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-// Two independent test-mode flags, both passed by integration-test fixtures:
+// Three independent dev-mode flags:
 //
 //   --integration-test         Transport: forces HTTP-only operation (HTTPS redirect
 //                              off, PublicUrlSettings:BaseUrl points at the http
@@ -17,9 +17,18 @@ var builder = DistributedApplication.CreateBuilder(args);
 //                              integration test specifically does NOT pass this so it
 //                              can exercise the real limiter.
 //
-// Real F5 passes neither, so dev / prod behaviour is identical to a plain run.
+//   --with-backstage           Adds a Backstage container to the AppHost graph so devs
+//                              can preview the catalog + TechDocs locally. Opt-in
+//                              because (a) Backstage adds ~30s to AppHost startup,
+//                              (b) the container image isn't published by default
+//                              (the team builds + tags their own — see
+//                              docs/operations/local-backstage.md). Default F5
+//                              behaviour without this flag is unchanged.
+//
+// Real F5 (without flags) passes none, so dev / prod behaviour is identical to a plain run.
 var integrationTestMode = args.Contains("--integration-test");
 var rateLimitingDisabled = args.Contains("--rate-limiting-disabled");
+var withBackstage = args.Contains("--with-backstage");
 
 var smtp = builder.AddContainer("smtp4dev", "rnwood/smtp4dev")
     .WithEndpoint(name: "smtp", targetPort: 25)
@@ -125,6 +134,40 @@ if (integrationTestMode)
 if (rateLimitingDisabled)
 {
     auth.WithEnvironment("HostingSettings__RateLimitingEnabled", "false");
+}
+
+// ─── Backstage developer portal (opt-in) ─────────────────────────────────────────
+// Adds a Backstage container that renders catalog-info.yaml + docs/ TechDocs.
+// The image is built locally by scripts/setup-local-backstage.ps1 (or .sh) which
+// scaffolds Backstage via @backstage/create-app, applies our overlay config
+// (AuthenticationService.AppHost/backstage/app-config.local.yaml), and tags the
+// resulting image as `authentication-service-backstage:local`.
+//
+// Bound to port 7007 (Backstage's convention) so docs/operations/local-backstage.md
+// can hard-code the URL the user opens.
+//
+// If the image doesn't exist yet, the container resource fails to start with a
+// clear "image not found" error — that's the signal to run the setup script. See
+// docs/operations/local-backstage.md for the one-time setup walk-through.
+if (withBackstage)
+{
+    // Repo root resolved from the AppHost's output directory. Walks up out of
+    // AuthenticationService.AppHost/bin/Debug/<tfm>/ to the solution root where
+    // catalog-info.yaml + docs/ live.
+    var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+
+    builder.AddContainer("backstage", "authentication-service-backstage", "local")
+        .WithEndpoint(name: "backstage-ui", targetPort: 7007, port: 7007, scheme: "http")
+        // Catalog + docs source. Read-only mount of the repo root so Backstage
+        // resolves /repo/catalog-info.yaml and `mkdocs build` runs against /repo/docs/
+        // on each TechDocs request. Mounting a folder (not a single file) sidesteps
+        // Docker Desktop on Windows's "mount path must be absolute" rejection of
+        // single-file bind mounts.
+        //
+        // The overlay app-config is NOT mounted at runtime — it's baked into the
+        // image by the setup script (Backstage auto-merges app-config.local.yaml
+        // alongside its app-config.yaml), so the image is self-contained.
+        .WithBindMount(repoRoot, "/repo", isReadOnly: true);
 }
 
 builder.Build().Run();

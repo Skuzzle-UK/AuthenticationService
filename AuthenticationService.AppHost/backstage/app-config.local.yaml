@@ -1,0 +1,81 @@
+# Backstage app-config consumed by the Aspire-driven local Backstage container.
+#
+# Mounted into the container at /app/app-config.local.yaml by the AppHost. Backstage
+# auto-merges *.local.yaml on top of its baseline app-config.yaml, so this overrides
+# only the keys we care about (catalog source, techdocs builder, database).
+#
+# This file ships in the repo because the AppHost mounts it. It is NOT pushed to a
+# remote Backstage instance — production Backstage has its own app-config managed
+# by the platform team.
+
+app:
+  title: AuthenticationService (local)
+  baseUrl: http://localhost:7007
+
+organization:
+  name: Platform
+
+backend:
+  baseUrl: http://localhost:7007
+  listen:
+    port: 7007
+    host: 0.0.0.0
+  # CORS so the Aspire dashboard can iframe Backstage if the user wires that up later.
+  cors:
+    origin: http://localhost:7007
+    methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+    credentials: true
+  database:
+    # SQLite mode — no separate Postgres container needed for local testing. The
+    # catalog DB lives inside the container's filesystem and is reset on every
+    # AppHost restart. Fine for "demo + iterate on catalog-info.yaml" but not for
+    # any state Backstage might accumulate (TODOs, scaffold history). Swap to
+    # Postgres if persistence matters.
+    client: better-sqlite3
+    connection: ':memory:'
+  # Backstage 1.24+ enforces a backend-side auth policy by default: every
+  # /api/catalog, /api/techdocs, etc. request needs a valid service-to-service or
+  # user token, or the backend returns 401. Without disabling that policy the UI
+  # lights up with "failed to load entity kinds" because the catalog API rejects
+  # the guest-but-not-properly-bearer-tokened requests the frontend sends.
+  #
+  # dangerouslyDisableDefaultAuthPolicy turns the policy off so any request
+  # gets through. This is exactly the use case the flag exists for: a local-only
+  # dev container bound to localhost, where authentication isn't a useful
+  # constraint. NEVER set this in a Backstage instance that has a real network
+  # surface area -- it'd leave the catalog wide open to anyone who can reach
+  # the URL.
+  auth:
+    dangerouslyDisableDefaultAuthPolicy: true
+
+# Local-dev auth: guest mode means anyone hitting http://localhost:7007 is logged
+# in as "guest@local". This is opt-in and only safe because the container is bound
+# to localhost. Real Backstage deployments wire OIDC / SAML / GitHub Apps here.
+auth:
+  providers:
+    guest: {}
+
+# Catalog: ingest catalog-info.yaml from the mounted repo. The mount happens in
+# the AppHost (--with-backstage flag) at /repo, with this file picked up by
+# pointing the static location at file:///repo/catalog-info.yaml.
+catalog:
+  rules:
+    - allow: [System, Component, API, Group, User, Resource, Location]
+  locations:
+    - type: file
+      target: /repo/catalog-info.yaml
+      rules:
+        - allow: [System, Component, API, Group]
+
+# TechDocs: build docs locally inside the container (no S3 / GCS / Azure storage
+# needed for local previews). Backstage runs `mkdocs build` against the mounted
+# repo's docs/ directory on first request and caches the result under /tmp/techdocs.
+techdocs:
+  builder: 'local'
+  generator:
+    runIn: 'local'
+  publisher:
+    type: 'local'
+
+# Plugin-specific config — Backstage's bundled plugins typically work fine with
+# defaults; add overrides here if a custom Backstage image needs them.

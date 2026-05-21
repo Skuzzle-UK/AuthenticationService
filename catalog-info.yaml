@@ -1,0 +1,276 @@
+# Backstage catalog entries for the AuthenticationService repo.
+#
+# This single file declares everything Backstage needs to:
+#   - List the auth API, two libraries, and example consumer as Components
+#   - Group them under a System ("authentication")
+#   - Surface the docs at docs/ via TechDocs (the techdocs-ref annotation)
+#   - Show the OpenAPI spec on the API Component's Definition tab
+#   - Track GitHub Actions CI status on the API Component
+#
+# Register this repo in Backstage via:
+#   Backstage UI → + Create → Register Existing Component → paste the URL of this file:
+#     https://github.com/Skuzzle-UK/AuthenticationService/blob/main/catalog-info.yaml
+#
+# Backstage's GitHub integration will then re-import on every push to main.
+#
+# YAML stream: multiple documents (--- separators), one per entity.
+# Order doesn't matter for ingestion — Backstage resolves refs across all entities in the stream.
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: authentication
+  title: Authentication & Access
+  description: >-
+    Centralised identity & access. Issues user JWTs (with refresh rotation + reuse
+    detection) and service-identity JWTs (OAuth 2.0 client credentials). Exposes a
+    JWKS endpoint so consumers validate locally with no shared secrets.
+  annotations:
+    backstage.io/source-location: url:https://github.com/Skuzzle-UK/AuthenticationService
+  tags:
+    - identity
+    - auth
+    - oauth2
+    - oidc
+    - jwt
+spec:
+  owner: group:default/platform-team
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: authentication-service
+  title: AuthenticationService
+  description: >-
+    The HTTP API. Registration, login, MFA, refresh rotation, per-device & all-device
+    logout, password reset, JWKS + OIDC discovery, /oauth/token for service-to-service.
+  annotations:
+    # TechDocs reads docs/ from this repo (the repo root is implicit when the annotation
+    # is co-located with the source).
+    backstage.io/techdocs-ref: dir:.
+    backstage.io/source-location: url:https://github.com/Skuzzle-UK/AuthenticationService/tree/main/AuthenticationService
+    # Surface CI status on the Component's overview.
+    github.com/project-slug: Skuzzle-UK/AuthenticationService
+    # If you stand up Sentry / Datadog / etc., add their annotations here.
+  tags:
+    - dotnet
+    - aspnetcore
+    - api
+  links:
+    - url: https://github.com/Skuzzle-UK/AuthenticationService
+      title: GitHub repository
+      icon: github
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/platform-team
+  system: authentication
+  # The API spec the service serves at /.well-known/openid-configuration plus its
+  # Swagger doc. Backstage lists provided APIs on the Component's overview.
+  providesApis:
+    - authentication-service-rest
+    - authentication-service-oidc
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: authentication-service-tokenvalidationlib
+  title: AuthenticationService.TokenValidationLib
+  description: >-
+    Consumer NuGet for validating incoming JWTs issued by AuthenticationService.
+    Provides AddAuthenticationServiceJwt + AddScopePolicy. Brings
+    AuthenticationService.Shared in transitively.
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    backstage.io/source-location: url:https://github.com/Skuzzle-UK/AuthenticationService/tree/main/AuthenticationService.TokenValidationLib
+    github.com/project-slug: Skuzzle-UK/AuthenticationService
+  tags:
+    - dotnet
+    - library
+    - nuget
+spec:
+  type: library
+  lifecycle: production
+  owner: group:default/platform-team
+  system: authentication
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: authentication-service-tokenclientlib
+  title: AuthenticationService.TokenClientLib
+  description: >-
+    Consumer NuGet for outgoing service-to-service calls. Acquires service-identity
+    tokens via OAuth client credentials, caches them, retries on stale-token 401s,
+    and stamps Authorization: Bearer on outgoing HttpClient calls.
+    AddAuthenticationServiceTokenClient + AddServiceToken("aud", scopes).
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    backstage.io/source-location: url:https://github.com/Skuzzle-UK/AuthenticationService/tree/main/AuthenticationService.TokenClientLib
+    github.com/project-slug: Skuzzle-UK/AuthenticationService
+  tags:
+    - dotnet
+    - library
+    - nuget
+spec:
+  type: library
+  lifecycle: production
+  owner: group:default/platform-team
+  system: authentication
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: example-consumer
+  title: ExampleConsumer
+  description: >-
+    Reference consumer microservice. Demonstrates the end-to-end token validation +
+    service-to-service flow against AuthenticationService. Useful as a copy-paste
+    starting point when wiring up a new microservice.
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    backstage.io/source-location: url:https://github.com/Skuzzle-UK/AuthenticationService/tree/main/ExampleConsumer
+    github.com/project-slug: Skuzzle-UK/AuthenticationService
+  tags:
+    - dotnet
+    - example
+spec:
+  type: service
+  lifecycle: experimental
+  owner: group:default/platform-team
+  system: authentication
+  consumesApis:
+    - authentication-service-rest
+    - authentication-service-oidc
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: authentication-service-rest
+  title: AuthenticationService REST API
+  description: >-
+    Registration / login / MFA / refresh / logout / password reset / account self-service
+    plus the admin surface (users, clients, audit). OpenAPI spec is served by Swashbuckle
+    at /swagger/v1/swagger.json.
+  annotations:
+    backstage.io/source-location: url:https://github.com/Skuzzle-UK/AuthenticationService/tree/main/AuthenticationService/Controllers
+spec:
+  type: openapi
+  lifecycle: production
+  owner: group:default/platform-team
+  system: authentication
+  # `definition` is the OpenAPI spec body. We inline a minimal stub here (the
+  # API exists; the real spec is generated at runtime by Swashbuckle). Once a
+  # CI job exports a static spec to docs/api/openapi.json this can change to
+  # `definition: $text: docs/api/openapi.json` to load it from the repo.
+  # Note: `$text` is a placeholder DIRECTIVE that loads FROM a URL/path -- it
+  # cannot wrap inline content. To inline, set `definition` directly to the
+  # YAML body (as below) without `$text`.
+  definition: |
+    openapi: 3.0.0
+    info:
+      title: AuthenticationService REST API
+      description: User registration / login / MFA / refresh / logout / password reset / account self-service plus the admin surface.
+      version: '1.0'
+    paths:
+      /api/Authentication/authenticate:
+        post:
+          summary: Login (returns token or 'MFA required')
+          responses:
+            '200': { description: Token issued }
+            '401': { description: Bad credentials }
+      /api/Authentication/refresh:
+        post:
+          summary: Refresh-token rotation (with reuse-cascade detection)
+          responses:
+            '200': { description: New token pair }
+            '401': { description: Reuse detected; family revoked }
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: authentication-service-oidc
+  title: AuthenticationService OIDC discovery + JWKS
+  description: >-
+    OIDC discovery doc at /.well-known/openid-configuration advertises the JWKS URI
+    (/.well-known/jwks.json) and the token endpoint (/oauth/token). Consumers
+    configure their Authority to this service's base URL and JwtBearer picks up
+    the rest. ES256 signing only.
+  annotations:
+    backstage.io/source-location: url:https://github.com/Skuzzle-UK/AuthenticationService/tree/main/AuthenticationService/Controllers/WellKnownController.cs
+spec:
+  type: openapi
+  lifecycle: production
+  owner: group:default/platform-team
+  system: authentication
+  # See REST API entity above for the rationale on inlining via `definition: |`
+  # rather than wrapping with `$text:`.
+  definition: |
+    openapi: 3.0.0
+    info:
+      title: OIDC discovery + JWKS
+      version: '1.0'
+    paths:
+      /.well-known/openid-configuration:
+        get:
+          summary: OIDC discovery doc -- advertises jwks_uri, token_endpoint, grant_types_supported
+          responses:
+            '200':
+              description: Discovery doc JSON
+      /.well-known/jwks.json:
+        get:
+          summary: Public ES256 signing keys
+          responses:
+            '200':
+              description: JWK set
+      /oauth/token:
+        post:
+          summary: OAuth 2.0 client-credentials grant (RFC 6749 sec 4.4)
+          requestBody:
+            required: true
+            content:
+              application/x-www-form-urlencoded:
+                schema:
+                  type: object
+                  required: [grant_type, audience, scope]
+                  properties:
+                    grant_type:
+                      type: string
+                      enum: [client_credentials]
+                    audience:
+                      type: string
+                    scope:
+                      type: string
+          security:
+            - basicAuth: []
+          responses:
+            '200':
+              description: Service JWT
+            '400':
+              description: invalid_request / invalid_scope / unsupported_grant_type
+            '401':
+              description: invalid_client
+
+---
+# Owner Group. In a real Backstage instance with an LDAP / Entra ID / GitHub Teams
+# integration, this would be auto-generated from your identity provider. For the
+# self-contained local-Backstage setup, the inline declaration here lets the
+# system + component owner refs resolve.
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: platform-team
+  description: Owners of the authentication system
+spec:
+  type: team
+  children: []
+  # `parent` is optional per the schema, but if present it must be a string
+  # (`~`/null trips a TypeError during entity validation). Omitted because
+  # there's no parent group in this local Backstage instance.

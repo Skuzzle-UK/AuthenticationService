@@ -9,8 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.MySql" Version="13.3.0" />
-    <PackageReference Include="Aspire.Hosting.Redis" Version="13.3.0" />
+    <PackageReference Include="Aspire.Hosting.MySql" Version="13.3.4" />
+    <PackageReference Include="Aspire.Hosting.Redis" Version="13.3.4" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,105 @@
+# MkDocs configuration consumed by Backstage's TechDocs plugin.
+#
+# Backstage renders this repo's docs by:
+#   1. Reading catalog-info.yaml's `backstage.io/techdocs-ref` annotation.
+#   2. Cloning this repo (or pointing at a checkout) and running `mkdocs build`
+#      to produce static HTML.
+#   3. Serving that HTML inside the Backstage UI under the Component's Docs tab.
+#
+# Local preview (outside Backstage): `pip install mkdocs mkdocs-material && mkdocs serve`
+# then http://localhost:8000.
+
+site_name: AuthenticationService
+site_description: >-
+  Centralised identity & access service for the platform. JWT issuer, JWKS publisher,
+  OAuth 2.0 client-credentials grant, two consumer NuGet libraries.
+site_url: https://backstage.example.com/docs/default/component/authentication-service
+
+# Where the source markdown lives. Backstage TechDocs expects everything under docs/.
+docs_dir: docs
+
+# When the generated site root needs to match a different deployed path,
+# operators set use_directory_urls; Backstage handles this itself.
+
+theme:
+  # Backstage TechDocs renders these inside its own chrome, so the theme is mostly
+  # cosmetic for local previews. mkdocs-material is the de-facto standard for
+  # TechDocs and matches the typeface / spacing the rest of Backstage uses.
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+
+# Navigation mirrors the audience-organised docs/ tree. Order matters — this is
+# the order entries appear in Backstage's left sidebar.
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Architecture: architecture.md
+  - Consumers:
+      - Validating incoming JWTs: consumers/validating-incoming-tokens.md
+      - Outgoing service tokens: consumers/outgoing-service-tokens.md
+      - Claim shapes (user vs service): consumers/claim-shapes.md
+  - Concepts:
+      - User auth flows: concepts/user-auth-flows.md
+      - Refresh rotation & reuse cascade: concepts/refresh-rotation.md
+      - Service-to-service: concepts/service-to-service.md
+      - Security model: concepts/security-model.md
+  - Operations:
+      - Deployment: operations/deployment.md
+      - Observability: operations/observability.md
+      - Key rotation: operations/key-rotation.md
+      - Runbook: operations/runbook.md
+      - Local Backstage (Aspire): operations/local-backstage.md
+  - Development:
+      - Testing: development/testing.md
+      - Conventions: development/conventions.md
+      - Adding an endpoint: development/adding-an-endpoint.md
+  - Reference:
+      - Configuration: reference/configuration.md
+      - Constants: reference/constants.md
+      - Endpoints: reference/endpoints.md
+
+# Markdown extensions that Backstage TechDocs supports out of the box. Adding
+# anything outside this allow-list risks breaking the Backstage render even if
+# `mkdocs serve` works locally.
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+
+# Plugins. TechDocs runs `mkdocs build` with the techdocs-core plugin pre-loaded
+# (it bundles the search plugin + a few rendering tweaks), so we don't list it
+# explicitly here — Backstage layers it on at render time. For local previews,
+# install it via `pip install mkdocs-techdocs-core` and uncomment:
+#
+# plugins:
+#   - techdocs-core
+
+# Where to look for things that aren't docs but are referenced from them
+# (e.g. files in AuthenticationService.AppHost/grafana/dashboards). TechDocs
+# clones the whole repo, so relative paths from inside docs/ that go up
+# resolve fine.
+
+# Extra context Backstage may use. Most of this is set on the catalog entity
+# (catalog-info.yaml) rather than here.
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Skuzzle-UK/AuthenticationService
