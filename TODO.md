@@ -138,15 +138,18 @@ Shared core: `RuntimeDbSeeders.ResetAdministratorCoreAsync` — clears lockout, 
 
 ---
 
-#### M4. `/readyz` health check on MySQL has no timeout
+#### ~~M4. `/readyz` health check on MySQL has no timeout~~ ✅ DONE (2026-05-21)
 
-**What's wrong:** The readiness probe uses `AddDbContextCheck<DatabaseContext>` to verify MySQL is reachable. There's no per-check timeout, so if MySQL is stalled (rather than down), the probe hangs until framework defaults kick in (~30s).
+**What was wrong:** The readiness probe used `AddDbContextCheck<DatabaseContext>` with no timeout. Worse — after B1 shipped, `Database.CanConnectAsync` runs through the retry strategy, so a stalled DB could extend a single probe to ~150s (5 retries × 30s backoff cap). Kubernetes would pull the pod from the LB during that wait, draining capacity while every replica chased the same slow DB.
 
-**Why it matters:** Kubernetes treats a slow `/readyz` as "not ready yet" — the pod gets pulled from the LB while it tries to answer. If multiple pods are probing a slow MySQL simultaneously, you can briefly drain the cluster.
+**What we shipped:** New `AuthenticationService/Services/HealthChecks/MySqlHealthCheck.cs` modeled on `RedisHealthCheck`. Opens the raw `DbConnection` from `_db.Database.GetDbConnection()` directly with a 2-second linked cancellation token — bypasses the execution strategy entirely. If the connection was already open from earlier in the scope, returns Healthy without touching it (don't yank a connection out from under EF). Connections opened by the probe are explicitly closed in `finally`. Registered via `.AddCheck<MySqlHealthCheck>("database", tags: ["ready"])` in `HostExtensions.AddHealthChecksConfiguration`.
 
-**Where to fix:** `AuthenticationService/Extensions/HostExtensions.cs:367`.
+**Tests:** 3 unit tests in `Tests/AuthenticationService.Tests/Services/HealthChecks/MySqlHealthCheckTests.cs`:
+- Open succeeds → Healthy
+- Already-open short-circuits to Healthy without closing
+- Pre-cancelled outer token → Unhealthy (covers the exception-bubbling path)
 
-**How to fix:** Add a `TimeSpan` argument to `AddDbContextCheck(...)`. 2-3 seconds is plenty for a real connection. Match the existing pattern from `RedisHealthCheck.cs` which has a 1s timeout. ~15 min.
+The "MySQL refuses the connection" path isn't a separate test because SQLite is too permissive to fake locally; it falls through the same `catch` as the cancellation case. Full unit suite: 436 passing, 0 warnings.
 
 ---
 

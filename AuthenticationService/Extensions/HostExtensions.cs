@@ -349,7 +349,7 @@ public static class HostExtensions
     {
         services.AddHealthChecks()
             .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
-            .AddDbContextCheck<DatabaseContext>("database", tags: ["ready"])
+            .AddCheck<MySqlHealthCheck>("database", tags: ["ready"])
             .AddCheck<RedisHealthCheck>("redis", tags: ["ready"]);
 
         return services;
