@@ -129,61 +129,67 @@ public class JWTService : ITokenService
 
     public async Task<RefreshResult> RotateRefreshTokenAsync(string accessToken, string rawRefreshToken, string ipAddress)
     {
-        using var transaction = await _context.Database.BeginTransactionAsync();
-
-        var hash = HashRefreshToken(rawRefreshToken);
-        var userId = GetUserId(accessToken);
-        if (string.IsNullOrEmpty(userId))
+        // Manual transaction has to run inside CreateExecutionStrategy so the retry
+        // strategy can retry the whole thing as one unit on transient DB failures.
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync<RefreshResult>(async () =>
         {
-            return new RefreshResult.NotFound();
-        }
+            using var transaction = await _context.Database.BeginTransactionAsync();
 
-        // AsNoTracking — the consume step below uses ExecuteUpdateAsync with a WHERE clause
-        // for race-resistance rather than going through the change tracker.
-        var existing = await _context.RefreshTokens
-            .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.TokenHash == hash && t.UserId == userId);
+            var hash = HashRefreshToken(rawRefreshToken);
+            var userId = GetUserId(accessToken);
+            if (string.IsNullOrEmpty(userId))
+            {
+                return new RefreshResult.NotFound();
+            }
 
-        if (existing is null)
-        {
-            return new RefreshResult.NotFound();
-        }
+            // AsNoTracking — the consume step below uses ExecuteUpdateAsync with a WHERE clause
+            // for race-resistance rather than going through the change tracker.
+            var existing = await _context.RefreshTokens
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.TokenHash == hash && t.UserId == userId);
 
-        if (existing.ConsumedAt is not null)
-        {
-            return await CascadeReuseAsync(userId, existing.FamilyId, transaction);
-        }
+            if (existing is null)
+            {
+                return new RefreshResult.NotFound();
+            }
 
-        if (existing.ExpiresAt < DateTime.UtcNow)
-        {
-            return new RefreshResult.Expired();
-        }
+            if (existing.ConsumedAt is not null)
+            {
+                return await CascadeReuseAsync(userId, existing.FamilyId, transaction);
+            }
 
-        var user = await _userManager.FindByIdAsync(userId);
-        if (user is null)
-        {
-            return new RefreshResult.NotFound();
-        }
+            if (existing.ExpiresAt < DateTime.UtcNow)
+            {
+                return new RefreshResult.Expired();
+            }
 
-        // Pre-allocate the new PK so we can stamp ReplacedByTokenId atomically with the consume.
-        var newTokenId = Guid.NewGuid();
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user is null)
+            {
+                return new RefreshResult.NotFound();
+            }
 
-        var rowsClaimed = await _context.RefreshTokens
-            .Where(t => t.Id == existing.Id && t.ConsumedAt == null)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(t => t.ConsumedAt, DateTime.UtcNow)
-                .SetProperty(t => t.ReplacedByTokenId, (Guid?)newTokenId));
+            // Pre-allocate the new PK so we can stamp ReplacedByTokenId atomically with the consume.
+            var newTokenId = Guid.NewGuid();
 
-        if (rowsClaimed == 0)
-        {
-            return await CascadeReuseAsync(userId, existing.FamilyId, transaction);
-        }
+            var rowsClaimed = await _context.RefreshTokens
+                .Where(t => t.Id == existing.Id && t.ConsumedAt == null)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(t => t.ConsumedAt, DateTime.UtcNow)
+                    .SetProperty(t => t.ReplacedByTokenId, (Guid?)newTokenId));
 
-        var roles = await _userManager.GetRolesAsync(user);
-        var newToken = await CreateTokenAsync(user, roles, existing.FamilyId, ipAddress, newTokenId);
+            if (rowsClaimed == 0)
+            {
+                return await CascadeReuseAsync(userId, existing.FamilyId, transaction);
+            }
 
-        await transaction.CommitAsync();
-        return new RefreshResult.Success(newToken);
+            var roles = await _userManager.GetRolesAsync(user);
+            var newToken = await CreateTokenAsync(user, roles, existing.FamilyId, ipAddress, newTokenId);
+
+            await transaction.CommitAsync();
+            return new RefreshResult.Success(newToken);
+        });
     }
 
     private async Task<RefreshResult> CascadeReuseAsync(

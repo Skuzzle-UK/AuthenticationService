@@ -20,6 +20,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Serilog.Core;
 using StackExchange.Redis;
+using System.Diagnostics;
 using System.Net;
 using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
@@ -44,6 +45,7 @@ public static class HostExtensions
             services.AddForwardedHeadersConfiguration(context);
             services.AddCorsConfiguration(context);
             services.AddHealthChecksConfiguration();
+            services.AddProblemDetailsConfiguration();
             services.AddServices();
             services.AddHostedServices(context);
             services.AddRazorPages();
@@ -349,6 +351,25 @@ public static class HostExtensions
             .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
             .AddDbContextCheck<DatabaseContext>("database", tags: ["ready"])
             .AddCheck<RedisHealthCheck>("redis", tags: ["ready"]);
+
+        return services;
+    }
+
+    /// <summary>
+    /// RFC 7807 Problem Details for unhandled exceptions and unhandled status codes.
+    /// Paired with <c>UseExceptionHandler()</c> + <c>UseStatusCodePages()</c> in the
+    /// pipeline. Always stamps a <c>traceId</c> so operators can grep correlated logs.
+    /// </summary>
+    public static IServiceCollection AddProblemDetailsConfiguration(this IServiceCollection services)
+    {
+        services.AddProblemDetails(opt =>
+        {
+            opt.CustomizeProblemDetails = ctx =>
+            {
+                ctx.ProblemDetails.Extensions["traceId"] =
+                    Activity.Current?.Id ?? ctx.HttpContext.TraceIdentifier;
+            };
+        });
 
         return services;
     }

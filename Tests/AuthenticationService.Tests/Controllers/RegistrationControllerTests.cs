@@ -113,21 +113,23 @@ public class RegistrationControllerTests : IDisposable
     }
 
     [Fact]
-    public async Task Register_ExceptionMidFlow_RollsBackTransactionAndReturns500WithCorrelationId()
+    public async Task Register_ExceptionMidFlow_PropagatesForFrameworkProblemDetails()
     {
-        // Role assignment throws after CreateAsync succeeded — transaction must roll back so we don't leave a partial row.
+        // AddToRoleAsync throws after CreateAsync succeeded — SendConfirmEmailAsync
+        // and CommitAsync come AFTER it in the flow, so neither runs. The transaction
+        // rolls back implicitly when `using var transaction` disposes without commit;
+        // the exception propagates to the framework's ProblemDetails handler (B2).
         var (controller, deps) = BuildController();
         deps.UserService.CreateAsync(Arg.Any<User>(), Arg.Any<string>()).Returns(IdentityResult.Success);
         deps.UserService.AddToRoleAsync(Arg.Any<User>(), Arg.Any<string>())
             .Returns<Task>(_ => throw new InvalidOperationException("boom"));
 
-        var result = await controller.RegisterUserAsync(NewDto());
+        var act = async () => await controller.RegisterUserAsync(NewDto());
 
-        var status = result.Should().BeOfType<ObjectResult>().Subject;
-        status.StatusCode.Should().Be(500);
-        var body = status.Value.Should().BeOfType<ApiResponse>().Subject;
-        body.Errors.Should().ContainKey("RegistrationFailed");
-        body.Errors!["RegistrationFailed"].Should().Contain("reference ");
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("boom");
+        // Throw short-circuited the flow before SendConfirmEmailAsync ran.
+        await deps.EmailService.DidNotReceive().SendEmailAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
     }
 
     // ─── ConfirmEmail (GET) ─────────────────────────────────────────────────────────────

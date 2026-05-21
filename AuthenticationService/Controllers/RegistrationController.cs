@@ -9,6 +9,7 @@ using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
 using AuthenticationService.Storage;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
@@ -74,10 +75,15 @@ public class RegistrationController : ControllerBase
             City = request.City,
         };
 
-        using var transaction = await _dbContext.Database.BeginTransactionAsync();
-
-        try
+        // Manual transactions must be wrapped in a CreateExecutionStrategy call so the
+        // retry strategy (MySqlRetryingExecutionStrategy) can retry the whole thing as one
+        // unit on transient DB failures. Unhandled exceptions fall through to the
+        // ProblemDetails handler in the pipeline (traceId is the correlation handle).
+        var strategy = _dbContext.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync<IActionResult>(async () =>
         {
+            using var transaction = await _dbContext.Database.BeginTransactionAsync();
+
             var result = await _userService.CreateAsync(user, request.Password!);
             if (!result.Succeeded)
             {
@@ -101,23 +107,11 @@ public class RegistrationController : ControllerBase
                 SecurityEventIds.RegistrationCompleted,
                 "Registration completed for {UserId}",
                 user.Id);
-            
+
             _metrics.RegistrationCompleted();
 
             return Created();
-        }
-        catch (Exception ex)
-        {
-            var correlationId = Guid.NewGuid();
-            _logger.LogError(ex,
-                "Registration failed (correlation {CorrelationId})",
-                correlationId);
-
-            await transaction.RollbackAsync();
-            return StatusCode(500, new ApiResponse().AddError(
-                "RegistrationFailed",
-                $"An unexpected error occurred. Please contact support with reference {correlationId}."));
-        }
+        });
     }
 
     /// <summary>

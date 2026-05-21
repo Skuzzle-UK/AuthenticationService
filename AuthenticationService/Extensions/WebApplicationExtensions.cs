@@ -53,9 +53,14 @@ public static class WebApplicationExtensions
 
         if (!app.Environment.IsDevelopment())
         {
-            app.UseExceptionHandler("/Error");
+            // Parameterless overload + AddProblemDetails() in HostExtensions yields
+            // RFC 7807 JSON on unhandled exceptions. Dev keeps the DeveloperExceptionPage.
+            app.UseExceptionHandler();
             app.UseHsts();
         }
+
+        // Format empty 4xx/5xx responses (e.g. a 404 with no body) as ProblemDetails too.
+        app.UseStatusCodePages();
 
         // Gated off in integration tests — AppHost on Linux CI can't reliably bind HTTPS.
         var hostingSettings = app.Services.GetRequiredService<IOptions<HostingSettings>>().Value;
