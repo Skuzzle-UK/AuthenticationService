@@ -8,7 +8,7 @@ name: Regenerate OpenAPI
 # easy to forget, easy to drift.
 #
 # Triggers:
-#   - push to main (auto): regenerate + commit back if the file changed.
+#   - push to master (auto): regenerate + commit back if the file changed.
 #   - workflow_dispatch (manual): same flow, on demand. Useful for a one-off
 #     refresh without pushing other changes.
 #
@@ -17,8 +17,8 @@ name: Regenerate OpenAPI
 # Without the filter, every regen would trigger another build of this workflow.
 on:
   push:
-    branches: [main]
-    # Don't regen for PRs/branches -- only for what's actually on main.
+    branches: [master]
+    # Don't regen for PRs/branches -- only for what's actually on master.
     # The path-filter excludes the file the workflow itself writes, so a
     # commit made by this workflow never re-triggers it.
     paths-ignore:
@@ -49,7 +49,7 @@ jobs:
           # complaining about a shallow fetch.
           fetch-depth: 0
           # Use the default GITHUB_TOKEN; the `contents: write` permission
-          # above lets it push to main.
+          # above lets it push to master.
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup .NET 10

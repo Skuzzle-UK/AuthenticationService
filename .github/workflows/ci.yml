@@ -96,7 +96,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # Integration tests — slower (~60s), runs against real MySQL / Redis / smtp4dev
   # containers spun up by the Aspire AppHost. Skipped on plain feature-branch
-  # pushes to keep the fast loop fast; runs on every PR and on push to main.
+  # pushes to keep the fast loop fast; runs on every PR and on push to master.
   # ---------------------------------------------------------------------------
   integration-tests:
     name: Integration tests (Aspire + Docker)
@@ -104,7 +104,7 @@ jobs:
     needs: unit-tests   # don't burn ~60s of integration tests if a unit test is broken
     if: |
       github.event_name == 'pull_request'
-      || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      || (github.event_name == 'push' && github.ref == 'refs/heads/master')
       || github.event_name == 'workflow_dispatch'
 
     steps:

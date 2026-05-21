@@ -57,17 +57,16 @@ Test project gained a `FrameworkReference` to `Microsoft.AspNetCore.App` and a `
 
 ---
 
-#### B3. CI silently skips integration tests on push to `master`
+#### ~~B3. CI silently skips integration tests on push to `master`~~ ✅ DONE (2026-05-21)
 
-**What's wrong:** The integration-tests job in CI is gated on `github.ref == 'refs/heads/main'`, but this repo's default branch is **`master`**. So every push to the default branch silently skips integration tests entirely.
+**What was wrong:** The integration-tests job was gated on `github.ref == 'refs/heads/main'`, but the default branch is **`master`**. Every push to `master` silently skipped integration tests. The B1 follow-on bug (manual transactions inside the retry strategy throwing 500s) would have been caught earlier had this gate fired.
 
-**Why it matters:** Integration tests are the only thing exercising the real MySQL/Redis/smtp4dev path. We've been merging code without that gate firing. Bugs that integration tests would catch can land on `master` undetected.
+**What we shipped:**
+- `.github/workflows/ci.yml:107` — gate changed from `refs/heads/main` → `refs/heads/master`.
+- `.github/workflows/regen-openapi.yml:20` — same bug, fixed alongside. The OpenAPI auto-regen has never run since it was added; will now trigger on push to `master`.
+- Stray "push to main" comments in both files updated for consistency. (`ci.yml:84`'s `main-results.trx` is a filename meaning "primary", not a branch — left alone.)
 
-**Where to fix:** `.github/workflows/ci.yml:107` (the `if: |` block for the integration-tests job).
-
-**How to fix:** Change `refs/heads/main` to `refs/heads/master`. One-character fix. (Or, in a cleaner world, rename the branch to `main` and update everything that refers to it — but that's a bigger lift.)
-
-**Validation:** push a no-op commit to `master`, confirm the integration-tests job runs.
+**Validation:** the next push to `master` will run the integration tests. If they pass, the gate works.
 
 ---
 
@@ -286,10 +285,9 @@ These won't bite in production but are easy hygiene wins. Knock them out during 
   `Contains-on-collection` translation broken in Oracle's MySql.EntityFrameworkCore.
 
 - [x] ~~**CI workflow.**~~ GitHub Actions at `.github/workflows/ci.yml`. Two jobs:
-  unit tests on every push (fast feedback), integration tests on PR + push-to-`main`
+  unit tests on every push (fast feedback), integration tests on PR + push-to-`master`
   (slower, runs against real MySQL / Redis / smtp4dev via Aspire). Runner is
   `ubuntu-latest`. Status badge in README. Concurrency group cancels superseded runs.
-  ⚠️ *Branch-condition drift: see [Tier 0 / B3](#b3-ci-silently-skips-integration-tests-on-push-to-master) — the trigger is on `refs/heads/main` but the default branch is `master`, so integration tests are silently skipped on push-to-default until that's fixed.*
 
 - [x] ~~**`RefreshToken.ReplacedByTokenId` populate fix.**~~ Rotation now stamps the
   back-pointer in the same race-protected UPDATE as `ConsumedAt`, in
@@ -392,4 +390,4 @@ coverage (541 unit + 15 integration, zero skipped), CI workflow, audit pipeline,
 surface, service-identity story, observability stack, and consumer client libraries
 worthy of a production-grade microservice **on paper**.
 
-The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. They total roughly 1 dev-day to clear. **B1 (DB retry policy) and B2 (ProblemDetails) are now closed (2026-05-21).** **The service is not production-ready until the remaining Tier 0 items are closed.** Once they are, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.
+The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. They total roughly 1 dev-day to clear. **B1 (DB retry policy), B2 (ProblemDetails), and B3 (CI branch gate) are now closed (2026-05-21).** **The service is not production-ready until the remaining Tier 0 items are closed.** Once they are, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.
