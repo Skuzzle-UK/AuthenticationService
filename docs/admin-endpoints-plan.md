@@ -1,13 +1,25 @@
 # Admin Endpoints — Implementation Plan
 
-**Status:** Draft, not yet started
-**Estimated effort:** ~2 focused days (originally scoped at 1.5; admin-creates-user invitation flow + basic page adds ~half a day)
+**Status:** Shipped (2026-05-21)
+**Estimated effort:** ~2 focused days (originally scoped at 1.5; admin-creates-user invitation flow + basic page added ~half a day as predicted)
 **Tier:** 5 (multi-tenant features) / Phase 0 of [`service-to-service-auth-plan.md`](service-to-service-auth-plan.md)
-**Last updated:** 2026-05-11
+**Last updated:** 2026-05-21
+
+> **Done:** every endpoint in the [summary table](#endpoint-summary) shipped behind
+> `[Authorize(Policy = "AdminOnly")]` in `AuthenticationService/Controllers/AdminController.cs`,
+> backed by `AdminService` + `ClientService`. Invitation flow added to
+> `RegistrationController` (`POST /api/registration/accept-invitation` + bundled
+> `AcceptInvitation` Razor page). Audit trail flows through `SecurityEventSink` →
+> Serilog SQL sink → `GET /api/Admin/users/{id}/audit`. Self-protection guards (decision
+> #7 below) honour the "reject destructive ops on self" rule. Tests live in
+> `AdminControllerTests`, `AdminServiceTests`, `ClientServiceTests` (full unit coverage)
+> plus integration scenarios for the invitation + lock + revoke-sessions paths. Plan-doc
+> design-decisions table preserved as a settled-record reference — code is the truth
+> from here.
 
 ---
 
-## Why we're building this
+## Why we built this
 
 Today the auth service has no operational surface. The seeded `admin` account exists, `[Authorize(Policy = "AdminOnly")]` is wired up, and a single `TestController` endpoint sits behind it as a placeholder. Everything else — locking a misbehaving user, clearing MFA for someone who lost their phone, revoking sessions on suspicion of compromise — has to be done by hand against the database. That's the kind of thing that gets done at 2am during an incident, with all the risk that implies.
 

@@ -70,17 +70,11 @@ Test project gained a `FrameworkReference` to `Microsoft.AspNetCore.App` and a `
 
 ---
 
-#### B4. Plan docs claim "Draft, not yet started" for two shipped phases
+#### ~~B4. Plan docs claim "Draft, not yet started" for two shipped phases~~ ✅ DONE (2026-05-21)
 
-**What's wrong:** The two plan documents below still have **"Status: Draft, not yet started"** at the top, but the work they describe shipped weeks ago:
-- `docs/admin-endpoints-plan.md` (line 3) — Phase 0 admin endpoints are live.
-- `docs/service-to-service-auth-plan.md` (line 3) — Phase 1 OAuth client-credentials is live.
+**What was wrong:** `docs/admin-endpoints-plan.md` and `docs/service-to-service-auth-plan.md` both still said "Status: Draft, not yet started" months after the work shipped. Anyone landing on them cold would think the work was still outstanding.
 
-**Why it matters:** Anyone landing on these docs cold will think the work isn't done. They'll waste time re-checking, re-asking, or worse — re-doing.
-
-**Where to fix:** Line 3 of each file.
-
-**How to fix:** Change `**Status:** Draft, not yet started` to `**Status:** Shipped (<date>)`. Add a one-line "what landed" summary like the `service-token-client-plan.md` doc already has. ~10 min each.
+**What we shipped:** Both docs now follow the `service-token-client-plan.md` template — Status flipped to "Shipped (2026-05-21)", with a `> **Done:** ...` blockquote at the top summarising what landed (which entities, controllers, services, tests, and where to find them). The plan-doc design-decisions tables and rationale prose stay as a settled-record reference — they're the closest thing to ADRs we have, and they're linked from concept docs (`docs/concepts/service-to-service.md`) and code comments (`AdminController.cs` s2s section header). Service-to-service-auth-plan also notes Phase 2 (mTLS, JWT-bearer assertions, dynamic client registration) is deferred — build when real demand arrives.
 
 ---
 
@@ -329,12 +323,12 @@ than aspirational. None are blockers today; flagged so the design space is visib
   - **Phase 0** (admin endpoints): paginated user list / detail / lock / unlock /
     revoke-sessions / reset-MFA / force-password-reset / audit / admin-creates-user
     with invitation flow. Plus the `SecurityEventSink` audit pipeline. Plan doc:
-    [`docs/admin-endpoints-plan.md`](docs/admin-endpoints-plan.md). *(Plan doc still says "Draft" — see [Tier 0 / B4](#b4-plan-docs-claim-draft-not-yet-started-for-two-shipped-phases).)*
+    [`docs/admin-endpoints-plan.md`](docs/admin-endpoints-plan.md).
   - **Phase 1** (s2s auth): `Clients` + `ClientScopes` tables, `POST /oauth/token`
     client-credentials endpoint, service-JWT shape, admin client CRUD, OIDC discovery
     advertises `token_endpoint`, `AddScopePolicy` helper in
     `AuthenticationService.TokenValidationLib`, `ExampleConsumer` demo. Plan doc:
-    [`docs/service-to-service-auth-plan.md`](docs/service-to-service-auth-plan.md). *(Plan doc still says "Draft" — see [Tier 0 / B4](#b4-plan-docs-claim-draft-not-yet-started-for-two-shipped-phases).)*
+    [`docs/service-to-service-auth-plan.md`](docs/service-to-service-auth-plan.md).
   - **Phase 2** (optional hardening — JWT-bearer client assertions, mTLS, dynamic
     registration) deferred until real demand arrives.
 

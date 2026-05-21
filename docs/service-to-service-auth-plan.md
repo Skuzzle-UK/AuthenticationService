@@ -1,14 +1,27 @@
 # Service-to-Service Authentication — Implementation Plan
 
-**Status:** Draft, not yet started
-**Estimated effort:** ~4-5 focused days across two phases
+**Status:** Phase 1 shipped (2026-05-21). Phase 2 deferred — "build when real demand arrives."
+**Estimated effort:** ~4-5 focused days across two phases (Phase 1 actual: comparable)
 **Tier:** 5 (multi-tenant features)
-**Owner:** TBD
-**Last updated:** 2026-05-08
+**Last updated:** 2026-05-21
+
+> **Done (Phase 1):** `Clients` + `ClientScopes` entities + EF migrations; client-credentials
+> grant at `POST /oauth/token` (`OAuthController`); admin client-management endpoints on
+> `AdminController` (`POST /api/Admin/clients`, list / detail / disable / rotate-secret).
+> Service-identity JWTs use the same JWKS as user tokens but a distinct claim shape (no
+> `email` / `name`; `sub` carries the `client_id`; `scope` claim present). Incoming
+> validation + `AddScopePolicy` helper shipped in
+> `AuthenticationService.TokenValidationLib`. Outgoing typed-client pattern shipped in
+> `AuthenticationService.TokenClientLib` (see [`service-token-client-plan.md`](service-token-client-plan.md)).
+> `ExampleConsumer` demo wires both sides. Tests cover the `/oauth/token` happy path,
+> rejected-credential paths, audience/scope enforcement, and end-to-end consumer flow.
+>
+> **Phase 2 (deferred):** JWT-bearer client assertions, mTLS, dynamic client registration.
+> Tracked in the roadmap section of `TODO.md` — build when a consumer asks for it.
 
 ---
 
-## Why we're building this
+## Why we built this
 
 Today, when one of our microservices calls another, it forwards the end-user's JWT. That has two real problems:
 
