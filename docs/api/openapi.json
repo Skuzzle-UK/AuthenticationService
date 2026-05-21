@@ -10,7 +10,7 @@
         "tags": [
           "Account"
         ],
-        "summary": "Returns the current snapshot of the logged-in user's profile + roles. Useful for\r\nSPAs that want to render user info without parsing the JWT, and for developers\r\ndebugging \"is my token still valid?\" — a 200 here means the token is signed,\r\nunexpired, not revoked, and the user behind it still exists.",
+        "summary": "Returns the logged-in user's profile + roles. A 200 means the token is valid and the user still exists.",
         "responses": {
           "200": {
             "description": "OK"
@@ -21,7 +21,7 @@
         "tags": [
           "Account"
         ],
-        "summary": "Updates editable profile fields on the logged-in user. Each field on the body is\r\noptional — only the supplied ones are written, the rest are left untouched. Returns\r\n200 with an empty AuthenticationService.Shared.Dtos.Response.ApiResponse on success; clients should re-fetch\r\n`GET /me` if they need the post-update snapshot.\r\n            \r\n\r\nChanging `PhoneNumber` resets the phone-confirmed flag — the user must\r\nre-confirm before SMS-based MFA will work against the new number. Username, email,\r\npassword, MFA, and roles are out of scope here — they each have a dedicated flow.",
+        "summary": "Updates editable profile fields on the logged-in user. Body fields are optional; only supplied ones are written. Changing PhoneNumber resets the phone-confirmed flag.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -53,9 +53,8 @@
         "tags": [
           "Account"
         ],
-        "summary": "Starts MFA enrolment for the logged-in user. Returns the shared secret and a QR code\r\nthe user can scan into an authenticator app, or the verification details for the\r\nchosen non-app provider (e.g. email).",
+        "summary": "Starts MFA enrolment. Returns a shared secret + QR code for authenticator apps, or verification details for email/phone providers.",
         "requestBody": {
-          "description": "EnableMfaRequest",
           "content": {
             "application/json": {
               "schema": {
@@ -86,7 +85,7 @@
         "tags": [
           "Account"
         ],
-        "summary": "Kicks off the \"I forgot my password\" flow. Sends an email with a single-use reset\r\nlink. Returns 200 even when the email isn't recognised — we don't leak which\r\naddresses are registered.",
+        "summary": "Starts the forgot-password flow. Returns 200 even for unknown emails — don't leak which addresses are registered.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -118,7 +117,7 @@
         "tags": [
           "Account"
         ],
-        "summary": "Sets a new password using the single-use token from a forgot-password email. Also\r\nclears any active lockout — this endpoint doubles as the account-recovery path.",
+        "summary": "Sets a new password using the forgot-password email token. Also clears active lockouts — doubles as account-recovery.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -150,7 +149,7 @@
         "tags": [
           "Account"
         ],
-        "summary": "Changes the logged-in user's password. The user is identified from the token's\r\n`sub` claim — a user can never change anyone else's password through here, even\r\nif they pass a different email in the request body.",
+        "summary": "Changes the logged-in user's password. User is identified from the token's sub claim — body email is ignored for identity.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -182,7 +181,7 @@
         "tags": [
           "Account"
         ],
-        "summary": "\"Wasn't me!\" — the link in the password-changed email lands here. Locks the account\r\nand sends the real owner a password-reset email so they can recover it.",
+        "summary": "\"Wasn't me!\" — landing point for the password-changed email link. Locks the account and emails the owner a reset link.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -268,7 +267,7 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Creates a new user via the invitation flow. The user gets an email with a link to\r\nset their initial password; the account is unusable until they do.",
+        "summary": "Creates a user via the invitation flow. Account is unusable until the user clicks the email link and sets a password.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -300,7 +299,7 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Full detail for a single user — profile, lockout state, MFA, roles, active session count.",
+        "summary": "Full detail for a single user — profile, lockout, MFA, roles, active session count.",
         "parameters": [
           {
             "name": "id",
@@ -323,7 +322,7 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Re-sends the invitation email for a user still in the pending-invitation state.\r\nReturns 409 if the user has already accepted (or otherwise activated their account).",
+        "summary": "Re-sends the invitation email. Returns 409 if the user has already activated their account.",
         "parameters": [
           {
             "name": "id",
@@ -369,7 +368,7 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Lifts an active lockout and resets the failed-attempt counter.\r\nRefuses self-target (admins use the seed-account recovery path, not this endpoint).",
+        "summary": "Lifts an active lockout and resets the failed-attempt counter. Refuses self-target (admins use the seed-account recovery path).",
         "parameters": [
           {
             "name": "id",
@@ -392,7 +391,7 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Revokes every active session the user has — refresh-token families + rotates the security\r\nstamp. The \"log them out everywhere\" hammer. Doesn't lock the account; user can sign back in.",
+        "summary": "Revokes every active session — refresh-token families + rotates security stamp. Doesn't lock the account; user can sign back in.",
         "parameters": [
           {
             "name": "id",
@@ -415,7 +414,7 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Disables the user's MFA and clears their authenticator key. Used by helpdesk for lost-phone\r\nrecovery. Revokes all sessions implicitly.",
+        "summary": "Disables MFA and clears the authenticator key — helpdesk lost-phone recovery. Revokes all sessions implicitly.",
         "parameters": [
           {
             "name": "id",
@@ -438,7 +437,7 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Force-password-reset — generates an Identity reset token, emails it to the user, and\r\nrevokes the user's existing sessions. Admin never sees the new password (user picks it\r\nthemselves via the reset-password page).",
+        "summary": "Generates a reset token, emails it, and revokes existing sessions. Admin never sees the new password.",
         "parameters": [
           {
             "name": "id",
@@ -480,7 +479,7 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Paginated audit log for the user — reads from the `SecurityEvents` table\r\npopulated by the custom Serilog sink. Defaults to the last 30 days of events;\r\npasses AuthenticationService.Services.AdminAuditFilter through to the service.",
+        "summary": "Paginated audit log for the user. Reads `SecurityEvents`; defaults to the last 30 days.",
         "parameters": [
           {
             "name": "id",
@@ -537,7 +536,7 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Creates a new OAuth client. The plaintext secret is generated server-side and\r\nreturned <em>once</em> in the response — admins must capture it now; only the\r\nhash is persisted.",
+        "summary": "Creates a new OAuth client. Plaintext secret is returned <em>once</em> in the response — only the hash is persisted.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -631,7 +630,7 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Generates a fresh secret and overwrites the stored hash. Response carries the\r\nnew plaintext secret — same one-time-display contract as create.",
+        "summary": "Generates a fresh secret and overwrites the stored hash. Response carries the new plaintext — same one-time-display contract as create.",
         "parameters": [
           {
             "name": "id",
@@ -654,7 +653,7 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Soft-disable the client. Subsequent `/oauth/token` attempts return\r\n`invalid_client`; the row stays for audit and can be re-enabled out-of-band.\r\nIdempotent — disabling an already-disabled client returns 200 with no further effect.",
+        "summary": "Soft-disable the client. Subsequent /oauth/token attempts return invalid_client. Idempotent.",
         "parameters": [
           {
             "name": "id",
@@ -677,7 +676,7 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Add a (audience, scope) tuple to a client. Idempotent — adding a duplicate is a\r\nno-op success.",
+        "summary": "Add an (audience, scope) tuple to a client. Idempotent.",
         "parameters": [
           {
             "name": "id",
@@ -758,7 +757,7 @@
         "tags": [
           "Authentication"
         ],
-        "summary": "Login. Returns an access + refresh token pair on success, or — if the user has MFA\r\nenabled — kicks off the MFA challenge instead and returns which method was used so\r\nthe client knows what to prompt for.",
+        "summary": "Login. Returns access + refresh tokens on success, or kicks off the MFA challenge if MFA is enabled.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -790,7 +789,7 @@
         "tags": [
           "Authentication"
         ],
-        "summary": "Step 2 of login when MFA is enabled. The client calls this with the code the user\r\njust typed in (from their authenticator app or email). On success, returns the\r\naccess + refresh token pair just like a non-MFA login would have.",
+        "summary": "Step 2 of MFA login. Verifies the user-supplied code and returns access + refresh tokens on success.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -822,7 +821,7 @@
         "tags": [
           "Authentication"
         ],
-        "summary": "Swaps an expired access token + its refresh token for a fresh pair. The expired\r\naccess token must still be in the Authorization header — its claims are read\r\n(signature still validated, expiry skipped) to know which user is refreshing.\r\n            \r\n\r\nIf the supplied refresh token has already been used, this is treated as theft:\r\nevery active session for the user is revoked and the request returns 401.",
+        "summary": "Swaps an expired access token + refresh token for a fresh pair. Reuse of a refresh token is treated as theft — every session for the user is revoked.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -854,7 +853,7 @@
         "tags": [
           "Authentication"
         ],
-        "summary": "Logs the caller out of this device only. Revokes the refresh-token family identified\r\nby the `sid` claim and adds the current access token to the deny-list. Other\r\ndevices for the same user are unaffected.",
+        "summary": "Logs the caller out of this device only. Revokes the refresh-token family from the sid claim and deny-lists the current access token.",
         "responses": {
           "200": {
             "description": "OK"
@@ -867,7 +866,7 @@
         "tags": [
           "Authentication"
         ],
-        "summary": "Logs the caller out of every device. Revokes every refresh-token family for the user,\r\nrotates the security stamp (kills outstanding access tokens), and adds the current\r\naccess token to the deny-list. After this, every device that was logged in must re-authenticate.",
+        "summary": "Logs the caller out of every device. Revokes all refresh-token families, rotates the security stamp, and deny-lists the current access token.",
         "responses": {
           "200": {
             "description": "OK"
@@ -880,7 +879,7 @@
         "tags": [
           "OAuth"
         ],
-        "summary": "RFC 6749 §4.4 client-credentials grant. See class summary for the contract.",
+        "summary": "RFC 6749 §4.4 client-credentials grant.",
         "requestBody": {
           "content": {
             "application/x-www-form-urlencoded": {
@@ -889,7 +888,7 @@
                 "properties": {
                   "grant_type": {
                     "type": "string",
-                    "description": "Must be `\"client_credentials\"`. Any other value yields `unsupported_grant_type`."
+                    "description": "Must be `\"client_credentials\"`."
                   },
                   "client_id": {
                     "type": "string",
@@ -901,11 +900,11 @@
                   },
                   "audience": {
                     "type": "string",
-                    "description": "Target audience for the token (e.g. `inventory-api`). Required. A token is\r\nscoped to a single audience — multi-audience requests must be issued as separate\r\ntokens."
+                    "description": "Target audience for the token (e.g. `inventory-api`). Required. A token is scoped to a single audience."
                   },
                   "scope": {
                     "type": "string",
-                    "description": "Space-separated list of scopes (e.g. `\"inventory.read inventory.write\"`).\r\nRequired. Every requested scope must be present in the client's allow-list\r\n(`ClientScopes`) for the supplied AuthenticationService.Controllers.OAuthTokenRequest.Audience — otherwise\r\n`invalid_scope`."
+                    "description": "Space-separated list of scopes. Required. Every scope must be in the client's allow-list for AuthenticationService.Controllers.OAuthTokenRequest.Audience or the request fails with `invalid_scope`."
                   }
                 }
               },
@@ -941,7 +940,7 @@
         "tags": [
           "Registration"
         ],
-        "summary": "Creates a new user account and emails them a confirmation link. The account exists\r\nafter this call but can't log in until the email link is clicked.",
+        "summary": "Creates a new user and emails them a confirmation link. The account can't log in until the link is clicked.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -973,12 +972,11 @@
         "tags": [
           "Registration"
         ],
-        "summary": "Lands here when the user clicks the confirmation link in their registration email.\r\nMarks the email as confirmed and rotates the user's security stamp so the link\r\ncan't be reused.",
+        "summary": "Landing point for the registration confirmation link. Marks the email confirmed, rotates the security stamp so the link can't be reused, then redirects to callbackUri.",
         "parameters": [
           {
             "name": "email",
             "in": "query",
-            "description": "Requires valid email address",
             "schema": {
               "type": "string"
             }
@@ -986,7 +984,6 @@
           {
             "name": "token",
             "in": "query",
-            "description": "Token generated and sent to email in step 1",
             "schema": {
               "type": "string"
             }
@@ -994,7 +991,6 @@
           {
             "name": "callbackUri",
             "in": "query",
-            "description": "URI which user is redirected to after confirmation. Usually a page on the UI saying email confirmed and offering login",
             "schema": {
               "type": "string"
             }
@@ -1010,7 +1006,7 @@
         "tags": [
           "Registration"
         ],
-        "summary": "Resends the email-confirmation link if the user lost the original (e.g. it landed\r\nin spam). Returns 200 even when the email isn't recognised — we don't leak which\r\naddresses are registered.",
+        "summary": "Resends the email-confirmation link. Returns 200 even for unknown emails — don't leak which addresses are registered.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1042,7 +1038,7 @@
         "tags": [
           "Registration"
         ],
-        "summary": "Completes the admin-creates-user invitation flow. The user lands here from the\r\nAcceptInvitation page after the admin invited them — supplies a new password +\r\nthe Identity reset token from their invitation email. On success: password is\r\nset AND email is confirmed in one step.\r\n            \r\n\r\nReturns `400 invitation_invalid` when the email is unknown or the token\r\ninvalid (single shape for both — don't leak which emails exist). Returns\r\n`409 invitation_already_used` when the user has already activated their\r\naccount, so reuse-of-token can't reset an established password.",
+        "summary": "Completes the admin-invite flow. Sets the password and confirms email in one step. Returns 400 invitation_invalid (unknown email or bad token — single shape so we don't leak which emails exist) or 409 invitation_already_used.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1074,7 +1070,7 @@
         "tags": [
           "Test"
         ],
-        "summary": "A test endpoint locked down to only admin",
+        "summary": "Admin-only test endpoint.",
         "responses": {
           "200": {
             "description": "OK"
@@ -1087,7 +1083,7 @@
         "tags": [
           "Test"
         ],
-        "summary": "A test endpoint for all authenticated users",
+        "summary": "Any-authenticated-user test endpoint.",
         "responses": {
           "200": {
             "description": "OK"
@@ -1100,7 +1096,7 @@
         "tags": [
           "WellKnown"
         ],
-        "summary": "Returns every public signing key the service currently knows about. During key\r\nrotation the active key plus any predecessors are all published here so consumers\r\ncan validate tokens issued by any of them — the JWT's `kid` header tells\r\nJwtBearer which to use.",
+        "summary": "Returns every public signing key the service currently knows about. During rotation, active key + predecessors are all published so consumers can validate tokens from any of them.",
         "responses": {
           "200": {
             "description": "OK"
@@ -1354,8 +1350,7 @@
             "nullable": true
           }
         },
-        "additionalProperties": false,
-        "description": "Body shape for the optional callback override on force-password-reset. Sits in the\r\ncontroller because it's only used here; a top-level DTO felt like overkill."
+        "additionalProperties": false
       },
       "ForgotPasswordDto": {
         "required": [
