@@ -11,20 +11,9 @@ using Microsoft.EntityFrameworkCore;
 namespace AuthenticationService.IntegrationTests.Scenarios;
 
 /// <summary>
-/// <para><b>Scenario 13 — Admin creates client → OAuth token issued → JWT shape verified.</b></para>
-///
-/// <para>End-to-end exercise of the Phase 1 s2s surface against real MySQL:</para>
-/// <list type="number">
-///   <item><description>Admin authenticates against the user-token endpoint.</description></item>
-///   <item><description>Admin POSTs <c>/api/Admin/clients</c> with an initial scope list.</description></item>
-///   <item><description>Response carries the plaintext client_secret (one-time display).</description></item>
-///   <item><description>DB row exists; secret is stored as a hash (not plaintext).</description></item>
-///   <item><description>Anyone POSTs <c>/oauth/token</c> with the client credentials + form-encoded grant.</description></item>
-///   <item><description>Response is a JWT with the expected service-token claim shape.</description></item>
-/// </list>
-///
-/// <para>This is the load-bearing assertion for the Phase 1 service-to-service flow.
-/// A regression here means consumers can't get tokens; everything downstream breaks.</para>
+/// Scenario 13 — Admin creates client → OAuth token issued → JWT shape verified. End-to-end
+/// for the Phase 1 s2s surface against real MySQL. Load-bearing — a regression means
+/// consumers can't get tokens and everything downstream breaks.
 /// </summary>
 [Collection(IntegrationTestCollection.Name)]
 public class OAuthClientCredentialsTests(AppHostFixture fixture) : IntegrationTestBase(fixture)
@@ -35,10 +24,8 @@ public class OAuthClientCredentialsTests(AppHostFixture fixture) : IntegrationTe
     [Fact]
     public async Task AdminCreatesClient_TokenEndpointIssuesServiceJwt_WithExpectedClaimShape()
     {
-        // ── act 1: log in as the seeded admin ────────────────────────────────────────
         var adminToken = await AuthenticateAsync(AdminEmail, AdminPassword);
 
-        // ── act 2: admin creates a client with initial scopes ────────────────────────
         var clientId = $"test-client-{Guid.NewGuid():N}";
         AuthClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
 
@@ -65,7 +52,6 @@ public class OAuthClientCredentialsTests(AppHostFixture fixture) : IntegrationTe
             because: "the response must carry the plaintext secret (one-time display) for the admin to capture.");
         var rawSecret = created.ClientSecret;
 
-        // ── assert DB: row exists, secret is hashed not plaintext ────────────────────
         await using (var db = await CreateDbContextAsync())
         {
             var dbClient = await db.Clients.SingleAsync(c => c.Id == clientId);
@@ -76,8 +62,7 @@ public class OAuthClientCredentialsTests(AppHostFixture fixture) : IntegrationTe
                 .Should().Be(2, because: "both initial scopes must be persisted.");
         }
 
-        // ── act 3: client exchanges credentials at /oauth/token ──────────────────────
-        // Drop the admin bearer header — token endpoint is anonymous + uses Basic auth.
+        // Token endpoint is anonymous + uses Basic auth — drop the admin bearer.
         AuthClient.DefaultRequestHeaders.Authorization = null;
 
         var tokenForm = new FormUrlEncodedContent(new Dictionary<string, string>
@@ -101,7 +86,6 @@ public class OAuthClientCredentialsTests(AppHostFixture fixture) : IntegrationTe
         tokenBody.Scope.Should().Be("inventory.read inventory.write",
             because: "the granted-scope field echoes the requested scopes when all were authorised.");
 
-        // ── assert JWT claim shape ───────────────────────────────────────────────────
         var jwt = new JwtSecurityTokenHandler().ReadJwtToken(tokenBody.AccessToken);
         jwt.Subject.Should().Be(clientId,
             because: "sub on a service token is the client_id, not a user id.");
@@ -112,7 +96,6 @@ public class OAuthClientCredentialsTests(AppHostFixture fixture) : IntegrationTe
         jwt.Claims.Should().NotContain(c => c.Type == ClaimConstants.Email,
             because: "service tokens deliberately omit user claims — consumers distinguish kinds by their absence.");
 
-        // ── assert: LastUsedAt was stamped ───────────────────────────────────────────
         await using (var db = await CreateDbContextAsync())
         {
             var dbClient = await db.Clients.AsNoTracking().SingleAsync(c => c.Id == clientId);

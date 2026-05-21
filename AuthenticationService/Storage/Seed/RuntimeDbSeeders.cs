@@ -8,9 +8,8 @@ using Microsoft.Extensions.Options;
 namespace AuthenticationService.Storage.Seed;
 
 /// <summary>
-/// Seeds rows into the database that have to be there for the service to be usable, but
-/// can't be expressed as static EF data (because they need access to runtime services like
-/// <c>UserManager</c>). Currently just the default administrator account.
+/// Runtime DB seeding — rows that need <c>UserManager</c> and can't be expressed as static
+/// EF data. Currently just the default admin account.
 /// </summary>
 public static class RuntimeDbSeeders
 {
@@ -91,7 +90,7 @@ public static class RuntimeDbSeeders
         }
         catch (ArgumentException)
         {
-            // Misconfigured admin settings — message is already self-describing.
+            // Misconfigured admin settings — message already self-describing.
             throw;
         }
         catch (Exception ex) when (IsTransientDatabaseError(ex))
@@ -117,10 +116,7 @@ public static class RuntimeDbSeeders
     private static bool IsSeederRaceLoss(IEnumerable<IdentityError> errors) =>
         errors.All(e => e.Code is DuplicateUserNameErrorCode or DuplicateEmailErrorCode);
 
-    /// <summary>
-    /// Walks the inner-exception chain looking for anything that smells like a
-    /// database-connectivity problem.
-    /// </summary>
+    // Walks the inner-exception chain for DB-connectivity smells.
     private static bool IsTransientDatabaseError(Exception ex)
     {
         for (var current = ex; current is not null; current = current.InnerException)

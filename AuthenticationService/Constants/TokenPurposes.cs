@@ -1,15 +1,13 @@
 namespace AuthenticationService.Constants;
 
 /// <summary>
-/// Purpose strings passed to ASP.NET Core Identity's
-/// <c>UserManager.GenerateUserTokenAsync</c> / <c>VerifyUserTokenAsync</c> when generating
-/// custom email-link tokens. The purpose binds the token to a specific flow — a token
-/// generated for "Lockout" can't be redeemed for password reset and vice versa.
+/// Purpose strings for <c>UserManager.GenerateUserTokenAsync</c> / <c>VerifyUserTokenAsync</c>.
+/// Binds a token to a specific flow — a Lockout token won't redeem for password reset.
 /// </summary>
 public class TokenPurposes
 {
     /// <summary>
-    /// Used by the panic-button "wasn't me!" lock-account flow.
+    /// "Wasn't me!" lock-account flow.
     /// </summary>
     public const string Lockout = "Lockout";
 }

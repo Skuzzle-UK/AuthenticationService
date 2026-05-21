@@ -16,17 +16,12 @@ public class HarnessSmokeTests
     [Fact]
     public async Task AuthService_RespondsToReadyz_OnceFixtureIsReady()
     {
-        // arrange — fixture has already started everything and waited for /readyz.
-        // This test asserts the harness itself: AppHost boots, containers start, the
-        // auth project comes up with its dependencies (MySQL, Redis) reachable, and we
-        // can reach it via the Aspire-allocated URL.
-
+        // Asserts the harness itself: AppHost boots, containers start, auth project
+        // reachable with its dependencies (MySQL, Redis) up.
         using var client = _fixture.App.CreateHttpClient("auth", "http");
 
-        // act
         var response = await client.GetAsync("/readyz");
 
-        // assert
         response.IsSuccessStatusCode.Should().BeTrue(
             because: "the fixture's WaitForAuthServiceReadyAsync poll already saw a 200.");
     }

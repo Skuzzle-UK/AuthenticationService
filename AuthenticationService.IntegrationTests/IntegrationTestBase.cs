@@ -9,19 +9,16 @@ using Microsoft.EntityFrameworkCore;
 namespace AuthenticationService.IntegrationTests;
 
 /// <summary>
-/// Base class for integration test classes that join <see cref="IntegrationTestCollection"/>.
-/// Provides ready-made <see cref="HttpClient"/>s for the auth service and smtp4dev's
-/// API, and clears the smtp4dev inbox at the start of every test so assertions never
-/// see stale messages from earlier tests.
+/// Base class for integration tests that join <see cref="IntegrationTestCollection"/>.
+/// Provides ready-made <see cref="HttpClient"/>s for the auth service and smtp4dev, and
+/// clears the smtp4dev inbox at the start of every test.
 /// </summary>
 public abstract class IntegrationTestBase(AppHostFixture fixture) : IAsyncLifetime
 {
     protected AppHostFixture Fixture { get; } = fixture;
 
-    /// <summary>HttpClient pointed at the auth service's https endpoint.</summary>
     protected HttpClient AuthClient { get; private set; } = default!;
 
-    /// <summary>Wrapped client for smtp4dev's HTTP API.</summary>
     protected Smtp4DevClient SmtpClient { get; private set; } = default!;
 
     public virtual async Task InitializeAsync()
@@ -30,10 +27,8 @@ public abstract class IntegrationTestBase(AppHostFixture fixture) : IAsyncLifeti
         var smtpHttp = Fixture.App.CreateHttpClient("smtp4dev", "http");
         SmtpClient = new Smtp4DevClient(smtpHttp);
 
-        // Tests share one MySQL + one smtp4dev across the whole run for speed. The
-        // tradeoff is tests must isolate themselves — emails from prior tests would be
-        // confusable with the current one. Clearing the inbox per-test makes the
-        // "find this email" assertions reliable without coordinating across tests.
+        // Tests share one smtp4dev across the run; clearing per-test keeps email
+        // assertions from picking up leftovers from earlier tests.
         await SmtpClient.ClearAsync();
     }
 
@@ -44,31 +39,23 @@ public abstract class IntegrationTestBase(AppHostFixture fixture) : IAsyncLifeti
     }
 
     /// <summary>
-    /// Generates an email address unique to this test run. Tests use this for the
-    /// user they create so they don't collide with other tests using the same shared
-    /// MySQL.
+    /// Email unique to this test run — avoids collisions on the shared MySQL.
     /// </summary>
     protected static string UniqueEmail() => $"test-{Guid.NewGuid():N}@example.com";
 
     /// <summary>
-    /// Username unique to this test run — same isolation argument as
-    /// <see cref="UniqueEmail"/>.
+    /// Username unique to this test run.
     /// </summary>
     protected static string UniqueUserName() => $"user-{Guid.NewGuid():N}";
 
     /// <summary>
-    /// Identity for a user the test created and confirmed. Carries the credentials so
-    /// later steps in the same test can log in as them, and the email so DB queries
-    /// can locate them.
+    /// Identity for a user the test created and confirmed.
     /// </summary>
     public sealed record ConfirmedUser(string Email, string Password, string UserName);
 
     /// <summary>
-    /// Goes through the full register-then-confirm dance and returns the credentials.
-    /// Most scenarios start with "have a confirmed user" — this saves them re-doing the
-    /// dance every time. Implementation-wise it duplicates Scenario 1's flow on purpose:
-    /// Scenario 1 is the assertion that the flow works; this helper is just a builder
-    /// that uses the (now-trusted) flow.
+    /// Runs the full register-then-confirm flow and returns the credentials. Duplicates
+    /// Scenario 1's flow on purpose — that scenario asserts the flow; this just uses it.
     /// </summary>
     protected async Task<ConfirmedUser> RegisterAndConfirmUserAsync(string? password = null)
     {
@@ -105,8 +92,7 @@ public abstract class IntegrationTestBase(AppHostFixture fixture) : IAsyncLifeti
 
     /// <summary>
     /// Logs in as the supplied user and returns the issued <see cref="Token"/>. Throws
-    /// if the login fails or returns an MFA-required response (the helper is for
-    /// non-MFA flows; tests that need MFA do it inline).
+    /// on failure or MFA-required — tests that need MFA do it inline.
     /// </summary>
     protected async Task<Token> LoginAsync(ConfirmedUser user)
     {
@@ -128,13 +114,9 @@ public abstract class IntegrationTestBase(AppHostFixture fixture) : IAsyncLifeti
     }
 
     /// <summary>
-    /// Returns a <see cref="DatabaseContext"/> connected to the same MySQL instance the
-    /// auth service is using. Used by tests that need to assert directly on persisted
-    /// state (e.g., "the old refresh token row is consumed"). The connection string is
-    /// resolved through Aspire's resource graph so the test always points at the
-    /// runtime-allocated MySQL, not whatever's in <c>appsettings.json</c>.
-    ///
-    /// <para>Caller owns disposal — use <c>await using</c>.</para>
+    /// Returns a <see cref="DatabaseContext"/> connected to the same MySQL the auth
+    /// service uses (connection string resolved via Aspire's resource graph, not
+    /// <c>appsettings.json</c>). Caller owns disposal — use <c>await using</c>.
     /// </summary>
     protected async Task<DatabaseContext> CreateDbContextAsync()
     {

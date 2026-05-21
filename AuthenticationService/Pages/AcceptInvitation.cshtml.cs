@@ -4,10 +4,8 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace AuthenticationService.Pages
 {
     /// <summary>
-    /// Backs the invitation-acceptance Razor page. Extracts the email + token + optional
-    /// callback URI from the query string (where the invitation email link puts them) and
-    /// exposes them to the cshtml view so JavaScript can post the form to
-    /// <c>/api/registration/accept-invitation</c>.
+    /// Backs the invitation-acceptance page. Pulls email/token/callback from the query
+    /// string so the view's JS can POST to <c>/api/registration/accept-invitation</c>.
     /// </summary>
     public class AcceptInvitationModel : PageModel
     {

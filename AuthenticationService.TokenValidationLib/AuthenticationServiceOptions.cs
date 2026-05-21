@@ -3,36 +3,32 @@ using System.ComponentModel.DataAnnotations;
 namespace AuthenticationService.TokenValidationLib;
 
 /// <summary>
-/// Settings consumed by <c>AddAuthenticationServiceJwt</c> to validate access tokens
-/// issued by the central authentication service.
+/// Settings consumed by <c>AddAuthenticationServiceJwt</c> to validate access tokens.
 /// </summary>
 public class AuthenticationServiceOptions
 {
     /// <summary>
-    /// Base URL of the authentication service. JwtBearer uses this to discover the
-    /// signing keys via <c>{Authority}/.well-known/openid-configuration</c>.
+    /// Base URL of the auth service. Used to discover signing keys via
+    /// <c>{Authority}/.well-known/openid-configuration</c>.
     /// </summary>
     [Required]
     public string Authority { get; set; } = default!;
 
     /// <summary>
-    /// Expected <c>aud</c> claim. Must match the issuer's configured audience
-    /// (e.g. "platform-api"). Tokens with a different audience are rejected.
+    /// Expected <c>aud</c> claim (e.g. "platform-api"). Mismatches are rejected.
     /// </summary>
     [Required]
     public string Audience { get; set; } = default!;
 
     /// <summary>
-    /// Expected <c>iss</c> claim. Must match <c>ValidIssuer</c> in the auth service's
-    /// JWTSettings (e.g. "https://auth.example.com"). When provided, issuer validation
-    /// is explicit and does not depend on OIDC discovery succeeding.
+    /// Expected <c>iss</c> claim. Explicit configuration avoids depending on OIDC
+    /// discovery succeeding at validation time.
     /// </summary>
     [Required]
     public string Issuer { get; set; } = default!;
 
     /// <summary>
-    /// When true, requires HTTPS for the metadata endpoint. Set to false in
-    /// Development if the auth service is reachable only over HTTP.
+    /// Requires HTTPS for the metadata endpoint. Set false in Development if needed.
     /// </summary>
     public bool RequireHttpsMetadata { get; set; } = true;
 }

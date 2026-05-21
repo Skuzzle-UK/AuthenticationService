@@ -26,9 +26,8 @@ public class ClientService : IClientService
 
     public bool VerifySecret(Client client, string rawSecret)
     {
-        // PasswordHasher's VerifyHashedPassword does a constant-time compare on the
-        // hash bytes; piggy-back on it so we share the same algorithm + iteration count
-        // as user-password verification.
+        // Reuse PasswordHasher so client-secret verification shares the same algorithm
+        // and constant-time compare as user-password verification.
         var result = _hasher.VerifyHashedPassword(client, client.ClientSecretHash, rawSecret);
         return result is PasswordVerificationResult.Success or PasswordVerificationResult.SuccessRehashNeeded;
     }
@@ -40,9 +39,7 @@ public class ClientService : IClientService
 
     public async Task TouchLastUsedAsync(string clientId, CancellationToken ct)
     {
-        // ExecuteUpdate so we don't have to load the entity. The token endpoint already
-        // has the client_id from the request — no point pulling the whole row just to
-        // bump a timestamp.
+        // ExecuteUpdate avoids loading the entity just to bump a timestamp.
         var now = DateTime.UtcNow;
         await _context.Clients
             .Where(c => c.Id == clientId)
@@ -106,9 +103,7 @@ public class ClientService : IClientService
 
     public async Task<bool> AddScopeAsync(string clientId, string audience, string scope, CancellationToken ct)
     {
-        // Idempotent: if the tuple already exists, return false (no-op) but treat as
-        // success-shaped at the controller layer. The unique index on
-        // (ClientId, Audience, Scope) would otherwise throw on duplicate insert.
+        // Pre-check rather than catching the unique-index violation on (ClientId, Audience, Scope).
         var exists = await _context.ClientScopes
             .AnyAsync(s => s.ClientId == clientId && s.Audience == audience && s.Scope == scope, ct);
         if (exists)

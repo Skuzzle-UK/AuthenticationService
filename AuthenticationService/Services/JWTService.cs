@@ -18,10 +18,9 @@ using System.Text;
 namespace AuthenticationService.Services;
 
 /// <summary>
-/// The default <see cref="ITokenService"/>. Owns everything to do with JWT lifecycle —
-/// signing access tokens, hashing and tracking refresh tokens, the rotate-with-reuse-detection
-/// refresh flow, the revoked-token deny-list, and the access-attempt audit trail. Sees
-/// the database directly via <see cref="DatabaseContext"/>; doesn't go through Identity.
+/// Default <see cref="ITokenService"/>. Owns JWT signing, refresh-token hashing and rotation
+/// with reuse detection, the revoked-token deny-list, and the replay audit trail. Hits the DB
+/// directly via <see cref="DatabaseContext"/> rather than going through Identity.
 /// </summary>
 public class JWTService : ITokenService
 {
@@ -65,9 +64,8 @@ public class JWTService : ITokenService
 
         var refreshTokenEntity = new RefreshToken
         {
-            // Rotation supplies a pre-allocated Id so it can stamp the predecessor row's
-            // ReplacedByTokenId in the same UPDATE that consumes it (atomic chain link).
-            // Login and other callers leave refreshTokenId null and get a fresh Guid here.
+            // Rotation supplies a pre-allocated Id so it can stamp the predecessor's
+            // ReplacedByTokenId atomically. Other callers get a fresh Guid here.
             Id = refreshTokenId ?? Guid.NewGuid(),
             UserId = user.Id,
             TokenHash = HashRefreshToken(rawRefreshToken),
@@ -101,33 +99,29 @@ public class JWTService : ITokenService
 
         var claims = new List<Claim>
         {
-            // sub = client_id by design — consumers distinguish service tokens from
-            // user tokens by absence of the email / sid claims AND by sub being a
-            // client_id rather than a user id.
+            // sub = client_id by design — consumers distinguish service tokens by absent
+            // email/sid claims AND by sub being a client_id rather than a user id.
             new(ClaimConstants.Sub, clientId),
             new(ClaimConstants.ClientId, clientId),
             new(ClaimConstants.Azp, clientId),
             new(ClaimConstants.Jti, Guid.NewGuid().ToString()),
-            // Space-separated per OAuth convention. Consumers parse via the
-            // AddScopePolicy helper in AuthenticationService.TokenValidationLib.
+            // Space-separated per OAuth convention.
             new(ClaimConstants.Scope, string.Join(' ', scopeList)),
         };
 
         var tokenOptions = new JwtSecurityToken(
             issuer: _jwtSettings.ValidIssuer,
-            // Per-service audience (e.g. "inventory-api"). Consumers configure their
-            // ValidAudience to match.
             audience: audience,
             claims: claims,
             expires: expiresAt,
             signingCredentials: _keyProvider.SigningCredentials);
 
+        // No refresh half — service tokens re-authenticate from scratch.
         return Task.FromResult(new Token
         {
             Type = AuthSchemeConstants.Bearer,
             Value = TokenHandler.WriteToken(tokenOptions),
             Expires = expiresAt,
-            // No refresh half — service tokens re-authenticate from scratch.
             RefreshToken = null,
             RefreshTokenExpiresAt = null,
         });
@@ -144,8 +138,8 @@ public class JWTService : ITokenService
             return new RefreshResult.NotFound();
         }
 
-        // AsNoTracking because we don't mutate this row via the change tracker; the consume step
-        // below uses ExecuteUpdateAsync with a WHERE clause for race-resistance instead.
+        // AsNoTracking — the consume step below uses ExecuteUpdateAsync with a WHERE clause
+        // for race-resistance rather than going through the change tracker.
         var existing = await _context.RefreshTokens
             .AsNoTracking()
             .FirstOrDefaultAsync(t => t.TokenHash == hash && t.UserId == userId);
@@ -171,7 +165,7 @@ public class JWTService : ITokenService
             return new RefreshResult.NotFound();
         }
 
-        // Pre-allocate the new row's PK so we can stamp it into the predecessors
+        // Pre-allocate the new PK so we can stamp ReplacedByTokenId atomically with the consume.
         var newTokenId = Guid.NewGuid();
 
         var rowsClaimed = await _context.RefreshTokens
@@ -302,9 +296,8 @@ public class JWTService : ITokenService
 
     public async Task RecordRevokedReplayAsync(RevokedToken revokedToken, string ipAddress, string? userAgent)
     {
-        // Severity distinguishes "still-live revoked token" (Medium — the deny-list is the
-        // only thing stopping it) from "naturally-expired revoked token" (Low — JwtBearer's
-        // expiry check would have rejected it anyway).
+        // Still-live revoked token = Medium (only the deny-list stops it);
+        // naturally-expired revoked token = Low (JwtBearer's expiry check would reject anyway).
         var severity = revokedToken.ExpiresAt.HasValue && revokedToken.ExpiresAt.Value < DateTime.UtcNow
             ? Severity.Low
             : Severity.Medium;
@@ -333,10 +326,7 @@ public class JWTService : ITokenService
         await _context.SaveChangesAsync();
     }
 
-    /// <summary>
-    /// Defensive guard against an attacker sending a malicious 10MB User-Agent header to
-    /// bloat our audit table.
-    /// </summary>
+    // Defends against a malicious 10MB User-Agent bloating the audit table.
     private static string? TruncateUserAgent(string? userAgent)
     {
         if (string.IsNullOrEmpty(userAgent))

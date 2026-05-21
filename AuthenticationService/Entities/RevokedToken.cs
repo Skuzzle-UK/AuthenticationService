@@ -1,4 +1,4 @@
-﻿#pragma warning disable
+#pragma warning disable
 
 using System.ComponentModel.DataAnnotations;
 
@@ -37,16 +37,12 @@ public class RevokedToken
     public string? RevocationReason { get; set; }
 
     /// <summary>
-    /// When the threshold-escalation worker first emitted the warn-level SIEM event for
-    /// repeated replay of this token. Null until the warn threshold is crossed; non-null
-    /// after, which prevents re-firing the warn event on every subsequent sweep.
+    /// Non-null prevents the threshold-escalation worker re-firing the warn event each sweep.
     /// </summary>
     public DateTime? WarnedAt { get; set; }
 
     /// <summary>
-    /// When the threshold-escalation worker locked the account due to sustained replay
-    /// of this token. Null until the lock threshold is crossed; non-null after, which
-    /// prevents re-locking and re-emailing on every subsequent sweep.
+    /// Non-null prevents the worker re-locking and re-emailing each sweep.
     /// </summary>
     public DateTime? LockedAt { get; set; }
 }

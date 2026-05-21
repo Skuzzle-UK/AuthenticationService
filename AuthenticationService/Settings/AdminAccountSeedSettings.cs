@@ -4,9 +4,8 @@ using System.ComponentModel.DataAnnotations;
 namespace AuthenticationService.Settings;
 
 /// <summary>
-/// Details for the default admin account that gets seeded into the database on first
-/// startup. Most fields live in <c>appsettings.json</c>; <c>Password</c> is dev-only and
-/// must be supplied via env var / user-secrets / secret store outside Development.
+/// Default admin account seeded on first startup. <c>Password</c> must come from env vars
+/// / user-secrets / secret store outside Development — never check it into appsettings.
 /// </summary>
 public class AdminAccountSeedSettings
 {

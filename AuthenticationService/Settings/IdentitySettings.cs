@@ -3,18 +3,8 @@ using System.ComponentModel.DataAnnotations;
 namespace AuthenticationService.Settings;
 
 /// <summary>
-/// Tuning knobs for ASP.NET Core Identity. Mirrors Identity's own nested options shape
-/// (Password / User / Lockout) so the JSON config reads naturally. Defaults match the
-/// values previously hardcoded in <c>HostExtensions.AddSecurity</c>; operators override
-/// only what they want to tune.
-///
-/// <para>Most deployments shouldn't need to change these — defaults align with NIST 800-63B
-/// (12-char password) and reasonable lockout protection. Common reasons to tune:</para>
-/// <list type="bullet">
-///   <item><description><b>Compliance frameworks</b> with specific length / complexity requirements (PCI-DSS, HIPAA, etc.)</description></item>
-///   <item><description><b>Load tests / dev environments</b> needing looser caps on failed-attempt lockout to avoid breaking on retry</description></item>
-///   <item><description><b>Internal-only deployments</b> where stronger or weaker password rules make sense</description></item>
-/// </list>
+/// ASP.NET Core Identity tuning knobs. Mirrors Identity's own nested shape; defaults align
+/// with NIST 800-63B.
 /// </summary>
 public class IdentitySettings
 {
@@ -23,13 +13,10 @@ public class IdentitySettings
     public LockoutSettings Lockout { get; set; } = new();
 }
 
-/// <summary>
-/// Password-rule settings — what counts as a valid password at create / change time.
-/// </summary>
 public class PasswordSettings
 {
     /// <summary>
-    /// Minimum password length. Default 12 (NIST 800-63B / OWASP guidance).
+    /// NIST 800-63B / OWASP guidance.
     /// </summary>
     [Range(1, 256)]
     public int RequiredLength { get; set; } = 12;
@@ -55,10 +42,8 @@ public class PasswordSettings
     public bool RequireNonAlphanumeric { get; set; } = true;
 
     /// <summary>
-    /// Minimum number of unique characters in a password. Default 1 (effectively no
-    /// restriction). NIST 800-63B explicitly recommends *not* enforcing this rule —
-    /// uniqueness rules push users toward predictable patterns. Exposed for compliance
-    /// frameworks that mandate it; leave at default unless your auditor disagrees.
+    /// NIST 800-63B recommends NOT enforcing this — pushes users toward predictable patterns.
+    /// Exposed for compliance frameworks that mandate it.
     /// </summary>
     [Range(1, 256)]
     public int RequiredUniqueChars { get; set; } = 1;
@@ -70,33 +55,20 @@ public class PasswordSettings
 public class UserSettings
 {
     /// <summary>
-    /// Require unique email addresses across users. Default true. Don't turn this off
-    /// without a very good reason — it's load-bearing for the password-reset / account-
-    /// recovery flows that look users up by email.
+    /// Load-bearing for password-reset / account-recovery flows that look users up by email.
     /// </summary>
     public bool RequireUniqueEmail { get; set; } = true;
 
     /// <summary>
-    /// Characters allowed in usernames at registration. Identity's default permits letters,
-    /// digits, and a small set of punctuation (<c>-._@+</c>). Tighten by removing characters
-    /// (e.g. drop <c>+</c> if usernames are emails and you want to block gmail-alias style
-    /// usernames). Note: changing this only affects new registrations — existing users
-    /// keep their current usernames.
+    /// Identity's default character set. Changing only affects new registrations.
     /// </summary>
     public string AllowedUserNameCharacters { get; set; } =
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._@+";
 
     /// <summary>
-    /// Usernames blocked at registration to prevent display-confusion / social-engineering
-    /// attacks. Operator-extensible — every corporate deployment likely has org-specific
-    /// names worth blocking (e.g. <c>finance</c>, <c>infosec</c>, <c>payroll</c>) on top of
-    /// the platform-generic defaults below. <b>Setting this in config replaces the default
-    /// list entirely</b> — copy the defaults out and extend them rather than starting from
-    /// nothing.
-    ///
-    /// <para><c>admin</c> is intentionally absent because the seeded admin account already
-    /// holds that username; Identity's uniqueness constraint protects it. Re-add to this
-    /// list if the seeder is ever removed.</para>
+    /// Usernames blocked at registration. Setting this in config REPLACES the default list
+    /// — copy + extend rather than starting from nothing. <c>admin</c> is absent because
+    /// the seeded admin already holds it; re-add if the seeder is removed.
     /// </summary>
     public List<string> ReservedUserNames { get; set; } = new()
     {
@@ -140,17 +112,14 @@ public class UserSettings
 public class LockoutSettings
 {
     /// <summary>
-    /// Whether new users start with lockout enabled. Default true. The bar to disabling
-    /// this is high — turning it off means brand-new accounts get unlimited password
-    /// guesses with no rate-limit-style backstop besides the rate limiter itself.
+    /// Disabling means new accounts get unlimited password guesses with only the rate
+    /// limiter as a backstop. Very high bar to turn off.
     /// </summary>
     public bool AllowedForNewUsers { get; set; } = true;
 
     /// <summary>
-    /// How long an account stays locked after exceeding <see cref="MaxFailedAccessAttempts"/>.
-    /// Auto-clears at this duration. Default 2 minutes — short by design so a legitimate
-    /// user who mistyped their password doesn't have to wait long. The threshold-escalation
-    /// worker handles the "actively-attacked" case with indefinite locks.
+    /// Short by design — legitimate typos shouldn't lock users out for long. Active-attack
+    /// scenarios are handled by the threshold-escalation worker (indefinite lock).
     /// </summary>
     [Range(0.1, 1440)]
     public double DefaultLockoutDurationInMinutes { get; set; } = 2;

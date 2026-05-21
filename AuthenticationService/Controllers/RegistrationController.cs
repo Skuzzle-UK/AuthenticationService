@@ -1,4 +1,4 @@
-﻿using AuthenticationService.Constants;
+using AuthenticationService.Constants;
 using AuthenticationService.Entities;
 using AuthenticationService.Extensions;
 using AuthenticationService.Observability;
@@ -47,8 +47,7 @@ public class RegistrationController : ControllerBase
     }
 
     /// <summary>
-    /// Creates a new user account and emails them a confirmation link. The account exists
-    /// after this call but can't log in until the email link is clicked.
+    /// Creates a new user and emails them a confirmation link. The account can't log in until the link is clicked.
     /// </summary>
     [HttpPost("register")]
     [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
@@ -122,14 +121,8 @@ public class RegistrationController : ControllerBase
     }
 
     /// <summary>
-    /// Lands here when the user clicks the confirmation link in their registration email.
-    /// Marks the email as confirmed and rotates the user's security stamp so the link
-    /// can't be reused.
+    /// Landing point for the registration confirmation link. Marks the email confirmed, rotates the security stamp so the link can't be reused, then redirects to <paramref name="callbackUri"/>.
     /// </summary>
-    /// <param name="email">Requires valid email address</param>
-    /// <param name="token">Token generated and sent to email in step 1</param>
-    /// <param name="callbackUri">URI which user is redirected to after confirmation. Usually a page on the UI saying email confirmed and offering login</param>
-    /// <returns>ApiResponse or redirects to callbackUri</returns>
     [HttpGet("confirm/email")]
     public async Task<IActionResult> ConfirmEmailAsync([FromQuery] string email, [FromQuery] string token, [FromQuery] string? callbackUri)
     {
@@ -162,10 +155,7 @@ public class RegistrationController : ControllerBase
         return Redirect(ResolveSafeCallback(callbackUri));
     }
 
-    /// <summary>
-    /// Validates the supplied <paramref name="callbackUri"/> against the CORS allow-list
-    /// before honouring it.
-    /// </summary>
+    // Validates callbackUri against the CORS allow-list before honouring it.
     private string ResolveSafeCallback(string? callbackUri)
     {
         var defaultDestination = $"{_publicUrlSettings.BaseUrl}{PageRouteConstants.ActionComplete}";
@@ -189,12 +179,9 @@ public class RegistrationController : ControllerBase
 
     private bool IsAllowedRedirect(string callbackUri)
     {
-        // Parse as RelativeOrAbsolute first, then explicitly check IsAbsoluteUri. Don't
-        // use UriKind.Absolute directly: it's platform-dependent for paths that start
-        // with '/'. Windows correctly returns false (no scheme); Linux interprets the
-        // leading slash as a Unix path and parses it as a file:// URI, returning true.
-        // The bug shows up in CI (Linux runners) but not on developer Windows boxes —
-        // the kind of regression that's invisible until production / CI catches it.
+        // RelativeOrAbsolute + explicit IsAbsoluteUri check: UriKind.Absolute is platform-dependent
+        // for "/..." paths — Linux parses them as file:// URIs, Windows correctly rejects. Bug only
+        // shows up on CI (Linux) runners.
         if (!Uri.TryCreate(callbackUri, UriKind.RelativeOrAbsolute, out var uri) || !uri.IsAbsoluteUri)
         {
             return true; // relative URL — stays on our origin, safe
@@ -205,15 +192,7 @@ public class RegistrationController : ControllerBase
     }
 
     /// <summary>
-    /// Completes the admin-creates-user invitation flow. The user lands here from the
-    /// AcceptInvitation page after the admin invited them — supplies a new password +
-    /// the Identity reset token from their invitation email. On success: password is
-    /// set AND email is confirmed in one step.
-    ///
-    /// <para>Returns <c>400 invitation_invalid</c> when the email is unknown or the token
-    /// invalid (single shape for both — don't leak which emails exist). Returns
-    /// <c>409 invitation_already_used</c> when the user has already activated their
-    /// account, so reuse-of-token can't reset an established password.</para>
+    /// Completes the admin-invite flow. Sets the password and confirms email in one step. Returns 400 invitation_invalid (unknown email or bad token — single shape so we don't leak which emails exist) or 409 invitation_already_used.
     /// </summary>
     [HttpPost("accept-invitation")]
     [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
@@ -225,8 +204,7 @@ public class RegistrationController : ControllerBase
             return BadRequest(new ApiResponse().AddError("invitation_invalid", ErrorMessages.InvalidRequest));
         }
 
-        // Pending-invitation guard — email not confirmed AND no password set. Anything
-        // else means the invitation is no longer valid for this user.
+        // Pending-invitation guard — email not confirmed AND no password set.
         if (user.EmailConfirmed || !string.IsNullOrEmpty(user.PasswordHash))
         {
             return Conflict(new ApiResponse().AddError(
@@ -252,9 +230,7 @@ public class RegistrationController : ControllerBase
             user.Id,
             Request.GetRemoteIpAddress());
 
-        // Redirect-shape if the client supplied a callback; otherwise the standard 200.
-        // The Razor page submits this endpoint via JS and uses its own success handling,
-        // but a non-JS / direct caller can also follow the redirect.
+        // Redirect-shape if a callback was supplied; otherwise standard 200.
         if (!string.IsNullOrWhiteSpace(request.CallbackUri))
         {
             return Ok(new { redirect = ResolveSafeCallback(request.CallbackUri) });
@@ -264,9 +240,7 @@ public class RegistrationController : ControllerBase
     }
 
     /// <summary>
-    /// Resends the email-confirmation link if the user lost the original (e.g. it landed
-    /// in spam). Returns 200 even when the email isn't recognised — we don't leak which
-    /// addresses are registered.
+    /// Resends the email-confirmation link. Returns 200 even for unknown emails — don't leak which addresses are registered.
     /// </summary>
     [HttpPost("confirm/email")]
     [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
@@ -299,9 +273,7 @@ public class RegistrationController : ControllerBase
         {
             { UriConstants.Token, token },
             { UriConstants.Email, user.Email! },
-            // After confirmation, redirect the user to the supplied callback if any,
-            // otherwise to the bundled ActionComplete Razor page so something sensible
-            // renders.
+            // Fall back to the bundled ActionComplete page if no callback supplied.
             { UriConstants.CallBackUri, callbackUri ?? $"{_publicUrlSettings.BaseUrl}{PageRouteConstants.ActionComplete}" }
         };
 

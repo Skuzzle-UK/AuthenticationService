@@ -11,9 +11,7 @@ public class ClientCreatedResponse : ApiResponse
     public string Name { get; set; } = default!;
 
     /// <summary>
-    /// The plaintext client secret. Shown <em>once</em> — the response is the only place
-    /// this string is ever materialised; the database stores only the hash. Treat as
-    /// sensitive credential material on the admin side.
+    /// Plaintext client secret. Shown once — DB stores only the hash. Treat as sensitive credential material.
     /// </summary>
     public string ClientSecret { get; set; } = default!;
 }

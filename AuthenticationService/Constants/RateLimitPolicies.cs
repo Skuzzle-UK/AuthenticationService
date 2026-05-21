@@ -1,26 +1,19 @@
 namespace AuthenticationService.Constants;
 
 /// <summary>
-/// Names for the endpoint-scoped rate-limit policies registered in
-/// <c>HostExtensions.AddRateLimiting</c>. Apply with
-/// <c>[EnableRateLimiting(RateLimitPolicies.AuthStrict)]</c> on actions where the
-/// global default isn't tight enough. Endpoints with a named policy attached are
-/// subject to BOTH the global limiter and the named policy — most-restrictive wins.
+/// Named rate-limit policies registered in <c>HostExtensions.AddRateLimiting</c>. Endpoints
+/// tagged with a named policy are subject to BOTH the global limiter and the named policy —
+/// most-restrictive wins.
 /// </summary>
 public static class RateLimitPolicies
 {
     /// <summary>
-    /// Per-IP cap for unauthenticated credential / link-handling endpoints
-    /// (login, MFA, password reset request/confirm, registration, email-confirm).
-    /// Sized for credential-stuffing defence — well above what a real user would do,
-    /// well below what an attacker needs (10/minute per IP).
+    /// Per-IP cap for unauthenticated credential endpoints (10/min). Credential-stuffing defence.
     /// </summary>
     public const string AuthStrict = "auth-strict";
 
     /// <summary>
-    /// Per-user cap for authenticated state-changing endpoints (change password,
-    /// lock account, enable MFA). Tighter than the global default to discourage abuse
-    /// of a hijacked session (10/minute per user).
+    /// Per-user cap for authenticated state-changing endpoints (10/min). Discourages hijacked-session abuse.
     /// </summary>
     public const string AuthSensitive = "auth-sensitive";
 }

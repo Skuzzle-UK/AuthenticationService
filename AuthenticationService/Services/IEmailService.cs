@@ -1,8 +1,7 @@
 namespace AuthenticationService.Services;
 
 /// <summary>
-/// Sends outbound emails for the auth flows — registration confirmation, password reset,
-/// MFA, account-lock notifications, and similar.
+/// Sends outbound emails for the auth flows — registration, password reset, MFA, lock notifications.
 /// </summary>
 public interface IEmailService
 {

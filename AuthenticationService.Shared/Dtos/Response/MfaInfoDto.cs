@@ -7,9 +7,13 @@ namespace AuthenticationService.Shared.Dtos.Response;
 /// </summary>
 public class MfaInfoDto
 {
-    /// <summary>Reflects Identity's <c>TwoFactorEnabled</c> column.</summary>
+    /// <summary>
+    /// Reflects Identity's <c>TwoFactorEnabled</c> column.
+    /// </summary>
     public bool Enabled { get; set; }
 
-    /// <summary>Which provider the user prefers for the MFA challenge (authenticator app, email, SMS).</summary>
+    /// <summary>
+    /// Which provider the user prefers for the MFA challenge (authenticator app, email, SMS).
+    /// </summary>
     public MfaProviders PreferredProvider { get; set; }
 }

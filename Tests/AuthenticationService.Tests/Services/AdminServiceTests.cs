@@ -17,16 +17,9 @@ using NSubstitute;
 namespace AuthenticationService.Tests.Services;
 
 /// <summary>
-/// <para>Service-layer tests for <see cref="AdminService"/>. Drives a real SQLite-InMemory
-/// <see cref="DatabaseContext"/> for the list / detail / audit queries, with stubbed
-/// <see cref="UserManager{TUser}"/> + <see cref="RoleManager{TRole}"/> + <see cref="IUserService"/>
-/// + <see cref="ITokenService"/> + <see cref="IEmailService"/> for the
-/// behaviour-side concerns.</para>
-///
-/// <para>Coverage focus: discriminated-union outcomes from <c>CreateUserAsync</c>
-/// (each variant is independently asserted), self-target / invitation-state guards on
-/// <c>ResendInvitationAsync</c>, and idempotency / cascade-on-MFA-reset for the
-/// state-changing endpoints.</para>
+/// Drives <see cref="AdminService"/> against SQLite-InMemory with stubbed UserManager / RoleManager /
+/// IUserService / ITokenService / IEmailService. Focuses on the <c>CreateUserAsync</c> discriminated-union
+/// outcomes, invitation-state guards, and cascade-on-state-change for the destructive endpoints.
 /// </summary>
 public class AdminServiceTests : IDisposable
 {
@@ -41,7 +34,6 @@ public class AdminServiceTests : IDisposable
         await SeedUserAsync(db, "bob", "bob@example.com");
         await SeedUserAsync(db, "charlie", "charlie@example.com");
 
-        // search=ali → only "alice"
         var result = await svc.ListUsersAsync(new AdminListFilter { Search = "ali" }, CancellationToken.None);
 
         result.TotalCount.Should().Be(1);
@@ -51,11 +43,8 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task ListUsersAsync_LockedOnly_FiltersToLockedAccounts()
     {
-        // arrange — three users: one locked indefinitely, one locked-but-already-expired
-        // (i.e. effectively unlocked), one never locked. The filter must surface ONLY the
-        // currently-locked one. Locking is "LockoutEnd in the future" — Identity uses a
-        // far-future sentinel (LockoutDurations.Indefinite) for the "permanently locked"
-        // shape rather than null-means-locked.
+        // Three users: locked indefinitely (surface), locked-but-expired (skip), never locked (skip).
+        // Identity uses far-future LockoutEnd sentinel for "permanently locked" rather than null-means-locked.
         var (svc, db, _) = BuildService();
         var locked = await SeedUserAsync(db, "locked", "locked@example.com");
         locked.LockoutEnd = DateTimeOffset.UtcNow.AddYears(10);
@@ -64,13 +53,8 @@ public class AdminServiceTests : IDisposable
         await SeedUserAsync(db, "active", "active@example.com");
         await db.SaveChangesAsync();
 
-        // act
         var result = await svc.ListUsersAsync(new AdminListFilter { LockedOnly = true }, CancellationToken.None);
 
-        // assert — only the user whose LockoutEnd is in the future should be returned.
-        // The IsLocked projection field must also be true for the surfaced row. If the
-        // production query ever stops comparing against UtcNow correctly this test catches
-        // the regression locally, without waiting for the slow MySQL-backed integration scenario.
         result.TotalCount.Should().Be(1);
         result.Results.Should().ContainSingle();
         result.Results[0].UserName.Should().Be("locked");
@@ -114,7 +98,7 @@ public class AdminServiceTests : IDisposable
         deps.UserManager.FindByIdAsync(user.Id).Returns(user);
         deps.UserManager.GetRolesAsync(user).Returns(new List<string> { "DefaultUser" });
 
-        // Two refresh-token families — one still live, one consumed. Should count 1.
+        // Two refresh-token families — one live, one consumed. Active count should be 1.
         db.RefreshTokens.AddRange(
             new RefreshToken { Id = Guid.NewGuid(), UserId = user.Id, TokenHash = "h1", FamilyId = Guid.NewGuid(), CreatedAt = DateTime.UtcNow.AddMinutes(-1), ExpiresAt = DateTime.UtcNow.AddDays(1) },
             new RefreshToken { Id = Guid.NewGuid(), UserId = user.Id, TokenHash = "h2", FamilyId = Guid.NewGuid(), CreatedAt = DateTime.UtcNow.AddMinutes(-5), ExpiresAt = DateTime.UtcNow.AddDays(1), ConsumedAt = DateTime.UtcNow.AddMinutes(-1) });
@@ -369,8 +353,7 @@ public class AdminServiceTests : IDisposable
             "alice@example.com",
             EmailSubjects.PasswordReset,
             Arg.Is<string>(body => body.Contains("administrator has initiated")));
-        // Refresh-token revocation only — security-stamp rotation deliberately deferred
-        // to the user's reset-password completion (Identity rotates it as a side effect)
+        // Refresh-token revocation only — security-stamp rotation is deferred to the user's reset-password completion
         // so the just-generated reset token stays valid through the round trip.
         await deps.TokenService.Received(1).RevokeAllRefreshTokenFamiliesAsync(
             TargetId, RevocationReasons.AdminForcedPasswordReset);
@@ -444,10 +427,8 @@ public class AdminServiceTests : IDisposable
         connection.Open();
         _connections.Add(connection);
 
-        // Use the test-only DatabaseContext subclass so the LockoutEnd → UtcTicks value
-        // converter is applied — the LockedOnly filter test does a DateTimeOffset binary
-        // comparison that the SQLite EF provider can't translate against the unconverted
-        // column. See TestDatabaseContext for the full story.
+        // TestDatabaseContext applies the LockoutEnd → UtcTicks converter so the LockedOnly filter's DateTimeOffset
+        // binary comparison is translatable by the SQLite EF provider.
         var options = new DbContextOptionsBuilder<TestDatabaseContext>().UseSqlite(connection).Options;
         var db = new TestDatabaseContext(options);
         db.Database.EnsureCreated();
@@ -462,8 +443,7 @@ public class AdminServiceTests : IDisposable
             EmailService = Substitute.For<IEmailService>(),
         };
 
-        // Default role check is "yes, this exists" so the happy-path tests don't have
-        // to opt in for every role.
+        // Default role check is "yes, this exists" so happy-path tests don't have to opt in for every role.
         deps.RoleManager.RoleExistsAsync(Arg.Any<string>()).Returns(true);
 
         var publicUrl = Options.Create(new PublicUrlSettings { BaseUrl = "https://auth.test" });

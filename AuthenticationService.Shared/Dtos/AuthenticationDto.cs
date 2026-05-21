@@ -14,10 +14,8 @@ public class AuthenticationDto
     public MfaProviders? MfaProvider { get; set; }
 
     /// <summary>
-    /// Optional. Where to send the user if they get locked out by too many failed login
-    /// attempts and want to reset their password proactively. Multi-consumer setups should
-    /// pass their own UI's reset URL here; if omitted, the auth service falls back to its
-    /// own bundled <c>/ResetPassword</c> page on <c>PublicUrlSettings.BaseUrl</c>.
+    /// Optional. Reset-password URL the user is sent to if they get locked out; falls back
+    /// to the auth service's bundled <c>/ResetPassword</c> page when omitted.
     /// </summary>
     public string? ResetPasswordUri { get; set; }
 }

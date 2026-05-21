@@ -4,20 +4,11 @@ using Microsoft.Extensions.Options;
 namespace AuthenticationService.Validators;
 
 /// <summary>
-/// Belt-and-braces validation for <see cref="AdminAccountSeedSettings"/> beyond the
-/// <c>[Required]</c> attribute already enforced by <c>ValidateDataAnnotations()</c>.
-///
-/// <para>The single rule that matters: outside Development, refuse to start if the password
-/// is the well-known dev default. That's the realistic failure mode — an operator copies
-/// <c>appsettings.Development.json</c> into a non-dev environment without changing it, or
-/// forgets to set <c>AdminAccountSeedSettings__Password</c> via env var / secret store.
-/// Identity's own password-complexity rules at user-creation time catch weak-but-not-default
-/// choices, so this validator deliberately doesn't maintain a generic deny-list.</para>
+/// Refuses to start outside Development if the seed-admin password is the well-known dev default — guards against operators copying appsettings.Development.json without changing the password.
 /// </summary>
 public sealed class AdminAccountSeedSettingsValidator : IValidateOptions<AdminAccountSeedSettings>
 {
-    /// <summary>The dev-only default that ships in <c>appsettings.Development.json</c>.
-    /// Kept in sync with that file by hand — if you change one, change the other.</summary>
+    // Kept in sync with appsettings.Development.json by hand — change both together.
     private const string DevDefaultPassword = "Pa5$word123-dev";
 
     private readonly IHostEnvironment _environment;
@@ -29,9 +20,7 @@ public sealed class AdminAccountSeedSettingsValidator : IValidateOptions<AdminAc
 
     public ValidateOptionsResult Validate(string? name, AdminAccountSeedSettings options)
     {
-        // Only validate the default-named instance. Named-options support isn't used for
-        // these settings today; if a future caller introduces named instances they can opt
-        // into their own validator rather than inheriting this rule.
+        // Only validate the default-named instance — named-options callers opt into their own validator.
         if (name != Options.DefaultName)
         {
             return ValidateOptionsResult.Skip;

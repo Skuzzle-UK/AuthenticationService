@@ -4,42 +4,36 @@ namespace AuthenticationService.Shared.Dtos;
 
 /// <summary>
 /// Profile fields the logged-in user can change via <c>PUT /api/Account/me</c>. Each field
-/// is optional: send only the ones being changed and the rest are left untouched. Fields
-/// not covered here have dedicated flows (username / email / password / MFA / roles).
-///
-/// <para>Changing <see cref="PhoneNumber"/> resets the phone-confirmed flag — the user must
-/// re-confirm before SMS-based MFA works again, since the old confirmation no longer
-/// applies to the new number.</para>
+/// is optional: null leaves the existing value alone, empty string clears it.
 /// </summary>
 public class UpdateProfileDto
 {
     /// <summary>
-    /// First (given) name. Null leaves the existing value alone; empty string clears it.
+    /// First (given) name.
     /// </summary>
     [MaxLength(50)]
     public string? FirstName { get; set; }
 
     /// <summary>
-    /// Last (family) name. Null leaves the existing value alone; empty string clears it.
+    /// Last (family) name.
     /// </summary>
     [MaxLength(50)]
     public string? LastName { get; set; }
 
     /// <summary>
-    /// Date of birth. Null leaves the existing value alone.
+    /// Date of birth.
     /// </summary>
     public DateOnly? DateOfBirth { get; set; }
 
     /// <summary>
-    /// Phone number in any format the <see cref="PhoneAttribute"/> accepts. Changing this
-    /// resets <c>PhoneNumberConfirmed</c> — the user must re-confirm before SMS-based MFA
-    /// will work against the new number.
+    /// Phone number. Changing this resets <c>PhoneNumberConfirmed</c> — the user must
+    /// re-confirm before SMS-based MFA works against the new number.
     /// </summary>
     [Phone]
     public string? PhoneNumber { get; set; }
 
     /// <summary>
-    /// Country (free-text — no ISO-code validation here). Null leaves alone; empty clears.
+    /// Country (free-text — no ISO-code validation).
     /// </summary>
     [MaxLength(60)]
     public string? Country { get; set; }

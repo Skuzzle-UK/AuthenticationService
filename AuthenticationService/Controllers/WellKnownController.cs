@@ -33,10 +33,7 @@ public class WellKnownController : ControllerBase
     }
 
     /// <summary>
-    /// Returns every public signing key the service currently knows about. During key
-    /// rotation the active key plus any predecessors are all published here so consumers
-    /// can validate tokens issued by any of them — the JWT's <c>kid</c> header tells
-    /// JwtBearer which to use.
+    /// Returns every public signing key the service currently knows about. During rotation, active key + predecessors are all published so consumers can validate tokens from any of them.
     /// </summary>
     [HttpGet(WellKnownPaths.Jwks)]
     [ResponseCache(Duration = CacheSeconds, Location = ResponseCacheLocation.Any)]
@@ -49,10 +46,8 @@ public class WellKnownController : ControllerBase
     [ResponseCache(Duration = CacheSeconds, Location = ResponseCacheLocation.Any)]
     public IActionResult OpenIdConfiguration()
     {
-        // Use the configured public base URL rather than request-derived scheme/host so
-        // the discovery doc advertises the canonical name even behind a reverse proxy
-        // that doesn't preserve Host (we deliberately don't honour X-Forwarded-Host —
-        // host-header attack surface).
+        // Use the configured public base URL, not request-derived host — we deliberately
+        // don't honour X-Forwarded-Host (host-header attack surface).
         var jwksUri = $"{_publicUrlSettings.BaseUrl}/{WellKnownPaths.Prefix}/{WellKnownPaths.Jwks}";
         var tokenEndpoint = $"{_publicUrlSettings.BaseUrl}/oauth/token";
 
@@ -60,9 +55,6 @@ public class WellKnownController : ControllerBase
         {
             issuer = _jwtSettings.ValidIssuer,
             jwks_uri = jwksUri,
-            // OAuth 2.0 token endpoint — RFC 8414 §2. Only client_credentials is
-            // supported today (no password grant; user login goes through
-            // /api/Authentication/authenticate which isn't an OAuth-shaped endpoint).
             token_endpoint = tokenEndpoint,
             grant_types_supported = new[] { "client_credentials" },
             token_endpoint_auth_methods_supported = new[] { "client_secret_basic", "client_secret_post" },

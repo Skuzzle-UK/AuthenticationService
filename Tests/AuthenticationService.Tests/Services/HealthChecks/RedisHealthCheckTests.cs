@@ -7,31 +7,21 @@ using StackExchange.Redis;
 namespace AuthenticationService.Tests.Services.HealthChecks;
 
 /// <summary>
-/// <para><see cref="RedisHealthCheck"/> wraps the multiplexer's <c>PingAsync</c> with a
-/// 1-second timeout. Three paths:</para>
-/// <list type="bullet">
-///   <item><description>Ping returns within timeout → Healthy with the documented message.</description></item>
-///   <item><description>Ping throws (connection refused, RedisException) → Unhealthy with the exception attached.</description></item>
-///   <item><description>Ping never completes within timeout → Unhealthy (the linked CTS cancels the wait).</description></item>
-/// </list>
+/// Wraps <c>PingAsync</c> with a 1-second timeout. Three paths: success, throw, hang-until-timeout.
 /// </summary>
 public class RedisHealthCheckTests
 {
     [Fact]
     public async Task CheckHealth_PingSucceeds_ReturnsHealthy()
     {
-        // arrange — mock the multiplexer to return a database whose PingAsync completes
-        // immediately. The exact ping value doesn't matter (we ignore it).
         var redis = Substitute.For<IConnectionMultiplexer>();
         var db = Substitute.For<IDatabase>();
         redis.GetDatabase().Returns(db);
         db.PingAsync().Returns(TimeSpan.FromMilliseconds(5));
         var check = new RedisHealthCheck(redis);
 
-        // act
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
-        // assert
         result.Status.Should().Be(HealthStatus.Healthy);
         result.Description.Should().Be("Redis reachable.");
     }
@@ -39,8 +29,7 @@ public class RedisHealthCheckTests
     [Fact]
     public async Task CheckHealth_PingThrows_ReturnsUnhealthyWithException()
     {
-        // arrange — connection refused, etc. Surface as Unhealthy so K8s readiness
-        // probe pulls the pod from Service rotation until Redis recovers.
+        // Connection refused etc. — surface as Unhealthy so K8s readiness pulls the pod from rotation.
         var redis = Substitute.For<IConnectionMultiplexer>();
         var db = Substitute.For<IDatabase>();
         redis.GetDatabase().Returns(db);
@@ -48,10 +37,8 @@ public class RedisHealthCheckTests
         db.PingAsync().Returns<Task<TimeSpan>>(_ => throw failure);
         var check = new RedisHealthCheck(redis);
 
-        // act
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
-        // assert
         result.Status.Should().Be(HealthStatus.Unhealthy);
         result.Description.Should().Be("Redis unreachable.");
         result.Exception.Should().BeSameAs(failure);
@@ -60,21 +47,17 @@ public class RedisHealthCheckTests
     [Fact]
     public async Task CheckHealth_PingHangsBeyondTimeout_ReturnsUnhealthy()
     {
-        // arrange — Ping never completes (e.g., Redis is up but blocked on a slow
-        // command). The 1-second timeout via linked CTS turns the wait into a
-        // TaskCanceledException, which the catch block translates to Unhealthy.
+        // 1-second timeout via linked CTS turns the wait into TaskCanceledException → Unhealthy.
         var redis = Substitute.For<IConnectionMultiplexer>();
         var db = Substitute.For<IDatabase>();
         redis.GetDatabase().Returns(db);
-        // Async TCS that never completes.
         var hangingTask = new TaskCompletionSource<TimeSpan>().Task;
         db.PingAsync().Returns(hangingTask);
         var check = new RedisHealthCheck(redis);
 
-        // act — the test waits 1s for the timeout to fire. Acceptable in a unit-test run.
+        // Test waits 1s for the timeout to fire.
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
-        // assert
         result.Status.Should().Be(HealthStatus.Unhealthy);
         result.Description.Should().Be("Redis unreachable.");
     }
@@ -82,10 +65,7 @@ public class RedisHealthCheckTests
     [Fact]
     public async Task CheckHealth_OuterCancellationTokenAlreadyCancelled_ReturnsUnhealthy()
     {
-        // arrange — caller cancelled before we even started (e.g., probe shutdown). The
-        // linked CTS is also-cancelled, the wait throws OperationCanceledException, we
-        // surface that as Unhealthy. Pinned because the alternative — letting the
-        // exception propagate — would crash the probe pipeline.
+        // Already-cancelled outer token must surface as Unhealthy — letting the exception propagate would crash the probe pipeline.
         var redis = Substitute.For<IConnectionMultiplexer>();
         var db = Substitute.For<IDatabase>();
         redis.GetDatabase().Returns(db);
@@ -94,10 +74,8 @@ public class RedisHealthCheckTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        // act
         var result = await check.CheckHealthAsync(new HealthCheckContext(), cts.Token);
 
-        // assert
         result.Status.Should().Be(HealthStatus.Unhealthy);
     }
 }

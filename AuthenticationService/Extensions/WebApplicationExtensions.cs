@@ -10,21 +10,16 @@ using Serilog;
 namespace AuthenticationService.Extensions;
 
 /// <summary>
-/// Builds the HTTP request pipeline. The companion to <see cref="HostExtensions"/> —
-/// services are registered there, the pipeline is wired up here.
+/// Builds the HTTP request pipeline. Companion to <see cref="HostExtensions"/> which
+/// registers the services.
 /// </summary>
 public static class WebApplicationExtensions
 {
-    /// <summary>
-    /// Wires up the full request pipeline: forwarded headers, request logging, Swagger,
-    /// (optional) startup migrations + seed, HTTPS, CORS, auth, custom middleware, the
-    /// rate limiter, health-check endpoints, and finally controllers + Razor pages.
-    /// Order matters — each step has a comment where it's not obvious.
-    /// </summary>
     public static async Task<WebApplication> ConfigureApplicationAsync(this WebApplication app)
     {
-        // Always keep UseForwardedHeaders at the top of the pipeline, before any middleware that might consume the forwarded header values (e.g. auth, rate-limiting).
-        // Without this, the service won't respect X-Forwarded-For and all client IPs will be the load balancers — meaning audit logs and the rate-limiter's per-IP partitioning will both be wrong.
+        // Must run first — anything downstream that reads RemoteIpAddress (auth audit,
+        // rate-limit partitioning) will see the proxy IP instead of the real client
+        // without this.
         app.UseForwardedHeaders();
 
         app.UseSerilogRequestLogging(options =>
@@ -62,10 +57,7 @@ public static class WebApplicationExtensions
             app.UseHsts();
         }
 
-        // HTTPS redirection is gated by HostingSettings:HttpsRedirectionEnabled (default
-        // true). Production keeps it on; integration tests turn it off because the AppHost
-        // running under CI on Linux can't reliably bind HTTPS (dev cert dance), and the
-        // tests don't need transport-level confidentiality on a localhost-only run.
+        // Gated off in integration tests — AppHost on Linux CI can't reliably bind HTTPS.
         var hostingSettings = app.Services.GetRequiredService<IOptions<HostingSettings>>().Value;
         if (hostingSettings.HttpsRedirectionEnabled)
         {

@@ -15,17 +15,7 @@ using Microsoft.Net.Http.Headers;
 namespace AuthenticationService.Controllers;
 
 /// <summary>
-/// OAuth 2.0 token endpoint (RFC 6749). Currently supports only the
-/// <c>client_credentials</c> grant — the service-to-service identity flow. Consumers
-/// POST their <c>client_id</c> / <c>client_secret</c> (Basic auth header or
-/// form-encoded body), the requested <c>audience</c>, and a space-separated
-/// <c>scope</c> list, and get back a JWT they can use as a Bearer token against
-/// downstream services.
-///
-/// <para>Anonymous + rate-limited (<see cref="RateLimitPolicies.AuthStrict"/> — 10/min
-/// per IP). Errors follow RFC 6749 §5.2: <c>{ "error": "...", "error_description": "..." }</c>
-/// with the standard error codes. Error descriptions are deliberately bland so an
-/// attacker can't enumerate valid client IDs by response-text differences.</para>
+/// OAuth 2.0 token endpoint (RFC 6749). Supports only the <c>client_credentials</c> grant. Error descriptions are deliberately bland so attackers can't enumerate valid client IDs.
 /// </summary>
 [Route("oauth")]
 [ApiController]
@@ -56,45 +46,37 @@ public class OAuthController : ControllerBase
     }
 
     /// <summary>
-    /// RFC 6749 §4.4 client-credentials grant. See class summary for the contract.
+    /// RFC 6749 §4.4 client-credentials grant.
     /// </summary>
     [HttpPost("token")]
     [Consumes("application/x-www-form-urlencoded")]
     public async Task<IActionResult> TokenAsync([FromForm] OAuthTokenRequest request, CancellationToken ct)
     {
-        // HTTPS check — config-gated so integration tests can drive the endpoint over
-        // HTTP. Production keeps RequireHttps=true.
+        // Config-gated so integration tests can drive the endpoint over HTTP. Production keeps RequireHttps=true.
         if (_settings.RequireHttps && !Request.IsHttps)
         {
             return Deny("invalid_request", "HTTPS is required for this endpoint.");
         }
 
-        // Grant type — only client_credentials is supported.
         if (!string.Equals(request.GrantType, GrantTypeClientCredentials, StringComparison.Ordinal))
         {
             return Deny("unsupported_grant_type",
                 $"Only '{GrantTypeClientCredentials}' is supported by this endpoint.");
         }
 
-        // Extract credentials. Basic auth header preferred (RFC 6749 §2.3.1); body
-        // fallback for clients that can't easily set headers. If both are present and
-        // disagree, that's a malformed request.
         if (!TryExtractCredentials(request, out var clientId, out var clientSecret, out var credentialError))
         {
             return Deny("invalid_request", credentialError);
         }
 
-        // Find + verify. FindActiveAsync returns null for both "no such client" AND
-        // "disabled client" so the response can't be used to enumerate valid IDs.
+        // FindActiveAsync returns null for both "no such client" AND "disabled" so the response can't enumerate valid IDs.
         var client = await _clientService.FindActiveAsync(clientId!, ct);
         if (client is null || !_clientService.VerifySecret(client, clientSecret!))
         {
             return DenyInvalidClient();
         }
 
-        // Audience + scope are both required for this grant. RFC technically allows
-        // scope to be optional but we require it — service tokens must always carry a
-        // bounded scope set.
+        // Audience + scope are both required. RFC allows scope optional but we require it — service tokens must always carry a bounded scope set.
         if (string.IsNullOrWhiteSpace(request.Audience))
         {
             return Deny("invalid_request", "audience is required.");
@@ -113,9 +95,7 @@ public class OAuthController : ControllerBase
             return Deny("invalid_request", "scope is required.");
         }
 
-        // Authorise each requested scope against the client's allow-list. One unknown
-        // scope fails the whole request — there's no concept of "give me what you can"
-        // here, the caller asked for X and either gets X or gets nothing.
+        // All-or-nothing: one unknown scope fails the whole request.
         foreach (var scope in scopes)
         {
             if (!await _clientService.HasScopeAsync(clientId!, request.Audience!, scope, ct))
@@ -136,7 +116,6 @@ public class OAuthController : ControllerBase
             }
         }
 
-        // Issue the token + record the activity.
         var token = await _tokenService.CreateServiceTokenAsync(clientId!, request.Audience!, scopes);
         await _clientService.TouchLastUsedAsync(clientId!, ct);
 
@@ -149,8 +128,6 @@ public class OAuthController : ControllerBase
             Request.GetRemoteIpAddress());
         _metrics.ClientCredentialsTokenIssued();
 
-        // expires_in is seconds-until-expiry. Always positive (the token-gen method
-        // computes Expires from UtcNow + the configured lifetime).
         var expiresIn = (int)Math.Max(0, (token.Expires!.Value - DateTime.UtcNow).TotalSeconds);
 
         return Ok(new OAuthTokenResponse
@@ -164,12 +141,7 @@ public class OAuthController : ControllerBase
 
     // ─── Helpers ───────────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Pulls client_id + client_secret out of the request. Prefers the
-    /// <c>Authorization: Basic</c> header (RFC 6749 §2.3.1); falls back to the body
-    /// fields. Returns false (with <paramref name="error"/> populated) if neither
-    /// source yields both fields, or if the two sources disagree.
-    /// </summary>
+    // Prefers Authorization: Basic (RFC 6749 §2.3.1); falls back to body fields. Returns false if neither source yields both, or if the two disagree.
     private bool TryExtractCredentials(
         OAuthTokenRequest request,
         out string? clientId,
@@ -209,8 +181,7 @@ public class OAuthController : ControllerBase
             }
         }
 
-        // Body fields. If header was present, the body MUST match (or be empty); if
-        // not present, the body fills in.
+        // If header was present, body MUST match (or be empty); otherwise body fills in.
         if (!string.IsNullOrEmpty(request.ClientId))
         {
             if (clientId is not null && !string.Equals(clientId, request.ClientId, StringComparison.Ordinal))
@@ -238,10 +209,7 @@ public class OAuthController : ControllerBase
         return true;
     }
 
-    /// <summary>
-    /// Emits the standard error-response shape for non-credential failures
-    /// (invalid_request / unsupported_grant_type). Always 400 per RFC 6749 §5.2.
-    /// </summary>
+    // 400 + standard RFC 6749 §5.2 error-response shape.
     private IActionResult Deny(string error, string? description)
     {
         _logger.LogWarning(
@@ -258,11 +226,7 @@ public class OAuthController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// 401 + <c>WWW-Authenticate: Basic</c> for invalid_client per RFC 6749 §5.2 —
-    /// signals to a Basic-auth client that it should retry with valid credentials
-    /// rather than treating this as a malformed request.
-    /// </summary>
+    // 401 + WWW-Authenticate: Basic per RFC 6749 §5.2 — signals retry-with-credentials rather than malformed-request.
     private IActionResult DenyInvalidClient()
     {
         _logger.LogWarning(

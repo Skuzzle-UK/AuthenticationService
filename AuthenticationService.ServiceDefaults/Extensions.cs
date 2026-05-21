@@ -9,9 +9,11 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 
 namespace AuthenticationService.ServiceDefaults;
-// Adds common Aspire services: service discovery, resilience, health checks, and OpenTelemetry.
-// This project should be referenced by each service project in your solution.
-// To learn more about using this project, see https://aka.ms/aspire/service-defaults
+
+/// <summary>
+/// Common Aspire defaults: service discovery, resilience, health checks, OpenTelemetry.
+/// See https://aka.ms/aspire/service-defaults.
+/// </summary>
 public static class Extensions
 {
     private const string HealthEndpointPath = "/health";
@@ -26,18 +28,12 @@ public static class Extensions
 
         builder.Services.ConfigureHttpClientDefaults(http =>
         {
-            // Turn on resilience by default
             http.AddStandardResilienceHandler();
-
-            // Turn on service discovery by default
             http.AddServiceDiscovery();
         });
 
-        // Uncomment the following to restrict the allowed schemes for service discovery.
-        // builder.Services.Configure<ServiceDiscoveryOptions>(options =>
-        // {
-        //     options.AllowedSchemes = ["https"];
-        // });
+        // To restrict service-discovery schemes:
+        // builder.Services.Configure<ServiceDiscoveryOptions>(o => o.AllowedSchemes = ["https"]);
 
         return builder;
     }
@@ -62,11 +58,10 @@ public static class Extensions
             {
                 tracing.AddSource(builder.Environment.ApplicationName)
                     .AddAspNetCoreInstrumentation(tracing =>
-                        // Exclude health check requests from tracing
+                        // Drop health/probe paths to keep traces signal-heavy.
                         tracing.Filter = context =>
                             !context.Request.Path.StartsWithSegments(HealthEndpointPath)
                             && !context.Request.Path.StartsWithSegments(AlivenessEndpointPath)
-                            // Reduce noise from Kubernetes probes by excluding their default paths
                             && !context.Request.Path.StartsWithSegments("/livez")
                             && !context.Request.Path.StartsWithSegments("/readyz")
                             && !context.Request.Path.StartsWithSegments("/healthz")
@@ -89,12 +84,8 @@ public static class Extensions
             builder.Services.AddOpenTelemetry().UseOtlpExporter();
         }
 
-        // Uncomment the following lines to enable the Azure Monitor exporter (requires the Azure.Monitor.OpenTelemetry.AspNetCore package)
-        //if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
-        //{
-        //    builder.Services.AddOpenTelemetry()
-        //       .UseAzureMonitor();
-        //}
+        // For Azure Monitor add the Azure.Monitor.OpenTelemetry.AspNetCore package
+        // and call .UseAzureMonitor() when APPLICATIONINSIGHTS_CONNECTION_STRING is set.
 
         return builder;
     }
@@ -102,7 +93,6 @@ public static class Extensions
     public static TBuilder AddDefaultHealthChecks<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
         builder.Services.AddHealthChecks()
-            // Add a default liveness check to ensure app is responsive
             .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
 
         return builder;
@@ -110,14 +100,11 @@ public static class Extensions
 
     public static WebApplication MapDefaultEndpoints(this WebApplication app)
     {
-        // Adding health checks endpoints to applications in non-development environments has security implications.
-        // See https://aka.ms/aspire/healthchecks for details before enabling these endpoints in non-development environments.
+        // Dev-only — exposing /health and /alive in prod has security implications.
+        // See https://aka.ms/aspire/healthchecks.
         if (app.Environment.IsDevelopment())
         {
-            // All health checks must pass for app to be considered ready to accept traffic after starting
             app.MapHealthChecks(HealthEndpointPath);
-
-            // Only health checks tagged with the "live" tag must pass for app to be considered alive
             app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
             {
                 Predicate = r => r.Tags.Contains("live")

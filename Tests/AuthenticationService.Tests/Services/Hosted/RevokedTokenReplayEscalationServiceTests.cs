@@ -17,21 +17,8 @@ using NSubstitute;
 namespace AuthenticationService.Tests.Services.Hosted;
 
 /// <summary>
-/// <para><see cref="RevokedTokenReplayEscalationService"/>'s timer wraps a single
-/// deterministic pass: <c>RunSweepAsync</c>. Tests drive the sweep directly via the
-/// <c>internal</c>-exposed method.</para>
-///
-/// <para>Branches covered:</para>
-/// <list type="bullet">
-///   <item><description>No replays in window → no-op; no DB writes, no log events.</description></item>
-///   <item><description>Replays at warn threshold → fires warn event, stamps <c>WarnedAt</c>; no lock cascade.</description></item>
-///   <item><description>Subsequent sweep with the same warned state → no re-fire (idempotency via <c>WarnedAt</c>).</description></item>
-///   <item><description>Replays at lock threshold → cascade fires (lock + revoke families + stamp rotation + email).</description></item>
-///   <item><description>Subsequent sweep after lock → no re-cascade (idempotency via <c>LockedAt</c>).</description></item>
-///   <item><description>Lock cascade for missing user (deleted out-of-band) → log warning, skip cascade gracefully.</description></item>
-///   <item><description>Lock cascade with email-send failure → security action still applied; failure logged not propagated.</description></item>
-///   <item><description>Audit row for unknown jti (no matching <see cref="RevokedToken"/>) → skipped gracefully.</description></item>
-/// </list>
+/// Drives the threshold-escalation sweep directly. Covers no-op, warn, idempotent re-warn,
+/// lock cascade, idempotent re-lock, missing user, email-send failure, orphan jti.
 /// </summary>
 public class RevokedTokenReplayEscalationServiceTests : IDisposable
 {
@@ -49,13 +36,10 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
     [Fact]
     public async Task RunSweep_NoReplaysInWindow_NoOp()
     {
-        // arrange — empty audit table.
         var (service, db, deps) = BuildService();
 
-        // act
         await service.RunSweepAsync(CancellationToken.None);
 
-        // assert — no email sent, no token-service interaction.
         await deps.EmailService.DidNotReceive().SendEmailAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
         await deps.TokenService.DidNotReceive().RevokeAllRefreshTokenFamiliesAsync(
@@ -65,18 +49,14 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
     [Fact]
     public async Task RunSweep_AttemptsAtWarnThreshold_StampsWarnedAtButDoesNotLock()
     {
-        // arrange — 2 replays (matching default WarnThreshold = 2). Should warn but
-        // not lock.
         var (service, db, deps) = BuildService(warnThreshold: 2, lockThreshold: 5);
         var revokedToken = new RevokedToken { TokenJti = "j1", UserId = "u1", ExpiresAt = DateTime.UtcNow.AddMinutes(10) };
         db.RevokedTokens.Add(revokedToken);
         SeedAttempts(db, "j1", count: 2);
         await db.SaveChangesAsync();
 
-        // act
         await service.RunSweepAsync(CancellationToken.None);
 
-        // assert
         db.ChangeTracker.Clear();
         var stamped = await db.RevokedTokens.SingleAsync();
         stamped.WarnedAt.Should().NotBeNull(because: "warn threshold met — stamp the row.");
@@ -87,7 +67,7 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
     [Fact]
     public async Task RunSweep_AlreadyWarned_DoesNotRefireOnNextSweep()
     {
-        // arrange — same row but WarnedAt already populated. Idempotent skip.
+        // WarnedAt already populated — idempotent skip.
         var (service, db, deps) = BuildService(warnThreshold: 2, lockThreshold: 5);
         var revokedToken = new RevokedToken
         {
@@ -101,10 +81,8 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
 
         var originalWarnedAt = revokedToken.WarnedAt.Value;
 
-        // act
         await service.RunSweepAsync(CancellationToken.None);
 
-        // assert — WarnedAt unchanged.
         db.ChangeTracker.Clear();
         (await db.RevokedTokens.SingleAsync()).WarnedAt
             .Should().BeCloseTo(originalWarnedAt, TimeSpan.FromSeconds(1));
@@ -113,8 +91,6 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
     [Fact]
     public async Task RunSweep_AttemptsAtLockThreshold_CascadesLockRevokeAndEmail()
     {
-        // arrange — 5 replays (lock threshold). Cascade: indefinite lock, revoke all
-        // families, rotate stamp, send recovery email, log Critical SIEM event.
         var (service, db, deps) = BuildService(warnThreshold: 2, lockThreshold: 5);
         var user = new User { Id = "u1", UserName = "alice", Email = "alice@example.com" };
         db.Users.Add(user);
@@ -125,10 +101,8 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
         deps.UserService.FindByIdAsync("u1").Returns(user);
         deps.UserService.GeneratePasswordResetTokenAsync(user).Returns("reset-tok");
 
-        // act
         await service.RunSweepAsync(CancellationToken.None);
 
-        // assert
         await deps.UserService.Received(1).SetLockoutEndDateAsync(user, LockoutDurations.Indefinite);
         await deps.TokenService.Received(1).RevokeAllRefreshTokenFamiliesAsync("u1", RevocationReasons.ReuseDetected);
         await deps.UserService.Received(1).UpdateSecurityStampAsync(user);
@@ -145,8 +119,6 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
     [Fact]
     public async Task RunSweep_AlreadyLocked_DoesNotRefireCascade()
     {
-        // arrange — LockedAt already populated. Even with continued replay, idempotency
-        // prevents re-firing (the user is already locked — no point sending another email).
         var (service, db, deps) = BuildService(warnThreshold: 2, lockThreshold: 5);
         db.RevokedTokens.Add(new RevokedToken
         {
@@ -158,10 +130,8 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
         SeedAttempts(db, "j1", count: 10);
         await db.SaveChangesAsync();
 
-        // act
         await service.RunSweepAsync(CancellationToken.None);
 
-        // assert — none of the cascade ran.
         await deps.UserService.DidNotReceive().SetLockoutEndDateAsync(Arg.Any<User>(), Arg.Any<DateTimeOffset?>());
         await deps.TokenService.DidNotReceive().RevokeAllRefreshTokenFamiliesAsync(Arg.Any<string>(), Arg.Any<string>());
         await deps.EmailService.DidNotReceive().SendEmailAsync(
@@ -171,8 +141,7 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
     [Fact]
     public async Task RunSweep_LockUserMissing_LogsAndSkipsCascade()
     {
-        // arrange — user behind the revoked token has been deleted. Service must log
-        // and continue rather than crash.
+        // User behind the revoked token has been deleted — log and continue rather than crash.
         var (service, db, deps) = BuildService(warnThreshold: 2, lockThreshold: 5);
         db.RevokedTokens.Add(new RevokedToken { TokenJti = "j1", UserId = "ghost", ExpiresAt = DateTime.UtcNow.AddMinutes(10) });
         SeedAttempts(db, "j1", count: 5);
@@ -180,10 +149,8 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
 
         deps.UserService.FindByIdAsync("ghost").Returns((User?)null);
 
-        // act
         var act = async () => await service.RunSweepAsync(CancellationToken.None);
 
-        // assert — no throw, no token-service call (since there's no user to lock).
         await act.Should().NotThrowAsync();
         await deps.TokenService.DidNotReceive().RevokeAllRefreshTokenFamiliesAsync(
             Arg.Any<string>(), Arg.Any<string>());
@@ -194,9 +161,7 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
     [Fact]
     public async Task RunSweep_EmailSendFails_LockCascadeStillCompletes()
     {
-        // arrange — security action (lock + revoke + stamp rotation) must take effect
-        // even if SMTP is down. The email is informational; failure to send is logged
-        // not propagated.
+        // Security action must apply even if SMTP is down — email is informational, failure is logged not propagated.
         var (service, db, deps) = BuildService(warnThreshold: 2, lockThreshold: 5);
         var user = new User { Id = "u1", Email = "alice@example.com" };
         db.RevokedTokens.Add(new RevokedToken { TokenJti = "j1", UserId = "u1", ExpiresAt = DateTime.UtcNow.AddMinutes(10) });
@@ -209,10 +174,8 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
             .When(s => s.SendEmailAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()))
             .Do(_ => throw new InvalidOperationException("smtp down"));
 
-        // act
         var act = async () => await service.RunSweepAsync(CancellationToken.None);
 
-        // assert
         await act.Should().NotThrowAsync();
         await deps.UserService.Received(1).SetLockoutEndDateAsync(user, LockoutDurations.Indefinite);
         await deps.TokenService.Received(1).RevokeAllRefreshTokenFamiliesAsync("u1", RevocationReasons.ReuseDetected);
@@ -221,16 +184,13 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
     [Fact]
     public async Task RunSweep_AuditRowsForUnknownJti_SkippedGracefully()
     {
-        // arrange — audit rows for a jti with no matching RevokedToken row (data-shape
-        // mismatch shouldn't happen under normal flows but the service must not crash).
+        // Audit rows for a jti with no matching RevokedToken row — shouldn't happen but must not crash.
         var (service, db, deps) = BuildService(warnThreshold: 2, lockThreshold: 5);
         SeedAttempts(db, "orphan-jti", count: 5);
         await db.SaveChangesAsync();
 
-        // act
         var act = async () => await service.RunSweepAsync(CancellationToken.None);
 
-        // assert
         await act.Should().NotThrowAsync();
         await deps.UserService.DidNotReceive().SetLockoutEndDateAsync(Arg.Any<User>(), Arg.Any<DateTimeOffset?>());
     }
@@ -269,7 +229,6 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
             EmailService = Substitute.For<IEmailService>(),
         };
 
-        // Real ServiceProvider so the service's CreateScope() resolves through it.
         var services = new ServiceCollection();
         services.AddDbContext<DatabaseContext>(opt => opt.UseSqlite(connection));
         services.AddSingleton(deps.UserService);

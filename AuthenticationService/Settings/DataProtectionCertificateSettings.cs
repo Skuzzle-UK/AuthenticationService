@@ -1,9 +1,7 @@
 namespace AuthenticationService.Settings;
 
 /// <summary>
-/// Source for the X.509 certificate used to protect data-protection keys at rest.
-/// Currently supports loading from a PFX file. Extensible — additional sources (Windows
-/// store thumbprint, base64-inline, secret manager) can be added without changing callers.
+/// X.509 certificate source for data-protection at-rest encryption. Currently PFX only.
 /// </summary>
 public class DataProtectionCertificateSettings
 {
@@ -13,7 +11,7 @@ public class DataProtectionCertificateSettings
     public string? PfxPath { get; set; }
 
     /// <summary>
-    /// Password protecting the PFX. Leave null if the PFX is unprotected.
+    /// Null if the PFX is unprotected.
     /// </summary>
     public string? PfxPassword { get; set; }
 }

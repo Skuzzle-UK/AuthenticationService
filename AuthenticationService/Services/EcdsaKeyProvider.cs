@@ -6,15 +6,9 @@ using System.Security.Cryptography;
 namespace AuthenticationService.Services;
 
 /// <summary>
-/// Loads every <c>*.pem</c> ES256 key from the configured directory and exposes them as a
-/// signing credential (active key only) plus a list of public keys / JWKs for validation
-/// and discovery. Supports rotation by holding multiple keys simultaneously — one signs new
-/// tokens; all are advertised in the JWKS so consumers can validate tokens issued by any of
-/// them during overlap windows.
-///
-/// <para>Dev convenience: if the directory is empty in Development, generates a single key
-/// to disk so <c>dotnet run</c> works first time. Production refuses to start without at
-/// least one key — keys are operator-provisioned, not auto-generated.</para>
+/// Loads every <c>*.pem</c> ES256 key from the configured directory. Supports rotation by
+/// holding multiple keys — one signs new tokens; all are advertised in the JWKS.
+/// Dev-only: auto-generates a key on an empty directory. Production refuses to start without one.
 /// </summary>
 public sealed class EcdsaKeyProvider : IEcdsaKeyProvider, IDisposable
 {

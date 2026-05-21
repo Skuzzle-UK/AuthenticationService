@@ -9,18 +9,18 @@ using Microsoft.Extensions.Options;
 
 namespace AuthenticationService.TokenClientLib;
 
-/// <inheritdoc />
+/// <summary>
+/// Default <see cref="IServiceTokenProvider"/> implementation. Caches by
+/// <c>(audience, scopes)</c>, proactively refreshes near expiry, and uses a per-key
+/// semaphore to deduplicate concurrent refreshes.
+/// </summary>
 public class ServiceTokenProvider : IServiceTokenProvider
 {
-    /// <summary>
-    /// Suffix for the discovery doc URL — RFC 8414 §3.
-    /// </summary>
+    // RFC 8414 §3.
     private const string DiscoveryDocPath = "/.well-known/openid-configuration";
 
     /// <summary>
-    /// Name of the <see cref="HttpClient"/> the provider pulls from
-    /// <see cref="IHttpClientFactory"/>. Registered by
-    /// <c>AddAuthenticationServiceTokenClient</c>.
+    /// Name of the <see cref="HttpClient"/> pulled from <see cref="IHttpClientFactory"/>.
     /// </summary>
     public const string HttpClientName = "AuthenticationService.ServiceTokenProvider";
 
@@ -28,19 +28,17 @@ public class ServiceTokenProvider : IServiceTokenProvider
     private readonly ServiceTokenClientOptions _options;
     private readonly ILogger<ServiceTokenProvider> _logger;
 
-    // ─── Cache ───────────────────────────────────────────────────────────────────────
-    // Per-key SemaphoreSlim guards concurrent refresh. Two callers seeing an expired
-    // token at the same moment converge on a single token fetch via the semaphore.
+    // Per-key SemaphoreSlim deduplicates concurrent refreshes for the same cache key.
     private readonly ConcurrentDictionary<CacheKey, CachedToken> _cache = new();
     private readonly ConcurrentDictionary<CacheKey, SemaphoreSlim> _refreshLocks = new();
 
-    // ─── Discovery ───────────────────────────────────────────────────────────────────
-    // token_endpoint is resolved once (or via override) and held for the process lifetime.
-    // A 404 on the cached endpoint would invalidate it, but in practice the URL is stable
-    // for the lifetime of a deploy.
+    // token_endpoint is resolved once and held for the process lifetime; stable per deploy.
     private string? _resolvedTokenEndpoint;
     private readonly SemaphoreSlim _discoveryLock = new(1, 1);
 
+    /// <summary>
+    /// Creates a <see cref="ServiceTokenProvider"/>. Use DI rather than instantiating directly.
+    /// </summary>
     public ServiceTokenProvider(
         IHttpClientFactory httpFactory,
         IOptions<ServiceTokenClientOptions> options,
@@ -51,49 +49,43 @@ public class ServiceTokenProvider : IServiceTokenProvider
         _logger = logger;
     }
 
+    /// <inheritdoc />
     public async Task<string> GetTokenAsync(string audience, IReadOnlyList<string> scopes, CancellationToken ct = default)
     {
         var key = MakeKey(audience, scopes);
 
-        // Fast path: cache hit + not yet at the refresh threshold.
         if (_cache.TryGetValue(key, out var cached))
         {
             if (cached.IsValid())
             {
                 if (cached.ShouldProactivelyRefresh(_options.RefreshAtFractionOfLifetime))
                 {
-                    // Fire-and-forget background refresh. Failures here are logged
-                    // (via the inner RefreshAsync) and silently dropped — the still-
-                    // valid cached token serves the current request fine; we'll retry
-                    // the proactive refresh on the next call.
+                    // Fire-and-forget background refresh; the still-valid cached token
+                    // serves the current request, and we'll retry next call if this fails.
                     _ = Task.Run(() => RefreshAsync(key, audience, scopes, CancellationToken.None));
                 }
                 return cached.Value;
             }
         }
 
-        // Slow path: cache miss or token expired. Block on refresh.
         return await RefreshAsync(key, audience, scopes, ct);
     }
 
+    /// <inheritdoc />
     public void Invalidate(string audience, IReadOnlyList<string> scopes)
     {
         var key = MakeKey(audience, scopes);
         _cache.TryRemove(key, out _);
     }
 
-    /// <summary>
-    /// Fetches a fresh token + populates the cache. Uses a per-key semaphore so
-    /// concurrent callers converge on a single <c>/oauth/token</c> hit.
-    /// </summary>
+    // Per-key semaphore so concurrent callers converge on a single /oauth/token hit.
     private async Task<string> RefreshAsync(CacheKey key, string audience, IReadOnlyList<string> scopes, CancellationToken ct)
     {
         var semaphore = _refreshLocks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
         await semaphore.WaitAsync(ct);
         try
         {
-            // Re-check cache after acquiring the lock — another caller may have
-            // refreshed it while we were waiting. If they did, just use what they got.
+            // Re-check after acquiring the lock — another caller may have refreshed.
             if (_cache.TryGetValue(key, out var cached) && cached.IsValid()
                 && !cached.ShouldProactivelyRefresh(_options.RefreshAtFractionOfLifetime))
             {
@@ -116,11 +108,7 @@ public class ServiceTokenProvider : IServiceTokenProvider
         }
     }
 
-    /// <summary>
-    /// One token-request call, with exponential backoff on 5xx / network errors.
-    /// 4xx responses throw immediately — they indicate config / credential errors that
-    /// retrying can't fix.
-    /// </summary>
+    // Exponential backoff on 5xx / network errors; 4xx throws immediately (config/creds).
     private async Task<OAuthTokenResponse> FetchTokenWithRetriesAsync(string audience, IReadOnlyList<string> scopes, CancellationToken ct)
     {
         var endpoint = await ResolveTokenEndpointAsync(ct);
@@ -158,19 +146,18 @@ public class ServiceTokenProvider : IServiceTokenProvider
                         error?.ErrorDescription);
                 }
 
-                // 5xx — retry. Record and fall through to the backoff.
+                // 5xx — record and fall through to the backoff.
                 lastTransient = new ServiceTokenException(
                     "transient_failure",
                     $"Token endpoint returned {(int)response.StatusCode}.");
             }
             catch (HttpRequestException ex)
             {
-                // Network-level failure — same retry contract as 5xx.
                 lastTransient = ex;
             }
             catch (TaskCanceledException) when (!ct.IsCancellationRequested)
             {
-                // HttpClient timeout (request timed out internally), not external cancel.
+                // HttpClient internal timeout, not external cancel.
                 lastTransient = new ServiceTokenException("transient_failure", "Token endpoint timed out.");
             }
 
@@ -180,7 +167,7 @@ public class ServiceTokenProvider : IServiceTokenProvider
                 break;
             }
 
-            // Exponential backoff: 250ms, 500ms, 1s, 2s, ... capped at 30s.
+            // 250ms, 500ms, 1s, 2s, ... capped at 30s.
             var delay = TimeSpan.FromMilliseconds(Math.Min(30_000, 250 * Math.Pow(2, attempt - 1)));
             _logger.LogWarning(
                 "Token endpoint transient failure (attempt {Attempt}/{Max}); retrying in {DelayMs}ms",
@@ -198,8 +185,7 @@ public class ServiceTokenProvider : IServiceTokenProvider
     {
         var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
 
-        // Credentials via Basic auth (RFC 6749 §2.3.1). Encodes client_id + secret in
-        // the header so the body carries only the grant params.
+        // Basic auth per RFC 6749 §2.3.1.
         var basic = Convert.ToBase64String(
             Encoding.UTF8.GetBytes($"{_options.ClientId}:{_options.ClientSecret}"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", basic);
@@ -222,17 +208,12 @@ public class ServiceTokenProvider : IServiceTokenProvider
         }
         catch
         {
-            // Non-JSON or unreadable body — return null, caller falls back to a generic
-            // error code. The HTTP status alone is enough to know what's happening.
+            // Non-JSON / unreadable body — caller falls back to a generic error code.
             return null;
         }
     }
 
-    /// <summary>
-    /// Resolves the OAuth token endpoint via either the configured override or OIDC
-    /// discovery. Result is cached for the process lifetime — the URL is stable across
-    /// a deploy.
-    /// </summary>
+    // Resolves via configured override or OIDC discovery; result cached for process lifetime.
     private async Task<string> ResolveTokenEndpointAsync(CancellationToken ct)
     {
         if (_resolvedTokenEndpoint is not null)
@@ -281,10 +262,7 @@ public class ServiceTokenProvider : IServiceTokenProvider
         }
     }
 
-    /// <summary>
-    /// Cache key. Scope order is normalised by sorting so <c>["a", "b"]</c> and
-    /// <c>["b", "a"]</c> hit the same cached token. Equality is record-default.
-    /// </summary>
+    // Sort scopes so ["a", "b"] and ["b", "a"] hit the same cached token.
     private static CacheKey MakeKey(string audience, IReadOnlyList<string> scopes) =>
         new(audience, string.Join(' ', scopes.OrderBy(s => s, StringComparer.Ordinal)));
 
@@ -296,14 +274,11 @@ public class ServiceTokenProvider : IServiceTokenProvider
 
         public bool ShouldProactivelyRefresh(double fraction)
         {
-            // True when we're past the configured fraction of the token's lifetime.
-            // e.g. fraction=0.8 + 12h lifetime → returns true once we're past 9h36m.
             var refreshAt = ExpiresAt.AddSeconds(-LifetimeSeconds * (1 - fraction));
             return DateTimeOffset.UtcNow >= refreshAt;
         }
     }
 
-    // Tiny private DTO for the discovery doc — only the field we need.
     private sealed class DiscoveryDoc
     {
         [System.Text.Json.Serialization.JsonPropertyName("token_endpoint")]

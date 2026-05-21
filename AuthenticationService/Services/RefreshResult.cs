@@ -3,8 +3,7 @@ using AuthenticationService.Shared.Models;
 namespace AuthenticationService.Services;
 
 /// <summary>
-/// Outcome of a refresh-token rotation attempt. The controller pattern-matches on the
-/// concrete type to choose the response.
+/// Outcome of a refresh-token rotation attempt. Controller pattern-matches on the concrete type.
 /// </summary>
 public abstract record RefreshResult
 {
@@ -24,9 +23,8 @@ public abstract record RefreshResult
     public sealed record Expired : RefreshResult;
 
     /// <summary>
-    /// The presented refresh token was already consumed. Treated as theft: every refresh-token
-    /// family for the user has been revoked and the security stamp rotated by the time this is
-    /// returned. Caller should respond with a generic 401 — don't tip off the attacker.
+    /// Already-consumed token — treated as theft. Every family for the user has been revoked and
+    /// the security stamp rotated by the time this is returned. Caller responds with a generic 401.
     /// </summary>
     public sealed record Reused(Guid FamilyId) : RefreshResult;
 }

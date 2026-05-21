@@ -12,7 +12,9 @@ public class ClientSummaryDto
     public bool IsDisabled { get; set; }
     public DateTime CreatedAt { get; set; }
 
-    /// <summary>Null until the client has issued its first token. Useful for "which clients are actually being used?" admin queries.</summary>
+    /// <summary>
+    /// Null until the client has issued its first token. Useful for "which clients are actually being used?" admin queries.
+    /// </summary>
     public DateTime? LastUsedAt { get; set; }
 
     public string? Description { get; set; }

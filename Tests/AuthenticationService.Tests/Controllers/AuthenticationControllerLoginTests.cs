@@ -22,42 +22,24 @@ using NSubstitute;
 namespace AuthenticationService.Tests.Controllers;
 
 /// <summary>
-/// <para>The most security-critical endpoint in the service: <c>POST /api/Authentication/authenticate</c>.
-/// Branch coverage matters because each branch is a different security decision.</para>
-///
-/// <para>Branches covered (in failure-detection order):</para>
-/// <list type="bullet">
-///   <item><description>Unknown email → 400 generic; SIEM event with empty UserId. (Don't tip off attacker that the email isn't registered.)</description></item>
-///   <item><description>Email not confirmed → 401 with documented message.</description></item>
-///   <item><description>Account locked → 401 with the failed-attempts message.</description></item>
-///   <item><description>Wrong password → recorded as failed attempt + generic 401.</description></item>
-///   <item><description>MFA enabled → returns MfaRequired without a token; controller picks PreferredMfaProvider when DTO didn't supply one.</description></item>
-///   <item><description>MFA-required + Email provider → token generated, email sent.</description></item>
-///   <item><description>MFA-required + Phone but SMS not configured → 400.</description></item>
-///   <item><description>MFA-required + Phone but no confirmed phone → 400.</description></item>
-///   <item><description>Happy path (no MFA) → 200 with token + reset of access-failed count + LoginSucceeded SIEM event.</description></item>
-/// </list>
-///
-/// <para>Other AuthenticationController endpoints (MfaAuthenticate, Refresh, Logout,
-/// LogoutAll) follow the same shape and are summarised in the deferred-coverage notes.</para>
+/// Branch coverage for <c>POST /api/Authentication/authenticate</c>. Each branch is a different
+/// security decision — unknown email, unconfirmed, locked, wrong password, MFA paths, happy path.
 /// </summary>
 public class AuthenticationControllerLoginTests
 {
     [Fact]
     public async Task Authenticate_UnknownEmail_Returns400Generic()
     {
-        // arrange
         var (controller, deps) = BuildController();
         deps.UserService.FindByEmailAsync(Arg.Any<string>()).Returns((User?)null);
 
-        // act
         var result = await controller.AuthenticateAsync(new AuthenticationDto
         {
             Email = "ghost@example.com",
             Password = "anything",
         });
 
-        // assert — generic 400 with InvalidRequest message, not "user not found".
+        // Generic 400 — must not tip off attacker that the email isn't registered.
         var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
         bad.Value.Should().BeOfType<AuthenticationResponse>()
             .Which.Errors.Should().ContainKey(ResponseConstants.BadRequest);
@@ -66,42 +48,35 @@ public class AuthenticationControllerLoginTests
     [Fact]
     public async Task Authenticate_EmailNotConfirmed_Returns401()
     {
-        // arrange — user exists but hasn't confirmed their email yet.
         var (controller, deps) = BuildController();
         var user = new User { Id = "u1", Email = "alice@example.com" };
         deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
         deps.UserService.IsEmailConfirmedAsync(user).Returns(false);
 
-        // act
         var result = await controller.AuthenticateAsync(new AuthenticationDto
         {
             Email = "alice@example.com",
             Password = "p",
         });
 
-        // assert
         result.Should().BeOfType<UnauthorizedObjectResult>();
     }
 
     [Fact]
     public async Task Authenticate_AccountLocked_Returns401WithLockoutMessage()
     {
-        // arrange — confirmed email but account is locked (e.g., recent failed-attempt
-        // threshold). User must wait or reset.
         var (controller, deps) = BuildController();
         var user = new User { Id = "u1", Email = "alice@example.com" };
         deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
         deps.UserService.IsEmailConfirmedAsync(user).Returns(true);
         deps.UserService.IsLockedOutAsync(user).Returns(true);
 
-        // act
         var result = await controller.AuthenticateAsync(new AuthenticationDto
         {
             Email = "alice@example.com",
             Password = "p",
         });
 
-        // assert
         var unauthorized = result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
         unauthorized.Value.Should().BeOfType<AuthenticationResponse>()
             .Which.Errors!.Values.Should().Contain(ErrorMessages.AccountLockedFailedAttempts);
@@ -110,7 +85,6 @@ public class AuthenticationControllerLoginTests
     [Fact]
     public async Task Authenticate_WrongPassword_RecordsFailedAttemptAndReturns401()
     {
-        // arrange — email + lockout fine, but wrong password.
         var (controller, deps) = BuildController();
         var user = new User { Id = "u1", Email = "alice@example.com" };
         deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
@@ -118,15 +92,12 @@ public class AuthenticationControllerLoginTests
         deps.UserService.IsLockedOutAsync(user).Returns(false);
         deps.UserService.CheckPasswordAsync(user, "wrong").Returns(false);
 
-        // act
         var result = await controller.AuthenticateAsync(new AuthenticationDto
         {
             Email = "alice@example.com",
             Password = "wrong",
         });
 
-        // assert — 401, AND AccessFailedAsync called (so the failed-attempt counter
-        // increments — drives the eventual lockout).
         result.Should().BeOfType<UnauthorizedObjectResult>();
         await deps.UserService.Received(1).AccessFailedAsync(user);
     }
@@ -134,8 +105,6 @@ public class AuthenticationControllerLoginTests
     [Fact]
     public async Task Authenticate_HappyPath_NoMfa_ReturnsTokenAndResetsFailedAttempts()
     {
-        // arrange — clean login. No MFA enabled. Service issues a token + resets the
-        // failed-attempt counter (so a future wrong password starts the count fresh).
         var (controller, deps) = BuildController();
         var user = new User { Id = "u1", Email = "alice@example.com", UserName = "alice" };
         deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
@@ -148,14 +117,12 @@ public class AuthenticationControllerLoginTests
         deps.TokenService.CreateTokenAsync(user, Arg.Any<IList<string>>(), Arg.Any<Guid?>(), Arg.Any<string?>())
             .Returns(issued);
 
-        // act
         var result = await controller.AuthenticateAsync(new AuthenticationDto
         {
             Email = "alice@example.com",
             Password = "p",
         });
 
-        // assert
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         ok.Value.Should().BeOfType<AuthenticationResponse>()
             .Which.Token.Should().BeSameAs(issued);
@@ -165,7 +132,7 @@ public class AuthenticationControllerLoginTests
     [Fact]
     public async Task Authenticate_MfaEnabled_NoProviderInDto_UsesUsersPreferredProvider()
     {
-        // arrange — MFA on; DTO didn't pick a provider so the user's saved preference wins.
+        // DTO didn't pick a provider so the user's saved preference wins.
         var (controller, deps) = BuildController();
         var user = new User
         {
@@ -181,7 +148,6 @@ public class AuthenticationControllerLoginTests
             .Returns((IList<string>)new List<string> { "Email" });
         deps.UserService.GenerateMfaTokenAsync(user, TokenOptions.DefaultEmailProvider).Returns("123456");
 
-        // act
         var result = await controller.AuthenticateAsync(new AuthenticationDto
         {
             Email = "alice@example.com",
@@ -189,14 +155,12 @@ public class AuthenticationControllerLoginTests
             MfaProvider = null,
         });
 
-        // assert
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         var response = ok.Value.Should().BeOfType<AuthenticationResponse>().Subject;
         response.MfaRequired.Should().BeTrue();
         response.MfaProvider.Should().Be(MfaProviders.Email);
         response.Token.Should().BeNull();
 
-        // SMS provider not invoked because Email path was selected.
         await deps.EmailService.Received(1).SendEmailAsync(
             "alice@example.com",
             EmailSubjects.MfaAuthenticationToken,
@@ -206,8 +170,6 @@ public class AuthenticationControllerLoginTests
     [Fact]
     public async Task Authenticate_MfaEnabled_PhoneProviderButSmsNotConfigured_Returns400()
     {
-        // arrange — MFA on, user wants SMS, but no SMS provider is wired up. Don't promise
-        // we can deliver — return clear error.
         var (controller, deps) = BuildController();
         var user = new User
         {
@@ -223,7 +185,6 @@ public class AuthenticationControllerLoginTests
             .Returns((IList<string>)new List<string> { "Phone" });
         deps.SmsService.IsConfigured.Returns(false);
 
-        // act
         var result = await controller.AuthenticateAsync(new AuthenticationDto
         {
             Email = "alice@example.com",
@@ -231,7 +192,6 @@ public class AuthenticationControllerLoginTests
             MfaProvider = MfaProviders.Phone,
         });
 
-        // assert
         var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
         bad.Value.Should().BeOfType<AuthenticationResponse>()
             .Which.Errors!.Values.Should().Contain(ErrorMessages.PhoneMfaNotConfigured);
@@ -240,8 +200,7 @@ public class AuthenticationControllerLoginTests
     [Fact]
     public async Task Authenticate_MfaEnabled_PhoneProviderButPhoneUnconfirmed_Returns400()
     {
-        // arrange — SMS configured, but the user's phone isn't confirmed. SMS-MFA would
-        // deliver to a number we haven't proven they own.
+        // SMS configured but phone not confirmed — SMS-MFA would deliver to an unproven number.
         var (controller, deps) = BuildController();
         var user = new User
         {
@@ -257,7 +216,6 @@ public class AuthenticationControllerLoginTests
             .Returns((IList<string>)new List<string> { "Phone" });
         deps.SmsService.IsConfigured.Returns(true);
 
-        // act
         var result = await controller.AuthenticateAsync(new AuthenticationDto
         {
             Email = "alice@example.com",
@@ -265,7 +223,6 @@ public class AuthenticationControllerLoginTests
             MfaProvider = MfaProviders.Phone,
         });
 
-        // assert
         var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
         bad.Value.Should().BeOfType<AuthenticationResponse>()
             .Which.Errors!.Values.Should().Contain(ErrorMessages.PhoneNumberNotConfirmed);
@@ -274,9 +231,6 @@ public class AuthenticationControllerLoginTests
     [Fact]
     public async Task Authenticate_MfaEnabled_AskedForProviderUserDoesNotHave_Returns401WithInvalidProvider()
     {
-        // arrange — DTO asks for Authenticator but the user only has Email enabled (e.g.,
-        // MFA was set up via Email originally). Returning the wrong-provider message helps
-        // the client UI prompt for a different provider.
         var (controller, deps) = BuildController();
         var user = new User { Id = "u1", Email = "alice@example.com", UserName = "alice" };
         deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
@@ -287,7 +241,6 @@ public class AuthenticationControllerLoginTests
         deps.UserService.GetValidMfaProvidersAsync(user)
             .Returns((IList<string>)new List<string> { "Email" });
 
-        // act
         var result = await controller.AuthenticateAsync(new AuthenticationDto
         {
             Email = "alice@example.com",
@@ -295,7 +248,6 @@ public class AuthenticationControllerLoginTests
             MfaProvider = MfaProviders.Authenticator,
         });
 
-        // assert
         var unauthorized = result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
         unauthorized.Value.Should().BeOfType<AuthenticationResponse>()
             .Which.Errors!.Values.Should().Contain(ErrorMessages.InvalidMfaProvider);

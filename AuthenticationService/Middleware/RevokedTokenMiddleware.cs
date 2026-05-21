@@ -9,15 +9,8 @@ namespace AuthenticationService.Middleware;
 
 /// <summary>
 /// Rejects access tokens that were valid when issued but have since been revoked
-/// (logout, password change, refresh-token theft, etc.). Sits between JwtBearer's
-/// signature/expiry check and the controller — JwtBearer says "this token is properly
-/// signed and not expired", we add "...and we haven't blacklisted it." Replays of
-/// revoked tokens are recorded for SIEM forwarding.
-///
-/// <para>The middleware runs on every request (including anonymous endpoints like
-/// <c>/oauth/token</c>), so it must defensively recognise non-Bearer Authorization
-/// headers — <c>Basic</c> credentials on <c>/oauth/token</c>, in particular — and
-/// skip them, rather than blindly trying to JWT-parse them.</para>
+/// (logout, password change, refresh-token theft, etc.). Adds a deny-list check on top
+/// of JwtBearer's signature/expiry check. Replays are recorded for SIEM.
 /// </summary>
 public class RevokedTokenMiddleware
 {
@@ -36,11 +29,8 @@ public class RevokedTokenMiddleware
     {
         var authorizationHeader = context.Request.Headers[HeaderNames.Authorization].ToString();
 
-        // Only Bearer tokens are revocation candidates. Other schemes — Basic credentials
-        // on /oauth/token per RFC 6749 §2.3.1, anything else in the future — are
-        // authenticated by different machinery and carry no JWT to look up. Blindly
-        // running ReadJwtToken over a Basic header would throw SecurityTokenMalformedException
-        // and 500 the request.
+        // Non-Bearer schemes (Basic on /oauth/token, RFC 6749 §2.3.1) carry no JWT.
+        // Trying to ReadJwtToken on them throws and 500s the request.
         if (!authorizationHeader.StartsWith(AuthSchemeConstants.BearerPrefix, StringComparison.OrdinalIgnoreCase))
         {
             await _next(context);
@@ -66,10 +56,8 @@ public class RevokedTokenMiddleware
             }
             catch (Exception ex) when (ex is SecurityTokenMalformedException or UnauthorizedAccessException)
             {
-                // The "Bearer" prefix was present but the rest isn't a well-formed JWT — a
-                // bad client, fuzzer, or scanner. JwtBearer will reject it cleanly with 401;
-                // we just skip the deny-list lookup rather than 500. Logged as warning so
-                // operational dashboards still surface it without a stack trace.
+                // Malformed JWT under "Bearer " — let JwtBearer handle the 401, skip the
+                // deny-list lookup rather than 500.
                 var logger = scope.ServiceProvider.GetService<ILogger<RevokedTokenMiddleware>>();
                 logger?.LogWarning(
                     "Authorization header carried 'Bearer' prefix but the value is not a parseable JWT — passing through to JwtBearer. ({ExceptionType})",

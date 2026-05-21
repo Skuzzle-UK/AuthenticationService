@@ -1,9 +1,7 @@
 namespace AuthenticationService.Constants;
 
 /// <summary>
-/// User-facing error message strings returned in API responses. Centralised so the same
-/// failure case shows the same text everywhere, and so future localisation has one place
-/// to look up keys.
+/// User-facing error strings returned in API responses.
 /// </summary>
 public class ErrorMessages
 {
@@ -33,7 +31,7 @@ public class ErrorMessages
     public const string MissingJtiClaim = "Token does not contain a jti claim.";
 
     /// <summary>
-    /// Generic "the account is locked" — used when locked but we don't want to leak why.
+    /// Used when locked but we don't want to leak why.
     /// </summary>
     public const string AccountLocked = "Your account is locked.";
 

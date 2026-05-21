@@ -1,16 +1,16 @@
-﻿using QRCoder;
+using QRCoder;
 using System.Text.Encodings.Web;
 
 namespace AuthenticationService.Helpers;
 
 /// <summary>
-/// Generates the QR code image a user scans into their authenticator app to enrol in MFA.
-/// The encoded payload is a standard <c>otpauth://</c> TOTP URI.
+/// Generates the QR a user scans into their authenticator app to enrol in MFA.
+/// Encodes a standard <c>otpauth://</c> TOTP URI.
 /// </summary>
 public static class QrCodeHelpers
 {
     /// <summary>
-    /// Returns a PNG of the TOTP enrolment QR code for the given account.
+    /// PNG of the TOTP enrolment QR code for the given account.
     /// </summary>
     public static byte[] NewPng(string email, string key)
     {

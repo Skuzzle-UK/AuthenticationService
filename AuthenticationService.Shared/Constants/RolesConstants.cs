@@ -1,8 +1,7 @@
 namespace AuthenticationService.Shared.Constants;
 
 /// <summary>
-/// Names of the roles the service defines. Use these instead of magic strings when
-/// assigning roles to a user or checking role membership.
+/// Names of the roles the service defines.
 /// </summary>
 public static class RolesConstants
 {
@@ -17,10 +16,8 @@ public static class RolesConstants
     public const string DefaultUser = "DefaultUser";
 
     /// <summary>
-    /// Upper-case versions of the role names. ASP.NET Core Identity stores roles in two
-    /// columns — the display name and a normalised (upper-case) version used for
-    /// indexed lookups. When seeding role rows directly via EF (rather than going through
-    /// <c>RoleManager</c>), use these for the <c>NormalizedName</c> column.
+    /// Upper-case forms used for Identity's <c>NormalizedName</c> column when seeding
+    /// role rows via EF rather than <c>RoleManager</c>.
     /// </summary>
     public static class Normalised
     {

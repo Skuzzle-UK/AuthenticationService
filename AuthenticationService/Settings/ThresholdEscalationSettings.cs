@@ -1,20 +1,14 @@
 namespace AuthenticationService.Settings;
 
 /// <summary>
-/// Tuning knobs for <c>RevokedTokenReplayEscalationService</c> — the background worker
-/// that watches for sustained replay of revoked tokens and locks the account when the
-/// pattern looks like an attack.
-///
-/// <para>Defaults are aggressive on purpose: a well-behaved client retries at most once
-/// with a stale token before refreshing, so anything beyond a couple of replays is either
-/// a buggy client or active automation. Loosen the thresholds in deployments where
-/// retry-on-old-token churn is expected (e.g. integration tests).</para>
+/// Tuning for <c>RevokedTokenReplayEscalationService</c>. Defaults are aggressive — a
+/// well-behaved client retries at most once on a stale token. Loosen for environments with
+/// expected stale-token churn (integration tests).
 /// </summary>
 public class ThresholdEscalationSettings
 {
     /// <summary>
-    /// Master switch. Set to <c>false</c> to disable escalation entirely (useful during
-    /// load testing, where you'd burn through these thresholds artificially).
+    /// Master switch — useful for load testing where thresholds would burn through.
     /// </summary>
     public bool Enabled { get; set; } = true;
 
@@ -24,21 +18,18 @@ public class ThresholdEscalationSettings
     public double SweepIntervalInMinutes { get; set; } = 1;
 
     /// <summary>
-    /// The sliding-window size both thresholds are evaluated against.
+    /// Sliding window both thresholds are evaluated against.
     /// </summary>
     public double WindowInMinutes { get; set; } = 5;
 
     /// <summary>
-    /// Replay count within the window that emits a Warning-level SIEM event
-    /// (<see cref="Constants.SecurityEventIds.RevokedTokenReplayThresholdWarned"/>). No
-    /// user-facing impact — informational only, helps spot buggy clients early.
+    /// Replays in the window that emit a Warning SIEM event. No user-facing impact.
     /// </summary>
     public int WarnThreshold { get; set; } = 2;
 
     /// <summary>
-    /// Replay count within the window that locks the account, revokes every refresh-token
-    /// family, and emails the user. Emits a Critical-level SIEM event
-    /// (<see cref="Constants.SecurityEventIds.RevokedTokenReplayThresholdLocked"/>).
+    /// Replays in the window that lock the account, revoke every refresh-token family, and
+    /// email the user. Emits a Critical SIEM event.
     /// </summary>
     public int LockThreshold { get; set; } = 5;
 }

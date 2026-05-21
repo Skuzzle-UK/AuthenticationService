@@ -5,9 +5,7 @@ namespace AuthenticationService.Logging;
 
 /// <summary>
 /// Serilog enricher that attaches request-scoped fields (currently <c>UserAgent</c>) to
-/// every log event emitted during an HTTP request. Picked up automatically by Serilog's
-/// <c>ReadFrom.Services(services)</c> in <c>Program.Main</c> as long as it's registered in
-/// DI as <see cref="ILogEventEnricher"/>.
+/// every log event during a request. Picked up by <c>ReadFrom.Services</c> in Program.Main.
 /// </summary>
 public sealed class HttpContextLogEnricher : ILogEventEnricher
 {

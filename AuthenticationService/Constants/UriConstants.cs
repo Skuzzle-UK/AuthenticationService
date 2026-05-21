@@ -1,14 +1,13 @@
 namespace AuthenticationService.Constants;
 
 /// <summary>
-/// Query-string parameter names used in URLs the auth service generates and consumes
-/// (email-link tokens, callback URIs, redirects). Centralised so producer and consumer
-/// stay in sync — change the name here and both sides update.
+/// Query-string parameter names in auth-service URLs (email tokens, callbacks).
+/// Centralised so producer and consumer stay in sync.
 /// </summary>
 public class UriConstants
 {
     /// <summary>
-    /// The single-use token from an email link (password reset, email confirm, etc.).
+    /// Single-use token from an email link.
     /// </summary>
     public const string Token = "token";
 
@@ -18,7 +17,7 @@ public class UriConstants
     public const string Email = "email";
 
     /// <summary>
-    /// Marker indicating the link came from a lockout-flow email rather than a regular reset.
+    /// Marker for lockout-flow links vs regular reset links.
     /// </summary>
     public const string Lockout = "lockout";
 
@@ -33,7 +32,7 @@ public class UriConstants
     public const string False = "false";
 
     /// <summary>
-    /// The URL the user should be redirected to after a flow completes (e.g. landing on the consumer's UI after email confirmation).
+    /// Post-flow redirect URL (e.g. back to the consumer's UI).
     /// </summary>
     public const string CallBackUri = "callbackUri";
 }

@@ -5,26 +5,13 @@ using Microsoft.EntityFrameworkCore;
 namespace AuthenticationService.Services.Hosted;
 
 /// <summary>
-/// Periodically refreshes the snapshot values that back <see cref="AuthMetrics"/>'s
-/// observable user gauges (<c>auth.users.total</c>, <c>auth.users.mfa_enabled.total</c>,
-/// <c>auth.users.locked.total</c>).
-///
-/// <para>Observable gauges report a current-state value, not a delta — so they need
-/// someone to compute that value somewhere. Doing the query inline from the gauge
-/// callback would tie DB load to scrape frequency; this service decouples them by
-/// caching the latest snapshot.</para>
-///
-/// <para>Gated by <c>HostingSettings:BackgroundWorkersEnabled</c> (registered in
-/// <c>HostExtensions.AddHostedServices</c>) so only the worker pod queries — every
-/// replica would return the same global count from the same DB.</para>
+/// Refreshes the cached snapshots behind <see cref="AuthMetrics"/>'s observable user gauges
+/// (total, mfa_enabled, locked). Caches the values so scrape frequency doesn't drive DB load.
+/// Gated by <c>HostingSettings:BackgroundWorkersEnabled</c> so only the worker pod queries.
 /// </summary>
 public class UserGaugeRefreshService : BackgroundService
 {
-    /// <summary>
-    /// Refresh interval. Hardcoded at 60s — gauge values are not latency-sensitive
-    /// and three EF Count queries per minute is invisible against any realistic
-    /// database load. Promote to a setting if a use case ever needs it tunable.
-    /// </summary>
+    // 60s is hardcoded — gauges aren't latency-sensitive and three Count queries/min is invisible.
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(60);
 
     private readonly ILogger<UserGaugeRefreshService> _logger;
@@ -51,7 +38,7 @@ public class UserGaugeRefreshService : BackgroundService
 
         try
         {
-            // Refresh once up front so gauges aren't zero until the first tick.
+            // Prime gauges so they aren't zero until the first tick.
             await RefreshAsync(stoppingToken);
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {
@@ -75,9 +62,7 @@ public class UserGaugeRefreshService : BackgroundService
         }
     }
 
-    /// <summary>
-    /// One refresh pass. Internal so tests can drive it without going through the timer.
-    /// </summary>
+    // Internal so tests can drive it without the timer loop.
     internal async Task RefreshAsync(CancellationToken stoppingToken)
     {
         try
@@ -87,8 +72,6 @@ public class UserGaugeRefreshService : BackgroundService
 
             var now = DateTimeOffset.UtcNow;
 
-            // Three count queries. Cheap — Users table is small and these are
-            // index-friendly predicates.
             var totalUsers = await context.Users.LongCountAsync(stoppingToken);
             
             var mfaEnabledUsers = await context.Users
@@ -103,9 +86,7 @@ public class UserGaugeRefreshService : BackgroundService
         }
         catch (Exception ex)
         {
-            // Don't tear down the timer loop on a transient DB error — log and try
-            // again next tick. The previous gauge values stay cached until the next
-            // successful refresh.
+            // Don't tear down the timer on a transient DB error — previous values stay cached.
             _logger.LogWarning(
                 ex,
                 "User-gauge refresh failed: {ErrorMsg}. Will retry on next tick.",

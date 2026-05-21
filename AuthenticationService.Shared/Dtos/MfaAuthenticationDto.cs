@@ -15,10 +15,8 @@ public class MfaAuthenticationDto
     public string? Token { get; set; }
 
     /// <summary>
-    /// Optional. Where to send the user if they get locked out by too many failed MFA
-    /// attempts and want to reset their password proactively. See
-    /// <see cref="AuthenticationDto.ResetPasswordUri"/> for the same field's description on
-    /// the login DTO.
+    /// Optional. Reset-password URL the user is sent to if they get locked out by too
+    /// many failed MFA attempts.
     /// </summary>
     public string? ResetPasswordUri { get; set; }
 }

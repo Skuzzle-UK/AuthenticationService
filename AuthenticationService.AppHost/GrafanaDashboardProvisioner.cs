@@ -7,15 +7,8 @@ using Microsoft.Extensions.Logging;
 namespace AuthenticationService.AppHost;
 
 /// <summary>
-/// Posts the "Auth Service Overview" dashboard to the grafana/otel-lgtm container
-/// via its HTTP API once the container reports ready. Avoids the Windows + Docker
-/// single-file bind-mount bug that blocks the cleaner file-based provisioning route.
-///
-/// <para>Idempotent — uses <c>overwrite: true</c> on the import, so re-runs after
-/// hot-reload or restart just update the existing dashboard. Survives container
-/// restarts because Grafana persists imported dashboards in its internal SQLite DB
-/// inside the container; only a full <c>docker rm</c> of the container loses them,
-/// in which case the next AppHost run re-imports.</para>
+/// Imports the Grafana dashboard via HTTP API. Idempotent (overwrite: true).
+/// HTTP-API route sidesteps the Windows + Docker single-file bind-mount bug.
 /// </summary>
 internal static class GrafanaDashboardProvisioner
 {
@@ -57,9 +50,8 @@ internal static class GrafanaDashboardProvisioner
             var dashboardNode = JsonNode.Parse(dashboardJson)
                 ?? throw new InvalidOperationException($"Dashboard JSON at {dashboardJsonPath} parsed as null.");
 
-            // Wipe id/version so Grafana treats this as a fresh import each time —
-            // otherwise the server-side version may not match what we hold and we'd
-            // get a 412 Precondition Failed.
+            // Wipe id/version — otherwise Grafana returns 412 Precondition Failed
+            // when the server-side version doesn't match.
             if (dashboardNode is JsonObject obj)
             {
                 obj.Remove("id");
@@ -105,10 +97,8 @@ internal static class GrafanaDashboardProvisioner
         ILogger logger,
         CancellationToken ct)
     {
-        // Grafana's /api/health returns 200 once the HTTP server is up. The LGTM
-        // container also runs Prometheus / Tempo / Loki — they take a few extra
-        // seconds to fully initialise but we only need Grafana itself for the
-        // dashboard import.
+        // /api/health returns 200 as soon as Grafana itself is up — the other LGTM
+        // components can still be warming, but we only need Grafana for the import.
         var deadline = DateTime.UtcNow + HealthPollTimeout;
         while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
         {

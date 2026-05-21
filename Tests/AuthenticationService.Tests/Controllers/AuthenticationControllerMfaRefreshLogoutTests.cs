@@ -21,14 +21,8 @@ using NSubstitute;
 namespace AuthenticationService.Tests.Controllers;
 
 /// <summary>
-/// <para>Covers the four AuthenticationController endpoints not exercised in
-/// <c>AuthenticationControllerLoginTests</c>:</para>
-/// <list type="bullet">
-///   <item><description><b>POST /mfa</b> — unknown email, locked, wrong code (records failed attempt + lockout cascade), accepted (token issued + access-failed reset).</description></item>
-///   <item><description><b>POST /refresh</b> — invalid expired-token signature 401, every <see cref="RefreshResult"/> case (Success, NotFound, Expired, Reused — Reused triggers the "wasn't me!" notification email + critical SIEM event).</description></item>
-///   <item><description><b>POST /logout</b> — missing/invalid sid claim 401, happy path revokes family + access token.</description></item>
-///   <item><description><b>POST /logoutall</b> — missing sub 401, orphan-token (sub matches no user) returns Ok after orphan-revoke (idempotent), happy path invalidates all + revokes access token.</description></item>
-/// </list>
+/// Covers MFA verify, refresh (every <see cref="RefreshResult"/> case incl. Reused cascade),
+/// per-device logout, and logout-all (incl. orphan-token idempotency).
 /// </summary>
 public class AuthenticationControllerMfaRefreshLogoutTests
 {
@@ -37,46 +31,36 @@ public class AuthenticationControllerMfaRefreshLogoutTests
     [Fact]
     public async Task Mfa_UnknownEmail_Returns400Generic()
     {
-        // arrange
         var (controller, deps) = BuildController();
         deps.UserService.FindByEmailAsync(Arg.Any<string>()).Returns((User?)null);
 
-        // act
         var result = await controller.MfaAuthenticateAsync(new MfaAuthenticationDto
         {
             Email = "ghost@example.com", MfaProvider = MfaProviders.Email, Token = "123456",
         });
 
-        // assert — same generic-400 contract as login: don't tip off attacker which
-        // emails are registered.
         result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]
     public async Task Mfa_LockedAccount_Returns401()
     {
-        // arrange — account already locked (prior failed attempts pushed the user past
-        // the threshold). Even with a valid MFA code, login is denied while locked.
         var (controller, deps) = BuildController();
         var user = new User { Id = "u1", Email = "alice@example.com" };
         deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
         deps.UserService.IsLockedOutAsync(user).Returns(true);
 
-        // act
         var result = await controller.MfaAuthenticateAsync(new MfaAuthenticationDto
         {
             Email = "alice@example.com", MfaProvider = MfaProviders.Email, Token = "123456",
         });
 
-        // assert
         result.Should().BeOfType<UnauthorizedObjectResult>();
     }
 
     [Fact]
     public async Task Mfa_WrongCode_RecordsFailedAttemptAndReturns401()
     {
-        // arrange — user exists, not locked yet, but the supplied code doesn't verify.
-        // Counts toward the failed-attempts threshold the same way a wrong password does.
         var (controller, deps) = BuildController();
         var user = new User { Id = "u1", Email = "alice@example.com" };
         deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
@@ -84,13 +68,11 @@ public class AuthenticationControllerMfaRefreshLogoutTests
         deps.UserService.VerifyMfaTokenAsync(user, MfaProviders.Email.ToString(), "wrong")
             .Returns(false);
 
-        // act
         var result = await controller.MfaAuthenticateAsync(new MfaAuthenticationDto
         {
             Email = "alice@example.com", MfaProvider = MfaProviders.Email, Token = "wrong",
         });
 
-        // assert
         result.Should().BeOfType<UnauthorizedObjectResult>();
         await deps.UserService.Received(1).AccessFailedAsync(user);
     }
@@ -98,31 +80,25 @@ public class AuthenticationControllerMfaRefreshLogoutTests
     [Fact]
     public async Task Mfa_WrongCode_TripsLockoutThreshold_InvalidatesAndSendsEmail()
     {
-        // arrange — wrong code AND that wrong attempt pushed the user over the lockout
-        // threshold. Controller cascades: invalidate every active session + send the
-        // failed-login lockout notification with the "if it wasn't you, reset now" link.
+        // Wrong code pushes user over lockout threshold — controller cascades: invalidate sessions + send lockout email.
         var (controller, deps) = BuildController();
         var user = new User { Id = "u1", Email = "alice@example.com" };
         deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
-        // First IsLockedOutAsync (gate at top) returns false; second call (after
-        // AccessFailedAsync) returns true. Sequenced returns model the increment.
+        // Sequenced returns: first call (gate) false, second call (after AccessFailedAsync) true.
         deps.UserService.IsLockedOutAsync(user).Returns(false, true);
         deps.UserService.VerifyMfaTokenAsync(user, MfaProviders.Email.ToString(), "wrong")
             .Returns(false);
         deps.UserService.GeneratePasswordResetTokenAsync(user).Returns("reset-tok");
 
-        // act
         var result = await controller.MfaAuthenticateAsync(new MfaAuthenticationDto
         {
             Email = "alice@example.com", MfaProvider = MfaProviders.Email, Token = "wrong",
         });
 
-        // assert
         result.Should().BeOfType<UnauthorizedObjectResult>();
         await deps.UserService.Received(1).AccessFailedAsync(user);
         await deps.UserService.Received(1).InvalidateUserTokensAsync(
             user, Arg.Any<string>(), RevocationReasons.FailedLoginLockout);
-        // Lockout email sent.
         await deps.EmailService.Received(1).SendEmailAsync(
             "alice@example.com", EmailSubjects.LockedAccountInfo, Arg.Any<string>());
     }
@@ -130,8 +106,6 @@ public class AuthenticationControllerMfaRefreshLogoutTests
     [Fact]
     public async Task Mfa_AcceptedCode_IssuesTokenAndResetsFailedAttempts()
     {
-        // arrange — happy path. Code verifies; a token pair is issued; failed-attempt
-        // counter reset so a future wrong password starts the count fresh.
         var (controller, deps) = BuildController();
         var user = new User { Id = "u1", Email = "alice@example.com", UserName = "alice" };
         deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
@@ -143,13 +117,11 @@ public class AuthenticationControllerMfaRefreshLogoutTests
         deps.TokenService.CreateTokenAsync(user, Arg.Any<IList<string>>(), Arg.Any<Guid?>(), Arg.Any<string?>())
             .Returns(issued);
 
-        // act
         var result = await controller.MfaAuthenticateAsync(new MfaAuthenticationDto
         {
             Email = "alice@example.com", MfaProvider = MfaProviders.Email, Token = "right",
         });
 
-        // assert
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         ok.Value.Should().BeOfType<AuthenticationResponse>()
             .Which.Token.Should().BeSameAs(issued);
@@ -161,18 +133,13 @@ public class AuthenticationControllerMfaRefreshLogoutTests
     [Fact]
     public async Task Refresh_InvalidExpiredTokenSignature_Returns401()
     {
-        // arrange — the access token presented in the Authorization header doesn't pass
-        // signature/issuer/audience validation (lifetime check is skipped for refresh,
-        // but everything else still applies). Reject before going near the refresh-token
-        // store.
+        // Access-token signature/issuer/audience fails — reject before going near the refresh store.
         var (controller, deps) = BuildController();
         SetAuthorizationHeader(controller, "eyJ.bad");
         deps.TokenService.ValidateExpiredTokenAsync("eyJ.bad").Returns(false);
 
-        // act
         var result = await controller.RefreshTokenAsync(new RefreshTokenDto { RefreshToken = "rt" });
 
-        // assert
         result.Should().BeOfType<UnauthorizedObjectResult>();
         await deps.TokenService.DidNotReceive().RotateRefreshTokenAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
@@ -181,7 +148,6 @@ public class AuthenticationControllerMfaRefreshLogoutTests
     [Fact]
     public async Task Refresh_Success_Returns200WithNewToken()
     {
-        // arrange — happy rotation.
         var (controller, deps) = BuildController();
         SetAuthorizationHeader(controller, "eyJ.access");
         deps.TokenService.ValidateExpiredTokenAsync("eyJ.access").Returns(true);
@@ -189,10 +155,8 @@ public class AuthenticationControllerMfaRefreshLogoutTests
         deps.TokenService.RotateRefreshTokenAsync("eyJ.access", "rt", Arg.Any<string>())
             .Returns(new RefreshResult.Success(newToken));
 
-        // act
         var result = await controller.RefreshTokenAsync(new RefreshTokenDto { RefreshToken = "rt" });
 
-        // assert
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         ok.Value.Should().BeOfType<AuthenticationResponse>()
             .Which.Token.Should().BeSameAs(newToken);
@@ -201,17 +165,14 @@ public class AuthenticationControllerMfaRefreshLogoutTests
     [Fact]
     public async Task Refresh_NotFound_Returns401WithInvalidRefreshTokenMessage()
     {
-        // arrange — refresh token never issued (or for a different user).
         var (controller, deps) = BuildController();
         SetAuthorizationHeader(controller, "eyJ.access");
         deps.TokenService.ValidateExpiredTokenAsync("eyJ.access").Returns(true);
         deps.TokenService.RotateRefreshTokenAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>())
             .Returns(new RefreshResult.NotFound());
 
-        // act
         var result = await controller.RefreshTokenAsync(new RefreshTokenDto { RefreshToken = "anything" });
 
-        // assert
         var unauthorized = result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
         unauthorized.Value.Should().BeOfType<AuthenticationResponse>()
             .Which.Errors!.Values.Should().Contain(ErrorMessages.InvalidRefreshToken);
@@ -220,18 +181,15 @@ public class AuthenticationControllerMfaRefreshLogoutTests
     [Fact]
     public async Task Refresh_Expired_Returns401WithExpiredRefreshTokenMessage()
     {
-        // arrange — refresh token row exists but its ExpiresAt has passed.
         var (controller, deps) = BuildController();
         SetAuthorizationHeader(controller, "eyJ.access");
         deps.TokenService.ValidateExpiredTokenAsync("eyJ.access").Returns(true);
         deps.TokenService.RotateRefreshTokenAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>())
             .Returns(new RefreshResult.Expired());
 
-        // act
         var result = await controller.RefreshTokenAsync(new RefreshTokenDto { RefreshToken = "rt" });
 
-        // assert — distinct error message so client can prompt re-login (vs. "your token
-        // is bad", which might suggest the wrong fix).
+        // Distinct error message so client can prompt re-login rather than retry with a different token.
         var unauthorized = result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
         unauthorized.Value.Should().BeOfType<AuthenticationResponse>()
             .Which.Errors!.Values.Should().Contain(ErrorMessages.ExpiredRefreshToken);
@@ -240,10 +198,7 @@ public class AuthenticationControllerMfaRefreshLogoutTests
     [Fact]
     public async Task Refresh_Reused_NotifiesUserAndReturns401Generic()
     {
-        // arrange — refresh-token reuse. Service has already revoked all families +
-        // rotated stamp by the time the controller sees this. Controller's job: fire the
-        // suspicious-activity email, log Critical SIEM event, return generic 401 (don't
-        // tip off attacker).
+        // Reuse detected — service already revoked families and rotated stamp. Controller sends suspicious-activity email + generic 401.
         var (controller, deps) = BuildController();
         SetAuthorizationHeader(controller, "eyJ.access");
         deps.TokenService.ValidateExpiredTokenAsync("eyJ.access").Returns(true);
@@ -254,10 +209,8 @@ public class AuthenticationControllerMfaRefreshLogoutTests
         var user = new User { Id = "u1", Email = "alice@example.com" };
         deps.UserService.FindByIdAsync("u1").Returns(user);
 
-        // act
         var result = await controller.RefreshTokenAsync(new RefreshTokenDto { RefreshToken = "rt" });
 
-        // assert — generic 401 + suspicious-activity email sent.
         result.Should().BeOfType<UnauthorizedObjectResult>();
         await deps.EmailService.Received(1).SendEmailAsync(
             "alice@example.com", EmailSubjects.SuspiciousActivity, Arg.Any<string>());
@@ -266,9 +219,7 @@ public class AuthenticationControllerMfaRefreshLogoutTests
     [Fact]
     public async Task Refresh_ReusedButUserHasNoEmail_DoesNotSendEmailButStillReturns401()
     {
-        // arrange — reuse cascade fired, but the user record has no email (degenerate
-        // case — admin-seeded user with no email, etc.). Controller skips the email send
-        // gracefully rather than throwing.
+        // Degenerate case — admin-seeded user with no email. Controller skips email send gracefully.
         var (controller, deps) = BuildController();
         SetAuthorizationHeader(controller, "eyJ.access");
         deps.TokenService.ValidateExpiredTokenAsync("eyJ.access").Returns(true);
@@ -277,10 +228,8 @@ public class AuthenticationControllerMfaRefreshLogoutTests
         deps.TokenService.GetUserId("eyJ.access").Returns("u1");
         deps.UserService.FindByIdAsync("u1").Returns(new User { Id = "u1", Email = null });
 
-        // act
         var result = await controller.RefreshTokenAsync(new RefreshTokenDto { RefreshToken = "rt" });
 
-        // assert
         result.Should().BeOfType<UnauthorizedObjectResult>();
         await deps.EmailService.DidNotReceive().SendEmailAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
@@ -289,9 +238,7 @@ public class AuthenticationControllerMfaRefreshLogoutTests
     [Fact]
     public async Task Refresh_ReusedAndEmailSendThrows_StillReturns401()
     {
-        // arrange — security action (revoke + stamp rotation) has already happened. Email
-        // send failure must NOT block returning the 401 — that would cascade a transient
-        // SMTP outage into refresh-endpoint failures.
+        // Email failure must not block returning 401 — would cascade transient SMTP outage into endpoint failures.
         var (controller, deps) = BuildController();
         SetAuthorizationHeader(controller, "eyJ.access");
         deps.TokenService.ValidateExpiredTokenAsync("eyJ.access").Returns(true);
@@ -303,10 +250,8 @@ public class AuthenticationControllerMfaRefreshLogoutTests
             .When(s => s.SendEmailAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()))
             .Do(_ => throw new InvalidOperationException("smtp down"));
 
-        // act
         var result = await controller.RefreshTokenAsync(new RefreshTokenDto { RefreshToken = "rt" });
 
-        // assert
         result.Should().BeOfType<UnauthorizedObjectResult>();
     }
 
@@ -315,29 +260,23 @@ public class AuthenticationControllerMfaRefreshLogoutTests
     [Fact]
     public async Task Logout_MissingSidClaim_Returns401()
     {
-        // arrange — sid is the family ID; without it we can't revoke just one device's
-        // family. Reject rather than guess.
+        // sid is the family ID — without it we can't revoke just one device's family.
         var (controller, _) = BuildController(sub: "u1", sid: null);
 
-        // act
         var result = await controller.LogoutAsync();
 
-        // assert
         result.Should().BeOfType<UnauthorizedObjectResult>();
     }
 
     [Fact]
     public async Task Logout_HappyPath_RevokesFamilyAndAccessToken()
     {
-        // arrange
         var familyId = Guid.NewGuid();
         var (controller, deps) = BuildController(sub: "u1", sid: familyId.ToString());
         SetAuthorizationHeader(controller, "eyJ.access");
 
-        // act
         var result = await controller.LogoutAsync();
 
-        // assert
         result.Should().BeOfType<OkObjectResult>();
         await deps.TokenService.Received(1).RevokeFamilyAsync(familyId, RevocationReasons.Logout);
         await deps.TokenService.Received(1).RevokeTokenAsync("eyJ.access", Arg.Any<string>(), RevocationReasons.Logout);
@@ -348,31 +287,23 @@ public class AuthenticationControllerMfaRefreshLogoutTests
     [Fact]
     public async Task LogoutAll_MissingSubClaim_Returns401()
     {
-        // arrange
         var (controller, _) = BuildController(sub: null, sid: Guid.NewGuid().ToString());
 
-        // act
         var result = await controller.LogoutAllAsync();
 
-        // assert
         result.Should().BeOfType<UnauthorizedObjectResult>();
     }
 
     [Fact]
     public async Task LogoutAll_OrphanToken_RevokesOrphanAndReturnsOkIdempotent()
     {
-        // arrange — sub points to a deleted user. Logout-all is idempotent in that case:
-        // there's nothing to invalidate (the user is gone), but we still revoke the
-        // presented access token so middleware rejects future replays. Returning Ok lets
-        // the client move on (calling logout-all repeatedly never errors).
+        // sub points to deleted user — still revoke the presented token but return Ok so clients can retry safely.
         var (controller, deps) = BuildController(sub: "deleted-user", sid: Guid.NewGuid().ToString());
         SetAuthorizationHeader(controller, "eyJ.access");
         deps.UserService.FindByIdAsync("deleted-user").Returns((User?)null);
 
-        // act
         var result = await controller.LogoutAllAsync();
 
-        // assert
         result.Should().BeOfType<OkObjectResult>();
         await deps.TokenService.Received(1).RevokeOrphanedTokenAsync("eyJ.access", Arg.Any<string>());
         await deps.UserService.DidNotReceive().InvalidateUserTokensAsync(
@@ -382,17 +313,13 @@ public class AuthenticationControllerMfaRefreshLogoutTests
     [Fact]
     public async Task LogoutAll_HappyPath_InvalidatesEverythingAndRevokesAccessToken()
     {
-        // arrange
         var (controller, deps) = BuildController(sub: "u1", sid: Guid.NewGuid().ToString());
         var user = new User { Id = "u1" };
         deps.UserService.FindByIdAsync("u1").Returns(user);
         SetAuthorizationHeader(controller, "eyJ.access");
 
-        // act
         var result = await controller.LogoutAllAsync();
 
-        // assert — InvalidateUserTokensAsync is called WITH the access token argument, so
-        // it'll cascade through stamp rotation + family revoke + access-token revoke.
         result.Should().BeOfType<OkObjectResult>();
         await deps.UserService.Received(1).InvalidateUserTokensAsync(
             user, Arg.Any<string>(), RevocationReasons.LogoutAll, "eyJ.access");

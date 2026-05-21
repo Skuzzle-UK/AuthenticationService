@@ -10,10 +10,8 @@ builder.Services.AddAuthenticationServiceJwt(
 
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy(PolicyConstants.AdminOnly, p => p.RequireRole(RolesConstants.Admin))
-    // Scope-based policies for service-to-service callers. Each call to AddScopePolicy
-    // registers a policy of the same name that requires the JWT's `scope` claim to
-    // contain that scope. Service tokens (OAuth client-credentials grant) carry the
-    // claim; user tokens don't, so these policies effectively gate "machine callers only".
+    // Scope policies require the JWT's `scope` claim to contain the named scope —
+    // only client-credentials service tokens carry it, so these gate "machine callers only".
     .AddScopePolicy("example.read")
     .AddScopePolicy("example.write");
 
@@ -66,9 +64,7 @@ app.MapGet("/admin", () => "Welcome, admin. You see this only because the token 
     .RequireAuthorization(PolicyConstants.AdminOnly)
     .WithName("AdminOnly");
 
-// ─── Service-to-service scope-gated endpoints ────────────────────────────────────
-// These endpoints demonstrate scope-based authorization for callers using the OAuth
-// client-credentials grant. See README for the curl walkthrough.
+// Service-to-service scope-gated endpoints — see README for the curl walkthrough.
 
 app.MapGet("/example-read", (ClaimsPrincipal caller) => Results.Ok(new
 {

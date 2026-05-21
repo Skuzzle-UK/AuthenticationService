@@ -4,22 +4,15 @@ using Microsoft.AspNetCore.Identity;
 namespace AuthenticationService.Services;
 
 /// <summary>
-/// Façade over ASP.NET Core Identity's <c>UserManager</c>. Most methods are thin
-/// pass-throughs; a couple (<see cref="InvalidateUserTokensAsync"/>, the recovery hooks)
-/// add cross-cutting behaviour on top. Controllers depend on this interface rather than
-/// <c>UserManager</c> directly so we can stub it in tests and centralise the "log a user
-/// out" semantics.
+/// Façade over ASP.NET Core Identity's <c>UserManager</c>. Most methods are pass-throughs;
+/// <see cref="InvalidateUserTokensAsync"/> composes the "log out everywhere" cascade.
 /// </summary>
 public interface IUserService
 {
-    /// <summary>
-    /// Creates a new user with the supplied password.
-    /// </summary>
     Task<IdentityResult> CreateAsync(User user, string password);
 
     /// <summary>
-    /// Creates a new user with no password — used by the admin-invitation flow. The user
-    /// can't authenticate until they set a password via <c>POST /api/registration/accept-invitation</c>.
+    /// Creates a user with no password — admin-invitation flow. Caller can't authenticate until they accept the invite.
     /// </summary>
     Task<IdentityResult> CreateAsync(User user);
 
@@ -144,27 +137,25 @@ public interface IUserService
     Task<bool> IsLockedOutAsync(User user);
 
     /// <summary>
-    /// True if the supplied password matches the user's stored hash. Doesn't bump the failure counter.
+    /// Verifies the password without bumping the failure counter.
     /// </summary>
     Task<bool> CheckPasswordAsync(User user, string password);
 
     /// <summary>
-    /// Increments the failed-login counter and triggers a lockout once the configured limit is hit.
+    /// Bumps the failed-login counter and triggers lockout once the limit is hit.
     /// </summary>
     Task AccessFailedAsync(User user);
 
     /// <summary>
-    /// The "log this user out everywhere" operation. Rotates the security stamp (which
-    /// invalidates every Identity-issued token like password-reset and email-confirm links),
-    /// revokes every refresh-token family, and — if <paramref name="token"/> is supplied —
-    /// also revokes the access token used to make the request so it can't be replayed.
+    /// "Log this user out everywhere". Rotates the security stamp (invalidates Identity-issued
+    /// tokens like password-reset and email-confirm links), revokes every refresh-token family,
+    /// and — if <paramref name="token"/> is supplied — also revokes that access token.
     /// </summary>
     Task InvalidateUserTokensAsync(User user, string ipAddress, string reason, string? token = null);
 
     /// <summary>
-    /// Rotates the user's security stamp. Existing Identity tokens (password-reset,
-    /// email-confirm, lockout, MFA codes) immediately stop validating. Used after consuming
-    /// any single-use email-link token to prevent replay.
+    /// Rotates the security stamp — existing Identity tokens (reset, email-confirm, lockout, MFA)
+    /// immediately stop validating. Used after consuming a single-use email link to prevent replay.
     /// </summary>
     Task UpdateSecurityStampAsync(User user);
 }

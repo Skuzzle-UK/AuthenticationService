@@ -28,10 +28,8 @@ public class Program
                 .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
                 .AddEnvironmentVariables();
 
-            // Cap inbound request body size. This is an auth service — every endpoint
-            // accepts only small JSON bodies (login, registration, etc.). Kestrel's 30 MB
-            // default is overkill and a small DoS surface; cap it tight via
-            // HostingSettings:MaxRequestBodySizeInKilobytes (default 1024 KB / 1 MB).
+            // Cap body size — Kestrel's 30 MB default is a needless DoS surface for an
+            // auth API. Tuned via HostingSettings:MaxRequestBodySizeInKilobytes.
             var hostingSettings = builder.Configuration
                 .GetSection(nameof(HostingSettings))
                 .Get<HostingSettings>() ?? new HostingSettings();
@@ -48,10 +46,8 @@ public class Program
                     .ReadFrom.Services(services)
                     .Enrich.FromLogContext();
 
-                // Without the env var, Serilog stays console-only and logs don't flow to Loki.
-                // Lets operators click from a trace span in Grafana / Tempo into the
-                // log lines emitted during that request, since both share the same
-                // trace_id and span_id.
+                // Without the env var, Serilog stays console-only — logs don't flow to Loki
+                // and the trace<->log correlation in Grafana/Tempo breaks.
                 var otlpEndpoint = hostingContext.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"];
                 if (!string.IsNullOrWhiteSpace(otlpEndpoint))
                 {
@@ -67,10 +63,8 @@ public class Program
                     });
                 }
 
-                // Custom DB sink for the admin audit endpoint. Only persists events
-                // tagged with a SecurityEventIds EventId — everything else passes through
-                // to console / OTLP unchanged. Per-event write via a scoped DbContext;
-                // failures swallow into Serilog SelfLog rather than blocking the request.
+                // Persists SecurityEventIds-tagged events to the audit table. Other events
+                // pass through unchanged. See SecurityEventSink for details.
                 var scopeFactory = services.GetRequiredService<IServiceScopeFactory>();
                 configuration.WriteTo.Sink(new SecurityEventSink(scopeFactory));
             });

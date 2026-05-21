@@ -1,9 +1,8 @@
 namespace AuthenticationService.Constants;
 
 /// <summary>
-/// Paths to the bundled Razor pages this service ships. Used when building email links
-/// that point users at the auth service's own UI as a fallback (when no consumer-supplied
-/// callback URL is available).
+/// Bundled Razor page paths — used as fallback targets for email links when no
+/// consumer-supplied callback URL is configured.
 /// </summary>
 public class PageRouteConstants
 {
@@ -18,13 +17,12 @@ public class PageRouteConstants
     public const string LockAccount = "/LockAccount";
 
     /// <summary>
-    /// Generic "your action completed" landing page — shown when a flow has nowhere else to redirect to.
+    /// Landing page when a flow has nowhere else to redirect to.
     /// </summary>
     public const string ActionComplete = "/ActionComplete";
 
     /// <summary>
-    /// Landing page for the admin-creates-user invitation flow — where the user sets
-    /// their initial password after clicking the invitation link.
+    /// Landing page for admin-invited users to set their initial password.
     /// </summary>
     public const string AcceptInvitation = "/AcceptInvitation";
 }

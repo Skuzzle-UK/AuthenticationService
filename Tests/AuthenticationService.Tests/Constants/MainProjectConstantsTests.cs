@@ -5,18 +5,11 @@ using Microsoft.Extensions.Logging;
 namespace AuthenticationService.Tests.Constants;
 
 /// <summary>
-/// <para>Constants in the main project pin SIEM contracts (EventIds, RevocationReasons),
-/// user-facing error text (ErrorMessages), and rate-limit policy / token-purpose strings.
-/// SIEM rules in particular match on numeric EventIds — changing a value silently breaks
-/// downstream alerting. These tests pin every value so renames or numeric drift fail at PR
-/// time rather than in production.</para>
+/// Pins SIEM contracts (EventIds, RevocationReasons), error text, rate-limit policy strings,
+/// and other wire constants so renames or numeric drift fail at PR time rather than in production.
 /// </summary>
 public class MainProjectConstantsTests
 {
-    /// <summary>
-    /// SIEM contract: each EventId.Id is the wire-side identifier; renaming the .NET field
-    /// is fine but the integer must not change. Ranges follow the documented buckets.
-    /// </summary>
     [Theory]
     [InlineData(nameof(SecurityEventIds.LoginSucceeded), 1001, 1000, 1999)]
     [InlineData(nameof(SecurityEventIds.LoginFailed), 1002, 1000, 1999)]
@@ -44,12 +37,10 @@ public class MainProjectConstantsTests
     [InlineData(nameof(SecurityEventIds.RevokedTokenReplayThresholdLocked), 4005, 4000, 4999)]
     public void SecurityEventIds_PinExpectedNumericIds(string fieldName, int expectedId, int rangeMin, int rangeMax)
     {
-        // arrange
         var field = typeof(SecurityEventIds).GetField(fieldName);
         field.Should().NotBeNull(because: "every public EventId must remain accessible by name.");
         var eventId = (EventId)field!.GetValue(null)!;
 
-        // act / assert — number, name, and range bucket must all line up.
         eventId.Id.Should().Be(expectedId);
         eventId.Name.Should().Be(fieldName, because: "Name uses nameof() — rename of the field must update the wire string too.");
         eventId.Id.Should().BeInRange(rangeMin, rangeMax,
@@ -59,8 +50,6 @@ public class MainProjectConstantsTests
     [Fact]
     public void RevocationReasons_PinExpectedWireValues()
     {
-        // SIEM correlation often groups by reason; renaming would split a previously-unified
-        // dashboard into two halves with different labels.
         RevocationReasons.Logout.Should().Be("logout");
         RevocationReasons.LogoutAll.Should().Be("logout_all");
         RevocationReasons.PasswordChange.Should().Be("password_change");
@@ -74,9 +63,8 @@ public class MainProjectConstantsTests
     [Fact]
     public void RateLimitPolicies_PinExpectedRegistrationKeys()
     {
-        // The string is what [EnableRateLimiting(...)] uses to look up the registered policy.
-        // A rename here without a coordinated update to every controller would silently
-        // drop the per-endpoint rate limit (only the global limiter would still apply).
+        // The string is what [EnableRateLimiting(...)] looks up — rename here without coordinated controller updates
+        // silently drops the per-endpoint rate limit.
         RateLimitPolicies.AuthStrict.Should().Be("auth-strict");
         RateLimitPolicies.AuthSensitive.Should().Be("auth-sensitive");
     }
@@ -84,25 +72,22 @@ public class MainProjectConstantsTests
     [Fact]
     public void TokenPurposes_LockoutPinned()
     {
-        // Identity's IUserTokenStore separates tokens by (provider, purpose) — the purpose
-        // string is the lookup key, so a rename invalidates every previously-issued
-        // panic-button-lock token.
+        // Identity's IUserTokenStore separates tokens by (provider, purpose) — rename invalidates
+        // every previously-issued panic-button-lock token.
         TokenPurposes.Lockout.Should().Be("Lockout");
     }
 
     [Fact]
     public void ApiRoutes_ConfirmEmailPinned()
     {
-        // The email-confirmation link is built into emails sent to users — those emails are
-        // sitting in mailboxes for hours/days. Changing the route makes existing links 404.
+        // Email-confirmation link sits in mailboxes for hours/days — route changes make existing links 404.
         ApiRoutes.ConfirmEmail.Should().Be("/confirm/email");
     }
 
     [Fact]
     public void WellKnownPaths_PrefixAndDocumentNamesFollowSpec()
     {
-        // Standard /.well-known/ URIs from RFC 8615 + OIDC Discovery — consumers (JwtBearer,
-        // operator tooling) expect these exact paths.
+        // Standard /.well-known/ URIs from RFC 8615 + OIDC Discovery.
         WellKnownPaths.Prefix.Should().Be(".well-known");
         WellKnownPaths.Jwks.Should().Be("jwks.json");
         WellKnownPaths.OpenIdConfiguration.Should().Be("openid-configuration");
@@ -111,9 +96,6 @@ public class MainProjectConstantsTests
     [Fact]
     public void ErrorMessages_AreNonEmptyAndUniqueAcrossPublicConsts()
     {
-        // arrange — pull every public const string and verify each carries a non-empty
-        // operator-facing message and that values are distinct (a duplicated message would
-        // mean two distinct error conditions render identically to the client).
         var fields = typeof(ErrorMessages)
             .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             .Where(f => f.IsLiteral && f.FieldType == typeof(string))
@@ -121,10 +103,8 @@ public class MainProjectConstantsTests
 
         fields.Should().NotBeEmpty();
 
-        // act
         var values = fields.Select(f => (string)f.GetRawConstantValue()!).ToList();
 
-        // assert
         values.Should().AllSatisfy(v => v.Should().NotBeNullOrWhiteSpace());
         values.Should().OnlyHaveUniqueItems();
     }
@@ -143,30 +123,21 @@ public class MainProjectConstantsTests
     [InlineData(nameof(ErrorMessages.MissingJtiClaim), "Token does not contain a jti claim.")]
     public void ErrorMessages_PinPublishedText(string fieldName, string expected)
     {
-        // arrange — the user-facing English text. Localisation is a future change; until
-        // then this is the canonical wire string. Subtle rephrasing here would change UX
-        // copy across every consumer that surfaces these messages directly.
         var field = typeof(ErrorMessages).GetField(fieldName);
 
-        // act
         var value = (string)field!.GetRawConstantValue()!;
 
-        // assert
         value.Should().Be(expected);
     }
 
     [Fact]
     public void UriConstants_AreNonEmpty()
     {
-        // arrange — UriConstants is a small grab-bag of query-string parameter names. A
-        // string-equality test on each pin is overkill; verifying every public const is
-        // non-empty is enough to catch accidental clearing.
         var fields = typeof(UriConstants)
             .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             .Where(f => f.IsLiteral && f.FieldType == typeof(string))
             .ToList();
 
-        // act / assert
         fields.Should().NotBeEmpty();
         fields.Select(f => (string)f.GetRawConstantValue()!)
             .Should().AllSatisfy(v => v.Should().NotBeNullOrWhiteSpace());
@@ -175,15 +146,12 @@ public class MainProjectConstantsTests
     [Fact]
     public void EmailSubjects_AreNonEmptyAndUnique()
     {
-        // arrange / act — email subject lines must be distinct so users can scan their
-        // inbox and tell which kind of email they received.
         var fields = typeof(EmailSubjects)
             .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             .Where(f => f.IsLiteral && f.FieldType == typeof(string))
             .Select(f => (string)f.GetRawConstantValue()!)
             .ToList();
 
-        // assert
         fields.Should().NotBeEmpty();
         fields.Should().OnlyHaveUniqueItems();
         fields.Should().AllSatisfy(v => v.Should().NotBeNullOrWhiteSpace());
@@ -192,17 +160,14 @@ public class MainProjectConstantsTests
     [Fact]
     public void UserConstants_AdminUsernamePinned()
     {
-        // The seeded admin's username is part of the deployment contract — operators look
-        // for "admin" specifically when troubleshooting. Renaming would break runbooks.
+        // Operators look for "admin" specifically when troubleshooting — renaming breaks runbooks.
         UserConstants.Admin.Should().Be("admin");
     }
 
     [Fact]
     public void RouteConstants_PageRoutes_ArePinnedWithLeadingSlash()
     {
-        // Razor Page routes — referenced from email templates and redirect-after-action
-        // flows. Leading slash is the Razor convention; absent it the redirect resolves
-        // relative to the current page and breaks for non-root requests.
+        // Leading slash is the Razor convention; absent it the redirect resolves relative to current page.
         PageRouteConstants.ResetPassword.Should().Be("/ResetPassword");
         PageRouteConstants.LockAccount.Should().Be("/LockAccount");
         PageRouteConstants.ActionComplete.Should().Be("/ActionComplete");
@@ -217,9 +182,7 @@ public class MainProjectConstantsTests
     [Fact]
     public void ResponseConstants_BadRequestAndUnauthorizedKeys_Pinned()
     {
-        // These are the keys ApiResponse.AddError gets called with for the standard
-        // failure shapes. Clients deserialize the Errors dictionary and look up by these
-        // exact keys, so renaming silently breaks client error handling.
+        // Clients deserialize the Errors dictionary and look up by these exact keys.
         ResponseConstants.BadRequest.Should().Be("Bad Request");
         ResponseConstants.Unauthorized.Should().Be("Unauthorized");
     }
@@ -227,16 +190,12 @@ public class MainProjectConstantsTests
     [Fact]
     public void RevocationReasons_AllValues_AreUniqueAndSnakeCase()
     {
-        // arrange — pull every const, verify uniqueness (so SIEM grouping is meaningful)
-        // and snake_case shape (consistent serialization style — the wire convention is
-        // snake_case in this codebase).
         var values = typeof(RevocationReasons)
             .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             .Where(f => f.IsLiteral && f.FieldType == typeof(string))
             .Select(f => (string)f.GetRawConstantValue()!)
             .ToList();
 
-        // act / assert
         values.Should().NotBeEmpty();
         values.Should().OnlyHaveUniqueItems();
         values.Should().AllSatisfy(v => v.Should().MatchRegex("^[a-z_]+$"));

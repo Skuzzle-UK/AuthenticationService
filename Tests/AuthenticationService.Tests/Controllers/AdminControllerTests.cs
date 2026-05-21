@@ -14,15 +14,9 @@ using NSubstitute;
 namespace AuthenticationService.Tests.Controllers;
 
 /// <summary>
-/// <para>Controller-layer tests for <see cref="AdminController"/>. Focused on three things:</para>
-/// <list type="bullet">
-///   <item><description>Self-protection — destructive endpoints reject when target == current admin.</description></item>
-///   <item><description>Status mapping — each service result variant maps to the right HTTP status.</description></item>
-///   <item><description>Parameter pass-through — query params land in the right service filter, body fields flow through.</description></item>
-/// </list>
-/// <para>The auth gate (<c>[Authorize(Policy = AdminOnly)]</c>) is wired by ASP.NET Core's
-/// authorisation middleware, not by code we own — covered by the integration scenarios, not
-/// here.</para>
+/// Controller-layer tests for <see cref="AdminController"/>: self-protection guards on destructive
+/// endpoints, service-result → HTTP status mapping, parameter pass-through. The auth gate itself
+/// is integration-tested, not here.
 /// </summary>
 public class AdminControllerTests
 {
@@ -320,8 +314,7 @@ public class AdminControllerTests
     public async Task CreateClientAsync_HappyPath_Returns201WithPlaintextSecret()
     {
         var (controller, deps) = BuildController();
-        // All Arg.Any specifiers — NSubstitute requires uniform specifiers when any
-        // argument of a given type uses one.
+        // NSubstitute requires uniform specifiers when any argument of a given type uses Arg.Any.
         deps.ClientService.CreateAsync(
                 Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(),
                 Arg.Any<IEnumerable<(string, string)>>(), Arg.Any<CancellationToken>())
@@ -453,10 +446,7 @@ public class AdminControllerTests
             ClientService = Substitute.For<IClientService>(),
         };
 
-        // In-memory SQLite for the (rare) tests that exercise the client-list /
-        // client-detail endpoints which query DatabaseContext directly. Most tests in
-        // this class go through IAdminService / IClientService stubs and never touch
-        // the DbContext, so the empty DB is fine.
+        // Empty SQLite DB for the (rare) tests that query DatabaseContext directly via client-list endpoints.
         var connection = new Microsoft.Data.Sqlite.SqliteConnection("DataSource=:memory:");
         connection.Open();
         var dbOpt = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<AuthenticationService.Storage.DatabaseContext>()

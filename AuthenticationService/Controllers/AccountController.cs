@@ -1,4 +1,4 @@
-﻿using AuthenticationService.Constants;
+using AuthenticationService.Constants;
 using AuthenticationService.Extensions;
 using AuthenticationService.Helpers;
 using AuthenticationService.Observability;
@@ -48,10 +48,7 @@ public class AccountController : ControllerBase
     }
 
     /// <summary>
-    /// Returns the current snapshot of the logged-in user's profile + roles. Useful for
-    /// SPAs that want to render user info without parsing the JWT, and for developers
-    /// debugging "is my token still valid?" — a 200 here means the token is signed,
-    /// unexpired, not revoked, and the user behind it still exists.
+    /// Returns the logged-in user's profile + roles. A 200 means the token is valid and the user still exists.
     /// </summary>
     [HttpGet("me")]
     [Authorize]
@@ -66,8 +63,7 @@ public class AccountController : ControllerBase
         var user = await _userService.FindByIdAsync(sub);
         if (user is null)
         {
-            // Token references a user that no longer exists.
-            // Revoke it so this auth service rejects every subsequent hit
+            // Orphan token — revoke so subsequent hits are rejected.
             var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
             await _tokenService.RevokeOrphanedTokenAsync(token, Request.GetRemoteIpAddress());
 
@@ -100,14 +96,7 @@ public class AccountController : ControllerBase
     }
 
     /// <summary>
-    /// Updates editable profile fields on the logged-in user. Each field on the body is
-    /// optional — only the supplied ones are written, the rest are left untouched. Returns
-    /// 200 with an empty <see cref="ApiResponse"/> on success; clients should re-fetch
-    /// <c>GET /me</c> if they need the post-update snapshot.
-    ///
-    /// <para>Changing <c>PhoneNumber</c> resets the phone-confirmed flag — the user must
-    /// re-confirm before SMS-based MFA will work against the new number. Username, email,
-    /// password, MFA, and roles are out of scope here — they each have a dedicated flow.</para>
+    /// Updates editable profile fields on the logged-in user. Body fields are optional; only supplied ones are written. Changing PhoneNumber resets the phone-confirmed flag.
     /// </summary>
     [HttpPut("me")]
     [Authorize]
@@ -158,8 +147,7 @@ public class AccountController : ControllerBase
         if (request.PhoneNumber is not null && request.PhoneNumber != user.PhoneNumber)
         {
             user.PhoneNumber = request.PhoneNumber;
-            // Number changed — old confirmation no longer applies. SMS-MFA paths block on
-            // PhoneNumberConfirmed so clearing this is what gates them off.
+            // Clearing PhoneNumberConfirmed gates SMS-MFA off until the new number is re-confirmed.
             user.PhoneNumberConfirmed = false;
             changedFields.Add(nameof(user.PhoneNumber));
         }
@@ -202,7 +190,7 @@ public class AccountController : ControllerBase
 
         if (changedFields.Count == 0)
         {
-            // Nothing actually differed — skip the round-trip and the audit event.
+            // Nothing differed — skip the round-trip and audit event.
             return Ok(new ApiResponse());
         }
 
@@ -219,12 +207,8 @@ public class AccountController : ControllerBase
     }
 
     /// <summary>
-    /// Starts MFA enrolment for the logged-in user. Returns the shared secret and a QR code
-    /// the user can scan into an authenticator app, or the verification details for the
-    /// chosen non-app provider (e.g. email).
+    /// Starts MFA enrolment. Returns a shared secret + QR code for authenticator apps, or verification details for email/phone providers.
     /// </summary>
-    /// <param name="request">EnableMfaRequest</param>
-    /// <returns>EnableMfaResponse which contains a valid QrCode if requesting to use authenticator app</returns>
     [HttpGet("enablemfa")]
     [Authorize]
     [EnableRateLimiting(RateLimitPolicies.AuthSensitive)]
@@ -235,9 +219,7 @@ public class AccountController : ControllerBase
         var user = await _userService.FindByIdAsync(_tokenService.GetUserId(token));
         if (user is null)
         {
-            // Orphan token — user behind the sub claim is gone. Revoke it so the auth
-            // service rejects every subsequent hit; return 401 (Unauthorized) rather than
-            // the previous 400 since the failure is about the token, not the request body.
+            // Orphan token — revoke it and 401. 401 not 400: failure is about the token, not the body.
             await _tokenService.RevokeOrphanedTokenAsync(token, Request.GetRemoteIpAddress());
             return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidToken));
         }
@@ -275,7 +257,6 @@ public class AccountController : ControllerBase
             case MfaProviders.Phone:
                 if (!_smsService.IsConfigured)
                 {
-                    // The user picked a provider this deployment can't actually deliver to.
                     await _userService.SetMfaEnabledAsync(user, currentMfaStatus);
                     return BadRequest(new AuthenticationResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.PhoneMfaNotConfigured));
                 }
@@ -306,9 +287,7 @@ public class AccountController : ControllerBase
     }
 
     /// <summary>
-    /// Kicks off the "I forgot my password" flow. Sends an email with a single-use reset
-    /// link. Returns 200 even when the email isn't recognised — we don't leak which
-    /// addresses are registered.
+    /// Starts the forgot-password flow. Returns 200 even for unknown emails — don't leak which addresses are registered.
     /// </summary>
     [HttpPost("forgotpassword")]
     [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
@@ -346,8 +325,7 @@ public class AccountController : ControllerBase
     }
 
     /// <summary>
-    /// Sets a new password using the single-use token from a forgot-password email. Also
-    /// clears any active lockout — this endpoint doubles as the account-recovery path.
+    /// Sets a new password using the forgot-password email token. Also clears active lockouts — doubles as account-recovery.
     /// </summary>
     [HttpPost("forgotpassword/reset")]
     [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
@@ -401,9 +379,7 @@ public class AccountController : ControllerBase
     }
 
     /// <summary>
-    /// Changes the logged-in user's password. The user is identified from the token's
-    /// <c>sub</c> claim — a user can never change anyone else's password through here, even
-    /// if they pass a different email in the request body.
+    /// Changes the logged-in user's password. User is identified from the token's sub claim — body email is ignored for identity.
     /// </summary>
     [HttpPost("changepassword")]
     [Authorize]
@@ -428,9 +404,7 @@ public class AccountController : ControllerBase
 
         if (!await _userService.IsEmailConfirmedAsync(user))
         {
-            // User exists but their email isn't confirmed. Anomalous (login already gates
-            // on this) but don't revoke — the user may legitimately be in mid-flow if
-            // some future feature changes their email and forces re-confirm.
+            // Anomalous (login gates on this) but don't revoke — user may legitimately be mid-flow re-confirming a changed email.
             return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidRequest));
         }
 
@@ -479,8 +453,7 @@ public class AccountController : ControllerBase
     }
 
     /// <summary>
-    /// "Wasn't me!" — the link in the password-changed email lands here. Locks the account
-    /// and sends the real owner a password-reset email so they can recover it.
+    /// "Wasn't me!" — landing point for the password-changed email link. Locks the account and emails the owner a reset link.
     /// </summary>
     [HttpPost("lock")]
     [EnableRateLimiting(RateLimitPolicies.AuthStrict)]

@@ -6,11 +6,7 @@ using Microsoft.Extensions.Options;
 namespace AuthenticationService.Validators;
 
 /// <summary>
-/// Plugged into Identity's user-validator chain to block registrations against a deny-list
-/// of reserved names (<c>administrator</c>, <c>root</c>, <c>support</c>, etc.) that could
-/// be used to impersonate or phish. Runs automatically on <c>UserManager.CreateAsync</c>;
-/// the deny-list comes from <see cref="UserSettings.ReservedUserNames"/> in
-/// <see cref="IdentitySettings"/> and is operator-extensible via configuration.
+/// Identity user-validator that blocks registrations matching a configured reserved-names deny-list (administrator, root, support, etc.) to prevent impersonation.
 /// </summary>
 public class ReservedUserNameValidator : IUserValidator<User>
 {
@@ -18,7 +14,6 @@ public class ReservedUserNameValidator : IUserValidator<User>
 
     public ReservedUserNameValidator(IOptions<IdentitySettings> identitySettings)
     {
-        // Snapshot the configured list into a HashSet for O(1) lookups + case-insensitive comparison.
         _reservedNames = new HashSet<string>(
             identitySettings.Value.User.ReservedUserNames,
             StringComparer.OrdinalIgnoreCase);

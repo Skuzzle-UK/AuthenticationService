@@ -118,15 +118,9 @@ public static class HostExtensions
     }
 
     /// <summary>
-    /// Registers freestanding <c>IValidateOptions&lt;T&gt;</c> implementations that go
-    /// beyond the data-annotations validation wired up in <see cref="AddValidatedSettings"/>.
-    /// These run at startup via the <c>ValidateOnStart()</c> chain on each settings
-    /// registration, so any failure here surfaces as a startup exception with a clear
-    /// message rather than a runtime surprise.
-    ///
-    /// <para>Identity-pipeline validators (<c>IUserValidator&lt;User&gt;</c>,
-    /// <c>IPasswordValidator&lt;User&gt;</c>) are not registered here — they live in
-    /// <see cref="AddSecurity"/> because they hang off the <c>AddIdentity</c> builder.</para>
+    /// Freestanding <c>IValidateOptions&lt;T&gt;</c> registrations beyond the
+    /// data-annotation validation in <see cref="AddValidatedSettings"/>. Identity-pipeline
+    /// validators live in <see cref="AddSecurity"/> instead — they hang off AddIdentity.
     /// </summary>
     public static IServiceCollection AddValidators(this IServiceCollection services)
     {
@@ -141,9 +135,8 @@ public static class HostExtensions
             .AddSingleton<IEcdsaKeyProvider, EcdsaKeyProvider>()
             .AddScoped<ITokenService, JWTService>()
             .AddScoped<IUserService, UserService>()
-            // TODO: Replace this with a real ISmsService implementation (Twilio, AWS SNS, etc.)
-            // to enable phone MFA. SmsService reports IsConfigured = false so
-            // the MFA endpoints return a clean BadRequest until a provider is wired.
+            // TODO: replace with a real provider (Twilio, SNS, etc.). Stub reports
+            // IsConfigured = false so phone MFA endpoints cleanly BadRequest.
             .AddSingleton<ISmsService, SmsService>()
             .AddHttpContextAccessor()
             .AddSingleton<ILogEventEnricher, HttpContextLogEnricher>()
@@ -151,9 +144,8 @@ public static class HostExtensions
             .AddSingleton<IEmailService>(sp => sp.GetRequiredService<QueuedEmailService>())
             .AddSingleton<AuthMetrics>()
             .AddScoped<IAdminService, AdminService>()
-            // ClientService is scoped (uses DatabaseContext). IPasswordHasher<Client>
-            // reuses Identity's standard password-hasher so s2s client secrets land in
-            // the DB with the same algorithm + iteration count as user passwords.
+            // IPasswordHasher<Client> reuses Identity's standard hasher so s2s secrets land
+            // in the DB with the same algorithm + iteration count as user passwords.
             .AddScoped<IClientService, ClientService>()
             .AddScoped<IPasswordHasher<Client>, PasswordHasher<Client>>();
 
@@ -162,13 +154,12 @@ public static class HostExtensions
 
     public static IServiceCollection AddHostedServices(this IServiceCollection services, HostBuilderContext context)
     {
-        // Non gated hosted services to run on all replicas
+        // Runs on every replica.
         services
             .AddHostedService(sp => sp.GetRequiredService<QueuedEmailService>());
 
-        // Gated background services by HostingSettings:BackgroundWorkersEnabled so
-        // a multi-replica deployment can split into API pods (workers off) and a
-        // single worker pod (workers on).
+        // Gated so a multi-replica deployment can split into API pods (workers off) and
+        // a single worker pod (workers on).
         var hostingSettings = context.Configuration
             .GetSection(nameof(HostingSettings))
             .Get<HostingSettings>() ?? new HostingSettings();
@@ -192,12 +183,7 @@ public static class HostExtensions
                     context.Configuration.GetConnectionString("MySQL")!,
                     mysql =>
                     {
-                        // Retry transient MySQL errors with exponential backoff. Oracle's
-                        // MySql.EntityFrameworkCore doesn't ship Pomelo's EnableRetryOnFailure
-                        // equivalent, so without this any connection blip (deploy rollout,
-                        // network hiccup, lock-wait, server-gone-away) fails the user's request
-                        // AND can silently kill background workers. See
-                        // Storage/MySqlRetryingExecutionStrategy.cs for the full rationale.
+                        // See Storage/MySqlRetryingExecutionStrategy.cs for rationale.
                         mysql.ExecutionStrategy(deps => new MySqlRetryingExecutionStrategy(deps));
                     });
             });
@@ -227,9 +213,8 @@ public static class HostExtensions
 
     public static IServiceCollection AddSecurity(this IServiceCollection services, HostBuilderContext context)
     {
-        // Read at registration time so the values are known before AddIdentity sees them.
-        // Validation still runs via ValidateOnStart() in AddValidatedSettings — anything
-        // out-of-range or invalid throws there, not silently here.
+        // Read eagerly — AddIdentity needs the values up front. Validation runs via
+        // ValidateOnStart() in AddValidatedSettings, not here.
         var identitySettings = context.Configuration
             .GetSection(nameof(IdentitySettings))
             .Get<IdentitySettings>() ?? new IdentitySettings();
@@ -288,14 +273,11 @@ public static class HostExtensions
     }
 
     /// <summary>
-    /// Wires up ASP.NET Core's data-protection key ring. Keys are persisted to Redis
-    /// so the ring is shared across replicas and survives restarts;
-    /// otherwise outstanding password-reset / email-confirmation / MFA / lockout
-    /// tokens would be invalidated whenever a replica restarts. If a protection certificate
-    /// is configured, keys are encrypted at rest with it; without the cert, keys sit in
-    /// Redis as readable XML — acceptable for a transitional rollout behind a controlled
-    /// network, but `Certificate` should be populated before the service is exposed to
-    /// anything sensitive.
+    /// Wires up the data-protection key ring. Keys are persisted to Redis so they survive
+    /// restarts and are shared across replicas (otherwise outstanding reset / MFA /
+    /// confirmation tokens would be invalidated on every restart). Without a configured
+    /// <see cref="DataProtectionSettings.Certificate"/> the keys sit in Redis as readable
+    /// XML — populate before exposing the service to anything sensitive.
     /// </summary>
     public static IServiceCollection AddDataProtectionConfiguration(
         this IServiceCollection services,
@@ -305,11 +287,8 @@ public static class HostExtensions
         .GetSection(nameof(DataProtectionSettings))
         .Get<DataProtectionSettings>() ?? new DataProtectionSettings();
 
-        // Resolve the multiplexer registered by AddRedis. Building a temporary service
-        // provider here is intentional — we need the actual multiplexer instance to pass
-        // to PersistKeysToStackExchangeRedis at config time, and the alternative
-        // (Func<IDatabase> overload that resolves lazily) would build a fresh provider on
-        // every key-ring read. This way it's a single setup-time resolve.
+        // Temp provider is deliberate — the lazy Func<IDatabase> overload would build a
+        // fresh provider on every key-ring read.
         using var tempProvider = services.BuildServiceProvider();
         var redis = tempProvider.GetRequiredService<IConnectionMultiplexer>();
 
@@ -330,15 +309,9 @@ public static class HostExtensions
     }
 
     /// <summary>
-    /// Configures the <see cref="ForwardedHeadersOptions"/> from
-    /// <see cref="ForwardedHeadersSettings"/>. The actual middleware (<c>UseForwardedHeaders</c>)
-    /// is hooked into the pipeline by <c>WebApplicationExtensions.ConfigureApplication</c>.
-    ///
-    /// Honours <c>X-Forwarded-For</c> and <c>X-Forwarded-Proto</c> from trusted upstreams only.
-    /// <c>X-Forwarded-Host</c> is intentionally not honoured — host-header attacks (cache
-    /// poisoning, password-reset link manipulation) become possible if a malicious upstream
-    /// can override Host. Most LB deploys preserve the original Host header without needing
-    /// the override.
+    /// Configures <see cref="ForwardedHeadersOptions"/> from <see cref="ForwardedHeadersSettings"/>.
+    /// X-Forwarded-Host is deliberately not honoured — host-header attacks (cache poisoning,
+    /// reset-link manipulation) become possible if an upstream can override Host.
     /// </summary>
     public static IServiceCollection AddForwardedHeadersConfiguration(
         this IServiceCollection services,
@@ -352,8 +325,7 @@ public static class HostExtensions
         {
             options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
 
-            // The framework defaults to trusting localhost-loopback proxies. Clear that —
-            // we want explicit trust, no implicit defaults.
+            // Clear the framework's implicit loopback trust — explicit only.
             options.KnownIPNetworks.Clear();
             options.KnownProxies.Clear();
 
@@ -382,11 +354,8 @@ public static class HostExtensions
     }
 
     /// <summary>
-    /// Configures the default CORS policy from <see cref="CorsSettings"/>. Origins must be
-    /// explicitly allow-listed; an empty <c>AllowedOrigins</c> list yields a default policy
-    /// that blocks all cross-origin traffic. Methods and headers are pinned to what the API
-    /// actually uses; <c>AllowCredentials</c> is intentionally off because JWT bearer tokens
-    /// travel in the Authorization header, not in cookies.
+    /// Default CORS policy from <see cref="CorsSettings"/>. Origins are explicit allow-list;
+    /// AllowCredentials is off because JWT bearer tokens travel in Authorization, not cookies.
     /// </summary>
     public static IServiceCollection AddCorsConfiguration(
         this IServiceCollection services,
@@ -402,8 +371,7 @@ public static class HostExtensions
             {
                 if (settings.AllowedOrigins.Count == 0)
                 {
-                    // No origins configured — leave the policy empty, which blocks all
-                    // cross-origin traffic. Fail-closed, not fail-open.
+                    // Empty policy blocks all cross-origin traffic — fail-closed.
                     return;
                 }
 
@@ -460,11 +428,9 @@ public static class HostExtensions
             });
 
     /// <summary>
-    /// Wires up the rate limiter middleware. The actual configuration is in
-    /// <see cref="RateLimiterOptionsConfigurator"/> — registered as
-    /// <see cref="IConfigureOptions{TOptions}"/> here so it can take
-    /// <see cref="StackExchange.Redis.IConnectionMultiplexer"/> via constructor injection
-    /// when the options are first resolved.
+    /// Wires up the rate limiter. Configuration is in <see cref="RateLimiterOptionsConfigurator"/>,
+    /// registered as <see cref="IConfigureOptions{TOptions}"/> so it can ctor-inject the Redis
+    /// multiplexer at options-resolve time.
     /// </summary>
     public static IServiceCollection AddRateLimiting(this IServiceCollection services)
     {

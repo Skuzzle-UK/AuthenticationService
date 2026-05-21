@@ -3,16 +3,8 @@ using System.ComponentModel.DataAnnotations;
 namespace AuthenticationService.Shared.Dtos;
 
 /// <summary>
-/// Body for <c>POST /api/Admin/users</c> — the admin-creates-user invitation flow.
-///
-/// <para>No password field. The new account is created with <c>EmailConfirmed = false</c>
-/// and no password hash; an invitation email goes to the supplied address with a link
-/// that lands the user on the AcceptInvitation page to set their own password. The
-/// password they set also confirms their email in the same step.</para>
-///
-/// <para><see cref="Roles"/> must not include <c>Admin</c>. Admin accounts are seeded
-/// via DB seed, not via this endpoint — defence in depth against an admin escalating
-/// themselves into a second admin via the API.</para>
+/// Body for <c>POST /api/Admin/users</c> — admin-creates-user invitation flow. No password
+/// field: the user sets their own via the invitation link, which also confirms their email.
 /// </summary>
 public class AdminCreateUserDto
 {
@@ -52,14 +44,13 @@ public class AdminCreateUserDto
     public string? Postcode { get; set; }
 
     /// <summary>
-    /// Roles to assign to the new user. Defaults to <c>DefaultUser</c> if omitted or empty.
-    /// Must not contain <c>Admin</c>.
+    /// Roles to assign to the new user. Defaults to <c>DefaultUser</c> if omitted. Must not
+    /// contain <c>Admin</c> — admin accounts are seeded via DB seed, not this endpoint.
     /// </summary>
     public IList<string>? Roles { get; set; }
 
     /// <summary>
-    /// Optional. Where to redirect the user after they successfully set their password.
-    /// Validated against the open-redirect allow-list before honouring.
+    /// Optional. Redirect target after the user sets their password. Validated against the open-redirect allow-list.
     /// </summary>
     public string? CallbackUri { get; set; }
 }

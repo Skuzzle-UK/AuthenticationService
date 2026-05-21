@@ -1,20 +1,19 @@
-﻿using AuthenticationService.Shared.Constants;
+using AuthenticationService.Shared.Constants;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AuthenticationService.Controllers;
 
 /// <summary>
-/// Controller for testing out authentication/authorization scenarios
+/// Test endpoints for verifying auth/authz wiring.
 /// </summary>
 [Route("api/[controller]")]
 [ApiController]
 public class TestController : ControllerBase
 {
     /// <summary>
-    /// A test endpoint locked down to only admin
+    /// Admin-only test endpoint.
     /// </summary>
-    /// <returns>Ok if successful auth else returns 401</returns>
     [HttpGet]
     [Authorize(Policy = PolicyConstants.AdminOnly)]
     public IActionResult TestAdminOnlyAsync()
@@ -23,9 +22,8 @@ public class TestController : ControllerBase
     }
 
     /// <summary>
-    /// A test endpoint for all authenticated users
+    /// Any-authenticated-user test endpoint.
     /// </summary>
-    /// <returns>Ok if user token is valid and authenticated else returns 401</returns>
     [HttpGet("all")]
     [Authorize]
     public IActionResult TestAllAuthenticatedUsersAsync()

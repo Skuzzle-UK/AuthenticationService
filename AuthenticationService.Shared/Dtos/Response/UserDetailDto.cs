@@ -1,13 +1,8 @@
 namespace AuthenticationService.Shared.Dtos.Response;
 
 /// <summary>
-/// Full user detail returned from <c>GET /api/Admin/users/{id}</c>. Combines the IdentityUser
-/// fields (Id / UserName / Email / phone / lockout / MFA) with the profile fields the user
-/// can edit themselves (name, DoB, address) plus a couple of computed aggregates
-/// (<see cref="Roles"/>, <see cref="ActiveRefreshTokenFamilies"/>) admins commonly need.
-///
-/// <para>Deliberately excludes security stamp / password hash / JWT internals — those are
-/// not auditable from this surface.</para>
+/// Full user detail returned from <c>GET /api/Admin/users/{id}</c>. Combines IdentityUser
+/// fields, editable profile fields, and computed aggregates (roles, active session count).
 /// </summary>
 public class UserDetailDto : ApiResponse
 {
@@ -48,8 +43,7 @@ public class UserDetailDto : ApiResponse
     public IList<string> Roles { get; set; } = [];
 
     /// <summary>
-    /// Count of currently-live refresh-token families for the user — proxies "how many
-    /// devices is this user signed in on right now."
+    /// Count of live refresh-token families — proxies "how many devices is this user signed in on."
     /// </summary>
     public int ActiveRefreshTokenFamilies { get; set; }
 

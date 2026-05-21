@@ -9,9 +9,7 @@ using System.Text.Json;
 namespace AuthenticationService.TokenClientLib.Tests.Helpers;
 
 /// <summary>
-/// Convenience builders for setting up <see cref="ServiceTokenProvider"/> instances
-/// against a <see cref="StubHttpMessageHandler"/>. Keeps the per-test arrange blocks
-/// to the few lines that actually differ between tests.
+/// Convenience builders for ServiceTokenProvider instances against a StubHttpMessageHandler.
 /// </summary>
 internal static class TestProviderBuilder
 {
@@ -19,10 +17,9 @@ internal static class TestProviderBuilder
     public const string DefaultTokenEndpoint = "https://auth.example.test/oauth/token";
 
     /// <summary>
-    /// Builds a provider whose <see cref="IHttpClientFactory"/> returns a fresh
-    /// <see cref="HttpClient"/> wrapping <paramref name="stub"/> on each call.
-    /// The <c>HttpClient</c> is constructed with <c>disposeHandler: false</c> so the
-    /// provider's <c>using</c> blocks don't drop the shared stub.
+    /// Builds a provider whose IHttpClientFactory returns fresh HttpClients wrapping
+    /// <paramref name="stub"/>. <c>disposeHandler: false</c> so the provider's using
+    /// blocks don't drop the shared stub.
     /// </summary>
     public static ServiceTokenProvider Build(
         StubHttpMessageHandler stub,
@@ -49,10 +46,8 @@ internal static class TestProviderBuilder
     }
 
     /// <summary>
-    /// Returns a 200 OK response carrying an <c>OAuthTokenResponse</c> JSON body.
-    /// Default <paramref name="expiresIn"/> is a comfortable hour so cache logic
-    /// has somewhere to bite; pass <c>-1</c> (or any non-positive value) to make
-    /// the resulting <c>CachedToken.IsValid()</c> return false immediately.
+    /// 200 OK response with an OAuthTokenResponse JSON body. Pass <paramref name="expiresIn"/>
+    /// non-positive to force <c>CachedToken.IsValid()</c> false immediately.
     /// </summary>
     public static HttpResponseMessage TokenOk(string accessToken, int expiresIn = 3600, string scope = "scope.x") =>
         new(HttpStatusCode.OK)
@@ -67,13 +62,11 @@ internal static class TestProviderBuilder
         };
 
     /// <summary>
-    /// Returns an OAuth-shaped error response (RFC 6749 §5.2) — body carries
-    /// <c>{ error, error_description }</c>. Default status is 400.
+    /// OAuth-shaped error response (RFC 6749 §5.2) — body carries <c>{ error, error_description }</c>.
     /// </summary>
     public static HttpResponseMessage OAuthError(string error, string? description = null, HttpStatusCode status = HttpStatusCode.BadRequest)
     {
-        // Build the JSON by hand because OAuthErrorResponse is internal to the
-        // TokenClientLib project; the wire shape is well-known.
+        // Build JSON by hand — OAuthErrorResponse is internal to TokenClientLib.
         var payload = JsonSerializer.Serialize(new Dictionary<string, string?>
         {
             ["error"] = error,
@@ -85,13 +78,14 @@ internal static class TestProviderBuilder
         };
     }
 
-    /// <summary>Returns an empty response with the given status — useful for transient-failure scripts.</summary>
+    /// <summary>
+    /// Returns an empty response with the given status — useful for transient-failure scripts.
+    /// </summary>
     public static HttpResponseMessage Status(HttpStatusCode status) => new(status);
 
     /// <summary>
-    /// Polls <paramref name="condition"/> until it returns true or the timeout elapses.
-    /// Used for asserting fire-and-forget background work (e.g. proactive refresh)
-    /// without sleeping for an entire pessimistic budget.
+    /// Polls until <paramref name="condition"/> is true or the timeout elapses. Used for
+    /// asserting fire-and-forget background work without sleeping the pessimistic budget.
     /// </summary>
     public static async Task WaitUntilAsync(Func<bool> condition, TimeSpan? timeout = null, TimeSpan? pollInterval = null)
     {

@@ -6,21 +6,9 @@ using AwesomeAssertions;
 namespace AuthenticationService.Shared.Tests.Dtos;
 
 /// <summary>
-/// <para>Every input DTO accepted by an API endpoint relies on <c>[ApiController]</c>'s
-/// automatic ModelState short-circuit, which runs DataAnnotation validation on the body.
-/// If any of the constraints below silently disappear, the endpoint accepts payloads it
-/// shouldn't and the controller hits null/over-length values that propagate into the
-/// database. These tests pin every annotation by exercising both the success path
-/// (fully-populated DTO validates) and the obvious failure paths (each constraint that
-/// has documented intent).</para>
-///
-/// <para>DTOs covered:
-/// <see cref="RegistrationDto"/>, <see cref="UpdateProfileDto"/>, <see cref="ChangePasswordDto"/>,
-/// <see cref="ResetForgottenPasswordDto"/>, <see cref="AuthenticationDto"/> (no annotations
-/// today — included for shape pinning), <see cref="MfaAuthenticationDto"/>,
-/// <see cref="ForgotPasswordDto"/>, <see cref="LockAccountDto"/>,
-/// <see cref="ResendEmailConfirmationDto"/>, <see cref="EnableMfaRequest"/>,
-/// <see cref="RefreshTokenDto"/>.</para>
+/// Pins DataAnnotation constraints on every input DTO. [ApiController]'s automatic
+/// ModelState short-circuit runs these on the body; a silently-disappearing constraint
+/// would let bad payloads reach the controller / database.
 /// </summary>
 public class DtoValidationTests
 {
@@ -29,7 +17,6 @@ public class DtoValidationTests
     [Fact]
     public void RegistrationDto_FullyPopulated_PassesValidation()
     {
-        // arrange — every required field present, every length-bounded field within bounds.
         var dto = new RegistrationDto
         {
             UserName = "alice",
@@ -44,10 +31,8 @@ public class DtoValidationTests
             PreferredMfaProvider = MfaProviders.Email,
         };
 
-        // act
         var results = Validate(dto);
 
-        // assert
         results.Should().BeEmpty();
     }
 
@@ -58,7 +43,6 @@ public class DtoValidationTests
     [InlineData(nameof(RegistrationDto.Password), "Password is required.")]
     public void RegistrationDto_RequiredFieldMissing_ProducesFieldNamedError(string field, string expectedMessage)
     {
-        // arrange — start fully-populated, null one [Required] field at a time.
         var dto = MinimalValidRegistrationDto();
         switch (field)
         {
@@ -68,26 +52,21 @@ public class DtoValidationTests
             case nameof(RegistrationDto.Password): dto.Password = null; break;
         }
 
-        // act
         var results = Validate(dto);
 
-        // assert — the operator-facing error message must be exactly the documented one,
-        // because operators read the error in the API response and act on it.
+        // Exact-message assertion: operators read this in the API response and act on it.
         results.Should().ContainSingle(r => r.MemberNames.Contains(field) && r.ErrorMessage == expectedMessage);
     }
 
     [Fact]
     public void RegistrationDto_ConfirmPasswordMismatch_ProducesCompareError()
     {
-        // arrange — Compare attribute means "ConfirmPassword must equal Password".
         var dto = MinimalValidRegistrationDto();
         dto.Password = "MatchMe123!";
         dto.ConfirmPassword = "Different!";
 
-        // act
         var results = Validate(dto);
 
-        // assert
         results.Should().Contain(r =>
             r.MemberNames.Contains(nameof(RegistrationDto.ConfirmPassword))
             && r.ErrorMessage == "The password and confirmation password do not match.");
@@ -96,15 +75,11 @@ public class DtoValidationTests
     [Fact]
     public void RegistrationDto_EmailMalformed_ProducesEmailAddressError()
     {
-        // arrange — bypass DataAnnotation Email format. The endpoint is the perimeter for
-        // garbage input; if [EmailAddress] regression-fails, garbage flows to UserManager.
         var dto = MinimalValidRegistrationDto();
         dto.Email = "not-an-email";
 
-        // act
         var results = Validate(dto);
 
-        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(RegistrationDto.Email)));
     }
 
@@ -120,8 +95,6 @@ public class DtoValidationTests
     [InlineData(nameof(RegistrationDto.City), 61)]
     public void RegistrationDto_LengthBoundedField_OverLengthFails(string field, int overLength)
     {
-        // arrange — pin every MaxLength bound so a future loosening of a column-mapped
-        // limit can't slip in undetected.
         var dto = MinimalValidRegistrationDto();
         var oversize = new string('x', overLength);
         switch (field)
@@ -137,25 +110,19 @@ public class DtoValidationTests
             case nameof(RegistrationDto.City): dto.City = oversize; break;
         }
 
-        // act
         var results = Validate(dto);
 
-        // assert
         results.Should().Contain(r => r.MemberNames.Contains(field));
     }
 
     [Fact]
     public void RegistrationDto_PhoneNumberMalformed_FailsPhoneValidation()
     {
-        // arrange — [Phone] catches obviously-not-a-phone values. Strict format rules are
-        // up to the carrier; this just gates the obvious garbage.
         var dto = MinimalValidRegistrationDto();
         dto.PhoneNumber = "not a phone";
 
-        // act
         var results = Validate(dto);
 
-        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(RegistrationDto.PhoneNumber)));
     }
 
@@ -164,15 +131,12 @@ public class DtoValidationTests
     [Fact]
     public void UpdateProfileDto_EmptyBody_PassesBecauseEveryFieldOptional()
     {
-        // arrange — PUT /me with an empty body is valid (means "don't change anything").
-        // The controller skips writes when nothing changed. If a [Required] sneaks in here
-        // it would break that contract.
+        // PUT /me with an empty body means "don't change anything" — the controller
+        // skips writes. A [Required] sneaking in here would break that contract.
         var dto = new UpdateProfileDto();
 
-        // act
         var results = Validate(dto);
 
-        // assert
         results.Should().BeEmpty();
     }
 
@@ -187,8 +151,6 @@ public class DtoValidationTests
     [InlineData(nameof(UpdateProfileDto.Postcode), 21)]
     public void UpdateProfileDto_LengthBoundedField_OverLengthFails(string field, int overLength)
     {
-        // arrange — same column-bound caps as the entity, mirrored in the DTO so the
-        // perimeter rejects oversized values before they hit the DB.
         var dto = new UpdateProfileDto();
         var oversize = new string('x', overLength);
         switch (field)
@@ -203,24 +165,20 @@ public class DtoValidationTests
             case nameof(UpdateProfileDto.Postcode): dto.Postcode = oversize; break;
         }
 
-        // act
         var results = Validate(dto);
 
-        // assert
         results.Should().Contain(r => r.MemberNames.Contains(field));
     }
 
     [Fact]
     public void UpdateProfileDto_PhoneNumberMalformed_FailsPhoneValidation()
     {
-        // arrange — same rationale as RegistrationDto. UpdateProfile resets PhoneNumberConfirmed
-        // when phone changes — accepting garbage would corrupt the SMS-MFA path.
+        // UpdateProfile resets PhoneNumberConfirmed when phone changes — accepting
+        // garbage would corrupt the SMS-MFA path.
         var dto = new UpdateProfileDto { PhoneNumber = "not a phone" };
 
-        // act
         var results = Validate(dto);
 
-        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(UpdateProfileDto.PhoneNumber)));
     }
 
@@ -229,7 +187,6 @@ public class DtoValidationTests
     [Fact]
     public void ChangePasswordDto_BothPasswordsAndMatchingConfirm_Passes()
     {
-        // arrange / act
         var dto = new ChangePasswordDto
         {
             OldPassword = "old",
@@ -237,7 +194,6 @@ public class DtoValidationTests
             ConfirmPassword = "newPass!1234",
         };
 
-        // assert
         Validate(dto).Should().BeEmpty();
     }
 
@@ -246,8 +202,6 @@ public class DtoValidationTests
     [InlineData(nameof(ChangePasswordDto.NewPassword), "New password is required.")]
     public void ChangePasswordDto_MissingPasswords_FailsWithExpectedMessage(string field, string expectedMessage)
     {
-        // arrange — both password fields are [Required]. Either missing must fail with the
-        // documented operator-facing message.
         var dto = new ChangePasswordDto
         {
             OldPassword = "old",
@@ -257,17 +211,14 @@ public class DtoValidationTests
         if (field == nameof(ChangePasswordDto.OldPassword)) dto.OldPassword = null;
         else dto.NewPassword = null;
 
-        // act
         var results = Validate(dto);
 
-        // assert
         results.Should().Contain(r => r.MemberNames.Contains(field) && r.ErrorMessage == expectedMessage);
     }
 
     [Fact]
     public void ChangePasswordDto_ConfirmPasswordMismatch_FailsCompareValidation()
     {
-        // arrange — same Compare("NewPassword") shape as registration.
         var dto = new ChangePasswordDto
         {
             OldPassword = "old",
@@ -275,10 +226,8 @@ public class DtoValidationTests
             ConfirmPassword = "different!",
         };
 
-        // act
         var results = Validate(dto);
 
-        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(ChangePasswordDto.ConfirmPassword)));
     }
 
@@ -300,7 +249,6 @@ public class DtoValidationTests
     [Fact]
     public void ResetForgottenPasswordDto_MismatchedConfirm_Fails()
     {
-        // arrange — Compare gates the reset endpoint just like change-password.
         var dto = new ResetForgottenPasswordDto
         {
             Email = "x@example.com",
@@ -309,10 +257,8 @@ public class DtoValidationTests
             ConfirmPassword = "differs!",
         };
 
-        // act
         var results = Validate(dto);
 
-        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(ResetForgottenPasswordDto.ConfirmPassword)));
     }
 
@@ -321,9 +267,7 @@ public class DtoValidationTests
     [Fact]
     public void AuthenticationDto_FullyPopulated_Passes()
     {
-        // arrange / act
         var dto = new AuthenticationDto { Email = "u@example.com", Password = "p" };
-        // assert
         Validate(dto).Should().BeEmpty();
     }
 
@@ -332,16 +276,12 @@ public class DtoValidationTests
     [InlineData(nameof(AuthenticationDto.Password), "Password is required.")]
     public void AuthenticationDto_RequiredFieldMissing_FailsWithExpectedMessage(string field, string expected)
     {
-        // arrange — login DTO must reject empty email/password at the perimeter, before
-        // they hit UserManager (which would otherwise produce a less helpful error).
         var dto = new AuthenticationDto { Email = "u@example.com", Password = "p" };
         if (field == nameof(AuthenticationDto.Email)) dto.Email = null;
         else dto.Password = null;
 
-        // act
         var results = Validate(dto);
 
-        // assert
         results.Should().Contain(r => r.MemberNames.Contains(field) && r.ErrorMessage == expected);
     }
 
@@ -350,9 +290,7 @@ public class DtoValidationTests
     [Fact]
     public void MfaAuthenticationDto_FullyPopulated_Passes()
     {
-        // arrange / act
         var dto = new MfaAuthenticationDto { Email = "u@example.com", MfaProvider = MfaProviders.Email, Token = "123456" };
-        // assert
         Validate(dto).Should().BeEmpty();
     }
 
@@ -362,8 +300,6 @@ public class DtoValidationTests
     [InlineData(nameof(MfaAuthenticationDto.Token), "Token is required.")]
     public void MfaAuthenticationDto_RequiredFieldMissing_FailsWithExpectedMessage(string field, string expected)
     {
-        // arrange — MFA endpoint can't act on a missing email (no user to look up),
-        // missing provider (don't know which token type to verify), or missing token.
         var dto = new MfaAuthenticationDto { Email = "u@example.com", MfaProvider = MfaProviders.Email, Token = "123456" };
         switch (field)
         {
@@ -372,10 +308,8 @@ public class DtoValidationTests
             case nameof(MfaAuthenticationDto.Token): dto.Token = null; break;
         }
 
-        // act
         var results = Validate(dto);
 
-        // assert
         results.Should().Contain(r => r.MemberNames.Contains(field) && r.ErrorMessage == expected);
     }
 
@@ -390,13 +324,10 @@ public class DtoValidationTests
     [Fact]
     public void ForgotPasswordDto_MissingEmail_Fails()
     {
-        // arrange — without email there's no user to send the reset link to.
         var dto = new ForgotPasswordDto();
 
-        // act
         var results = Validate(dto);
 
-        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(ForgotPasswordDto.Email)));
     }
 
@@ -413,16 +344,12 @@ public class DtoValidationTests
     [InlineData(nameof(LockAccountDto.Token), "Token is required.")]
     public void LockAccountDto_RequiredFieldMissing_FailsWithExpectedMessage(string field, string expected)
     {
-        // arrange — panic-button lock endpoint needs to know who (Email) and prove the
-        // request is genuine via the one-time Token from the password-changed email.
         var dto = new LockAccountDto { Email = "u@example.com", Token = "tok" };
         if (field == nameof(LockAccountDto.Email)) dto.Email = null;
         else dto.Token = null;
 
-        // act
         var results = Validate(dto);
 
-        // assert
         results.Should().Contain(r => r.MemberNames.Contains(field) && r.ErrorMessage == expected);
     }
 
@@ -437,15 +364,10 @@ public class DtoValidationTests
     [Fact]
     public void RefreshTokenDto_MissingToken_Fails()
     {
-        // arrange — refresh endpoint can't do anything without the refresh token. The
-        // expired access token also has to be supplied (it's in the Authorization header),
-        // but this DTO is just the body shape so it only enforces the body field.
         var dto = new RefreshTokenDto();
 
-        // act
         var results = Validate(dto);
 
-        // assert
         results.Should().Contain(r =>
             r.MemberNames.Contains(nameof(RefreshTokenDto.RefreshToken))
             && r.ErrorMessage == "RefreshToken is required.");
@@ -454,9 +376,8 @@ public class DtoValidationTests
     // ─── ResendEmailConfirmationDto + EnableMfaRequest ─────────────────────────────────
 
     /// <summary>
-    /// These two are genuinely annotation-free today. Kept as no-op shape pinning so a
-    /// future Required snuck in without updating the controller's defensive null-checks
-    /// would still be caught here.
+    /// These two are annotation-free today — kept as no-op shape pinning so a future
+    /// [Required] sneaking in without updating the controller's null-checks is caught.
     /// </summary>
     [Fact]
     public void ResendEmailConfirmationDto_DefaultInstance_PassesValidation()

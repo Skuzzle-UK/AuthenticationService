@@ -1,4 +1,4 @@
-﻿using AuthenticationService.Constants;
+using AuthenticationService.Constants;
 using AuthenticationService.Entities;
 using AuthenticationService.Enums;
 using AuthenticationService.Extensions;
@@ -51,9 +51,7 @@ public class AuthenticationController : ControllerBase
     }
 
     /// <summary>
-    /// Login. Returns an access + refresh token pair on success, or — if the user has MFA
-    /// enabled — kicks off the MFA challenge instead and returns which method was used so
-    /// the client knows what to prompt for.
+    /// Login. Returns access + refresh tokens on success, or kicks off the MFA challenge if MFA is enabled.
     /// </summary>
     [HttpPost("authenticate")]
     [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
@@ -180,9 +178,7 @@ public class AuthenticationController : ControllerBase
     }
 
     /// <summary>
-    /// Step 2 of login when MFA is enabled. The client calls this with the code the user
-    /// just typed in (from their authenticator app or email). On success, returns the
-    /// access + refresh token pair just like a non-MFA login would have.
+    /// Step 2 of MFA login. Verifies the user-supplied code and returns access + refresh tokens on success.
     /// </summary>
     [HttpPost("mfa")]
     [EnableRateLimiting(RateLimitPolicies.AuthStrict)]
@@ -256,14 +252,8 @@ public class AuthenticationController : ControllerBase
     }
 
     /// <summary>
-    /// Swaps an expired access token + its refresh token for a fresh pair. The expired
-    /// access token must still be in the Authorization header — its claims are read
-    /// (signature still validated, expiry skipped) to know which user is refreshing.
-    ///
-    /// <para>If the supplied refresh token has already been used, this is treated as theft:
-    /// every active session for the user is revoked and the request returns 401.</para>
+    /// Swaps an expired access token + refresh token for a fresh pair. Reuse of a refresh token is treated as theft — every session for the user is revoked.
     /// </summary>
-    /// <returns>AuthenticationResponse with valid token if successful</returns>
     [HttpPost("refresh")]
     public async Task<IActionResult> RefreshTokenAsync([FromBody] RefreshTokenDto request)
     {
@@ -278,9 +268,7 @@ public class AuthenticationController : ControllerBase
 
         if (result is RefreshResult.Reused reused)
         {
-            // Reuse has already fired inside the service (all families revoked +
-            // stamp rotated). Notify the user out-of-band, emit a security event, and respond
-            // with a generic 401 so the attacker can't tell they've been caught.
+            // Service already revoked families + rotated stamp. Notify user out-of-band; respond with a generic 401 so the attacker can't tell they've been caught.
             await HandleReuseDetectedAsync(token, reused.FamilyId, ipAddress);
             return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidRefreshToken));
         }
@@ -343,11 +331,8 @@ public class AuthenticationController : ControllerBase
     }
 
     /// <summary>
-    /// Logs the caller out of this device only. Revokes the refresh-token family identified
-    /// by the <c>sid</c> claim and adds the current access token to the deny-list. Other
-    /// devices for the same user are unaffected.
+    /// Logs the caller out of this device only. Revokes the refresh-token family from the sid claim and deny-lists the current access token.
     /// </summary>
-    /// <returns>ApiResponse</returns>
     [Authorize]
     [HttpPost("logout")]
     public async Task<IActionResult> LogoutAsync()
@@ -376,11 +361,8 @@ public class AuthenticationController : ControllerBase
     }
 
     /// <summary>
-    /// Logs the caller out of every device. Revokes every refresh-token family for the user,
-    /// rotates the security stamp (kills outstanding access tokens), and adds the current
-    /// access token to the deny-list. After this, every device that was logged in must re-authenticate.
+    /// Logs the caller out of every device. Revokes all refresh-token families, rotates the security stamp, and deny-lists the current access token.
     /// </summary>
-    /// <returns>ApiResponse</returns>
     [Authorize]
     [HttpPost("logoutall")]
     public async Task<IActionResult> LogoutAllAsync()
@@ -397,9 +379,7 @@ public class AuthenticationController : ControllerBase
         var user = await _userService.FindByIdAsync(sub);
         if (user is null)
         {
-            // User behind the token is gone.
-            // Token presented is orphaned and shouldn't keep working — revoke it so the
-            // auth service rejects every subsequent hit.
+            // Orphan token — revoke so subsequent hits are rejected.
             await _tokenService.RevokeOrphanedTokenAsync(token, ipAddress);
             return Ok(new ApiResponse());
         }
@@ -438,13 +418,7 @@ public class AuthenticationController : ControllerBase
         return Unauthorized(new AuthenticationResponse().AddError(ResponseConstants.Unauthorized, "Authentication failed."));
     }
 
-    /// <summary>
-    /// Sends the failed-login lockout notification with a proactive reset-password link.
-    /// The link points at the consumer's UI if it supplied <paramref name="resetPasswordUri"/>
-    /// in the login DTO, otherwise at the auth service's bundled <c>/ResetPassword</c> page
-    /// via <see cref="PublicUrlSettings.BaseUrl"/>. Email send failures are logged but
-    /// don't block the lock — the security action has already happened by this point.
-    /// </summary>
+    // Email send failures are logged but don't block — lock has already happened.
     private async Task SendFailedLoginLockoutEmailAsync(User user, string? resetPasswordUri)
     {
         if (string.IsNullOrEmpty(user.Email))

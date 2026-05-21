@@ -11,23 +11,10 @@ using Microsoft.EntityFrameworkCore;
 namespace AuthenticationService.IntegrationTests.Scenarios;
 
 /// <summary>
-/// <para><b>Scenario 11 — Admin invitation + lock/unlock lifecycle.</b></para>
-///
-/// <para>End-to-end exercise of the Phase 0 admin surface against real MySQL:</para>
-/// <list type="number">
-///   <item><description>Admin logs in with the seeded credentials.</description></item>
-///   <item><description>Admin POSTs <c>/api/Admin/users</c> for a new user — DB row created with <c>EmailConfirmed=false</c> and no password hash.</description></item>
-///   <item><description>Invitation email lands in smtp4dev; test extracts email + token from the link.</description></item>
-///   <item><description>New user POSTs <c>/api/registration/accept-invitation</c> with a password — DB row flipped: <c>EmailConfirmed=true</c>, password hash set.</description></item>
-///   <item><description>New user logs in with the new password — 200 + token pair.</description></item>
-///   <item><description>Admin locks the new user — subsequent login attempt returns 401 with "account locked".</description></item>
-///   <item><description>Admin unlocks — login works again.</description></item>
-/// </list>
-///
-/// <para>This is the load-bearing assertion for the entire Phase 0 admin endpoint
-/// surface — a regression here means an admin can't reliably create / manage users,
-/// which breaks every downstream platform workflow that depends on the auth service
-/// for identity management.</para>
+/// Scenario 11 — Admin invitation + lock/unlock lifecycle against real MySQL. End-to-end
+/// for the Phase 0 admin surface: admin creates user → invitation email → user accepts +
+/// sets password → user logs in → admin locks + unlocks. Load-bearing for every
+/// downstream platform workflow that depends on auth for identity management.
 /// </summary>
 [Collection(IntegrationTestCollection.Name)]
 public class AdminInvitationFlowTests(AppHostFixture fixture) : IntegrationTestBase(fixture)
@@ -39,12 +26,10 @@ public class AdminInvitationFlowTests(AppHostFixture fixture) : IntegrationTestB
     [Fact]
     public async Task AdminInvitesUser_UserAccepts_Logs_In_LocksAndUnlocks()
     {
-        // ── act 1: log in as the seeded admin ────────────────────────────────────────
         var adminToken = await AuthenticateAsync(AdminEmail, AdminPassword);
         adminToken.Should().NotBeNullOrEmpty(
             because: "the seeded admin account must be usable for admin operations against the live host.");
 
-        // ── act 2: admin invites a new user ──────────────────────────────────────────
         var newEmail = UniqueEmail();
         var newUserName = UniqueUserName();
         AuthClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
@@ -62,7 +47,6 @@ public class AdminInvitationFlowTests(AppHostFixture fixture) : IntegrationTestB
         createResp.StatusCode.Should().Be(HttpStatusCode.Created,
             because: "admin-creates-user with a fresh email/username must succeed.");
 
-        // ── assert DB: user exists with EmailConfirmed=false + no password ───────────
         await using (var db = await CreateDbContextAsync())
         {
             var dbUser = await db.Users.SingleAsync(u => u.Email == newEmail);
@@ -72,7 +56,6 @@ public class AdminInvitationFlowTests(AppHostFixture fixture) : IntegrationTestB
                 because: "the admin doesn't set a password; the user sets it via the invitation link.");
         }
 
-        // ── act 3: parse the invitation email ────────────────────────────────────────
         var msg = await SmtpClient.WaitForMessageAsync(newEmail, TimeSpan.FromSeconds(10));
         msg.Should().NotBeNull(
             because: "invitation email must be queued + dispatched within the timeout.");
@@ -89,15 +72,12 @@ public class AdminInvitationFlowTests(AppHostFixture fixture) : IntegrationTestB
         emailFromLink.Should().Be(newEmail);
         tokenFromLink.Should().NotBeNullOrEmpty();
 
-        // ── act 4: user accepts the invitation ───────────────────────────────────────
-        // Drop the admin token — the accept-invitation endpoint is anonymous, and we
-        // don't want the admin's bearer header sticking around for the user-side calls.
+        // Accept-invitation is anonymous — drop the admin header to avoid ambiguity.
         AuthClient.DefaultRequestHeaders.Authorization = null;
 
         var userPassword = "InvitePassw0rd!";
 
-        // Token in the email link is already Base64URL-encoded — pass it through as-is;
-        // the accept-invitation endpoint decodes before handing to Identity.
+        // Token is Base64URL-encoded in the link; pass through as-is — endpoint decodes.
         var acceptResp = await AuthClient.PostAsJsonAsync(
             "/api/Registration/accept-invitation",
             new AcceptInvitationDto
@@ -119,12 +99,10 @@ public class AdminInvitationFlowTests(AppHostFixture fixture) : IntegrationTestB
                 because: "the password supplied to accept-invitation must be hashed into the user row.");
         }
 
-        // ── act 5: user can now log in ───────────────────────────────────────────────
         var userToken = await AuthenticateAsync(newEmail, userPassword);
         userToken.Should().NotBeNullOrEmpty(
             because: "after invitation acceptance the user must be able to authenticate with their chosen password.");
 
-        // ── act 6: admin locks the user ──────────────────────────────────────────────
         AuthClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
         string newUserId;
         await using (var db = await CreateDbContextAsync())
@@ -135,7 +113,6 @@ public class AdminInvitationFlowTests(AppHostFixture fixture) : IntegrationTestB
         var lockResp = await AuthClient.PostAsync($"/api/Admin/users/{newUserId}/lock", content: null);
         lockResp.IsSuccessStatusCode.Should().BeTrue();
 
-        // ── assert: locked user can't log in ─────────────────────────────────────────
         AuthClient.DefaultRequestHeaders.Authorization = null;
         var lockedLoginResp = await AuthClient.PostAsJsonAsync(
             "/api/Authentication/authenticate",
@@ -144,12 +121,10 @@ public class AdminInvitationFlowTests(AppHostFixture fixture) : IntegrationTestB
         lockedLoginResp.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
             because: "after an admin lock the user's authentication attempts must be rejected.");
 
-        // ── act 7: admin unlocks ─────────────────────────────────────────────────────
         AuthClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
         var unlockResp = await AuthClient.PostAsync($"/api/Admin/users/{newUserId}/unlock", content: null);
         unlockResp.IsSuccessStatusCode.Should().BeTrue();
 
-        // ── assert: user can log in again ────────────────────────────────────────────
         AuthClient.DefaultRequestHeaders.Authorization = null;
         var postUnlockToken = await AuthenticateAsync(newEmail, userPassword);
         postUnlockToken.Should().NotBeNullOrEmpty(
@@ -157,10 +132,8 @@ public class AdminInvitationFlowTests(AppHostFixture fixture) : IntegrationTestB
     }
 
     /// <summary>
-    /// Wrapper around the auth endpoint that returns just the access-token string. The
-    /// base class's <see cref="IntegrationTestBase.LoginAsync"/> takes a
-    /// <c>ConfirmedUser</c> built from the registration flow — this scenario creates
-    /// users through the admin flow instead so we can't reuse it.
+    /// Returns just the access-token string. Base class's LoginAsync takes a
+    /// ConfirmedUser from the registration flow — this scenario uses the admin flow instead.
     /// </summary>
     private async Task<string> AuthenticateAsync(string email, string password)
     {

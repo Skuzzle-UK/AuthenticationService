@@ -5,30 +5,21 @@ using Microsoft.AspNetCore.Http;
 namespace AuthenticationService.Tests.Middleware;
 
 /// <summary>
-/// <para>The middleware adds defence-in-depth response headers — CSP, X-Frame-Options,
-/// X-Content-Type-Options, Referrer-Policy, Permissions-Policy. These headers materially
-/// harden the Razor pages (reset-password / lock-account / action-complete) against XSS,
-/// clickjacking, MIME-confusion, and referer leakage.</para>
-///
-/// <para>Tests pin every header value because (a) regressions silently weaken the security
-/// posture and (b) any change should be deliberate (e.g. CSP sources adjusted along with a
-/// page change that needs more permissive policy).</para>
+/// Pins every defence-in-depth response header value — regressions silently weaken the security posture
+/// of the bundled Razor pages against XSS / clickjacking / MIME-confusion / referer leakage.
 /// </summary>
 public class SecurityHeadersMiddlewareTests
 {
     [Fact]
     public async Task InvokeAsync_AddsAllExpectedSecurityHeaders()
     {
-        // arrange
         var nextCalled = false;
         RequestDelegate next = _ => { nextCalled = true; return Task.CompletedTask; };
         var middleware = new SecurityHeadersMiddleware(next);
         var context = new DefaultHttpContext();
 
-        // act
         await middleware.InvokeAsync(context);
 
-        // assert — every header that defends a specific browser-side attack class.
         var headers = context.Response.Headers;
         nextCalled.Should().BeTrue(because: "middleware always passes through; it's purely additive.");
 
@@ -59,19 +50,15 @@ public class SecurityHeadersMiddlewareTests
     [Fact]
     public async Task InvokeAsync_PassesThroughEvenWhenHeadersAlreadyExist()
     {
-        // arrange — middleware shouldn't crash if a downstream handler set headers first.
-        // ASP.NET's IHeaderDictionary indexer overwrites — pinned here so a switch to .Add
-        // (which throws on duplicate) would be caught.
+        // Pinned that the IHeaderDictionary indexer overwrites — a switch to .Add would throw on duplicate.
         var nextCalled = false;
         RequestDelegate next = _ => { nextCalled = true; return Task.CompletedTask; };
         var middleware = new SecurityHeadersMiddleware(next);
         var context = new DefaultHttpContext();
         context.Response.Headers.XFrameOptions = "SAMEORIGIN";
 
-        // act
         var act = async () => await middleware.InvokeAsync(context);
 
-        // assert
         await act.Should().NotThrowAsync();
         context.Response.Headers.XFrameOptions.ToString().Should().Be("DENY",
             because: "middleware overrides any earlier-set value — its policy wins.");

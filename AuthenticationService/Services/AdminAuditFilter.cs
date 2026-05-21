@@ -1,8 +1,7 @@
 namespace AuthenticationService.Services;
 
 /// <summary>
-/// Filter shape for the admin audit endpoint. Mirrors the controller's query params one
-/// for one. <see cref="UserId"/> is the target user; pagination is 1-indexed.
+/// Filter shape for the admin audit endpoint. Pagination is 1-indexed.
 /// </summary>
 public sealed class AdminAuditFilter
 {
@@ -14,7 +13,7 @@ public sealed class AdminAuditFilter
     public int PageSize { get; init; } = DefaultPageSize;
 
     /// <summary>
-    /// Only events with <c>Timestamp &gt;= Since</c>. Defaults to "last 30 days" on the controller side.
+    /// Only events with <c>Timestamp &gt;= Since</c>. Controller defaults to last 30 days.
     /// </summary>
     public DateTime? Since { get; init; }
 

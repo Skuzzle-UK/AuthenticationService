@@ -1,12 +1,11 @@
-﻿using AuthenticationService.Shared.Enums;
+using AuthenticationService.Shared.Enums;
 using AuthenticationService.Shared.Models;
 
 namespace AuthenticationService.Shared.Dtos.Response;
 
 /// <summary>
-/// Response from the login and MFA endpoints. Either carries a <see cref="Token"/> (login
-/// completed) or signals that MFA is required next, naming the provider the client should
-/// prompt for. Inherits the standard <see cref="ApiResponse"/> success/error envelope.
+/// Response from the login and MFA endpoints. Either carries a <see cref="Token"/> or
+/// signals that MFA is required next.
 /// </summary>
 public class AuthenticationResponse : ApiResponse
 {
@@ -21,7 +20,7 @@ public class AuthenticationResponse : ApiResponse
     public bool? MfaRequired { get; set; }
 
     /// <summary>
-    /// Which MFA provider was used (so the client knows what to prompt for).
+    /// Which MFA provider the client should prompt for.
     /// </summary>
     public MfaProviders? MfaProvider { get; set; }
 
@@ -36,8 +35,7 @@ public class AuthenticationResponse : ApiResponse
     }
 
     /// <summary>
-    /// Builds a "needs MFA" response. The client should prompt the user for the named
-    /// provider's challenge code and call <c>/api/Authentication/mfa</c> with it.
+    /// Builds a "needs MFA" response naming the provider the client should challenge against.
     /// </summary>
     public static AuthenticationResponse WithMfaRequired(MfaProviders? mfaProvider)
     {

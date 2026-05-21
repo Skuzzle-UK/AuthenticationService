@@ -4,10 +4,8 @@ using Microsoft.AspNetCore.Identity;
 namespace AuthenticationService.Services;
 
 /// <summary>
-/// Default <see cref="IUserService"/>. Most methods are direct pass-throughs to
-/// <see cref="UserManager{User}"/>; <see cref="InvalidateUserTokensAsync"/> is the
-/// non-trivial one — it composes the security-stamp rotation, refresh-token revoke, and
-/// access-token revoke into a single "log this user out everywhere" operation.
+/// Default <see cref="IUserService"/>. Pass-throughs to <see cref="UserManager{User}"/>;
+/// <see cref="InvalidateUserTokensAsync"/> is the only composed operation.
 /// </summary>
 public class UserService : IUserService
 {

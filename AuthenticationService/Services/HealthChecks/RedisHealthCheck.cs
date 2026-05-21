@@ -4,10 +4,8 @@ using StackExchange.Redis;
 namespace AuthenticationService.Services.HealthChecks;
 
 /// <summary>
-/// Readiness probe for Redis. Pings the multiplexer with a short timeout. Reports Healthy
-/// when Redis is reachable, Unhealthy otherwise. Uses the existing
-/// <see cref="IConnectionMultiplexer"/> registered for data-protection — no separate
-/// connection.
+/// Readiness probe for Redis. Reuses the existing <see cref="IConnectionMultiplexer"/>
+/// rather than opening a separate connection.
 /// </summary>
 public class RedisHealthCheck : IHealthCheck
 {

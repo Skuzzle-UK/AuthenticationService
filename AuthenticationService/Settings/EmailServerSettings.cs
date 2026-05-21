@@ -4,8 +4,7 @@ using System.ComponentModel.DataAnnotations;
 namespace AuthenticationService.Settings;
 
 /// <summary>
-/// SMTP server configuration. Used to send registration confirmation, password reset,
-/// MFA, and account-lock emails.
+/// SMTP server config for outbound auth emails.
 /// </summary>
 public class EmailServerSettings
 {
@@ -22,7 +21,7 @@ public class EmailServerSettings
     public string SmtpServer { get; set; }
 
     /// <summary>
-    /// SMTP server port (587 for STARTTLS, 465 for implicit TLS, 25 for plain).
+    /// 587 STARTTLS, 465 implicit TLS, 25 plain.
     /// </summary>
     [Required]
     public int Port { get; set; }

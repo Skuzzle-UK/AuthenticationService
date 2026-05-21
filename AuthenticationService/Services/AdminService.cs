@@ -68,10 +68,7 @@ public class AdminService : IAdminService
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
             var s = filter.Search.Trim();
-            // Case-insensitive substring on UserName OR Email. EF Core translates
-            // string.Contains to LIKE '%x%' which is index-friendly on a leading
-            // wildcard only when the underlying collation is configured for it —
-            // for the small admin-list use case we accept a full scan.
+            // Leading-wildcard LIKE — accepts a full scan; admin-list traffic is low.
             query = query.Where(u =>
                 (u.UserName != null && EF.Functions.Like(u.UserName, $"%{s}%")) ||
                 (u.Email != null && EF.Functions.Like(u.Email, $"%{s}%")));
@@ -125,8 +122,7 @@ public class AdminService : IAdminService
         var roles = await _userManager.GetRolesAsync(user);
         var now = DateTime.UtcNow;
 
-        // Active refresh-token families — distinct family IDs that haven't been consumed
-        // and haven't expired. Proxies "how many devices is this user signed in on right now."
+        // Proxies "how many devices is this user signed in on right now."
         var activeFamilies = await _context.RefreshTokens
             .AsNoTracking()
             .Where(t => t.UserId == user.Id && t.ConsumedAt == null && t.ExpiresAt > now)
@@ -173,8 +169,7 @@ public class AdminService : IAdminService
         string ipAddress,
         CancellationToken ct)
     {
-        // Resolve roles — empty / null defaults to DefaultUser. Admin role is rejected
-        // outright (defence in depth — admins are only created via DB seed).
+        // Empty roles default to DefaultUser. Admin is rejected — admins are only created via DB seed.
         var roles = (request.Roles is { Count: > 0 } ? request.Roles : new List<string> { RolesConstants.DefaultUser }).ToList();
         if (roles.Contains(RolesConstants.Admin, StringComparer.Ordinal))
         {
@@ -216,8 +211,7 @@ public class AdminService : IAdminService
             City = request.City,
             Postcode = request.Postcode,
             EmailConfirmed = false,
-            // PreferredMfaProvider deliberately left at default (Email) — the user can
-            // change it via /me once they're active.
+            // PreferredMfaProvider left at default (Email) — user can change via /me once active.
         };
 
         var createResult = await _userService.CreateAsync(user);
@@ -259,9 +253,7 @@ public class AdminService : IAdminService
             return AdminInvitationResendResult.UserNotFound;
         }
 
-        // Pending-invitation state = email not confirmed AND no password set. Anything
-        // else means the invitation has already done its job or the account has gone
-        // through a different flow.
+        // Pending-invitation state = email not confirmed AND no password set.
         if (user.EmailConfirmed || !string.IsNullOrEmpty(user.PasswordHash))
         {
             return AdminInvitationResendResult.UserAlreadyActive;
@@ -374,10 +366,8 @@ public class AdminService : IAdminService
             return false;
         }
 
-        // No access token to revoke (this is the admin's call, not the target's) —
-        // InvalidateUserTokensAsync handles family revocation + stamp rotation. The
-        // target's existing access tokens will fail signature/stamp re-validation on
-        // next use.
+        // No access token to revoke — this is the admin's call, not the target's. Family
+        // revocation + stamp rotation kill the target's tokens on next refresh.
         await _userService.InvalidateUserTokensAsync(user, ipAddress, RevocationReasons.AdminRevokedSessions);
 
         _logger.LogWarning(
@@ -405,8 +395,7 @@ public class AdminService : IAdminService
         await _userManager.SetTwoFactorEnabledAsync(user, false);
         await _userManager.ResetAuthenticatorKeyAsync(user);
 
-        // Revoke sessions defensively — if MFA was the last barrier protecting an
-        // already-stolen password, leaving live sessions undoes the protection.
+        // If MFA was the last barrier behind a stolen password, leaving live sessions undoes the protection.
         await _userService.InvalidateUserTokensAsync(user, ipAddress, RevocationReasons.AdminResetMfa);
 
         _logger.LogWarning(
@@ -432,21 +421,12 @@ public class AdminService : IAdminService
             return false;
         }
 
-        // Generate the reset token FIRST, while the user's security stamp is the one
-        // that'll be present when they consume the token. We deliberately do NOT call
-        // InvalidateUserTokensAsync here even though it'd be a tighter "kill all sessions
-        // now" contract: that helper rotates the security stamp, which makes any
-        // Identity-issued tokens (including the reset token we'd be about to send)
-        // immediately invalid. The semantics we land on instead:
-        //   - Refresh tokens are revoked immediately (user can't refresh past their
-        //     current access-token expiry).
-        //   - Outstanding access tokens continue to work until natural expiry (5 min
-        //     default) — they're stamp-validated only inside the refresh flow, not on
-        //     every request.
-        //   - When the user clicks the reset link and completes the reset, Identity
-        //     rotates the security stamp as a side effect of the password change. That's
-        //     when any remaining tokens (the email-confirm token, second reset-password
-        //     token, etc.) die.
+        // Generate the reset token BEFORE any stamp rotation — InvalidateUserTokensAsync
+        // would invalidate the token we're about to email. The landed semantics:
+        //   - Refresh tokens revoked now (user can't refresh past current access-token expiry).
+        //   - Outstanding access tokens ride out their natural lifetime (≤5 min default) —
+        //     they're stamp-validated only in the refresh flow.
+        //   - Completing the reset rotates the stamp as a side effect, killing remaining tokens.
         var rawToken = await _userManager.GeneratePasswordResetTokenAsync(user);
         var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(rawToken));
 
@@ -462,10 +442,7 @@ public class AdminService : IAdminService
             $"To set a new password, click the following link: {resetUri}. " +
             "If you didn't expect this, please contact your administrator.");
 
-        // Refresh-token revocation only — no stamp rotation (see above for rationale).
-        // The user's outstanding refresh tokens are invalidated immediately so they
-        // can't refresh past their current access-token expiry. Access tokens themselves
-        // ride out their remaining lifetime (≤5 min by default).
+        // Refresh-token revocation only — no stamp rotation (see above).
         await _tokenService.RevokeAllRefreshTokenFamiliesAsync(user.Id, RevocationReasons.AdminForcedPasswordReset);
 
         _logger.LogWarning(
@@ -484,8 +461,7 @@ public class AdminService : IAdminService
 
     public async Task<PagedResponse<AuditEntryDto>?> GetAuditAsync(AdminAuditFilter filter, CancellationToken ct)
     {
-        // 404 if the user doesn't exist — avoids returning an empty page that looks like
-        // "no activity" for a non-existent user.
+        // 404 vs. empty page — don't make a non-existent user look like "no activity".
         var userExists = await _context.Users.AsNoTracking().AnyAsync(u => u.Id == filter.UserId, ct);
         if (!userExists)
         {
@@ -494,8 +470,7 @@ public class AdminService : IAdminService
 
         var page = Math.Max(1, filter.Page);
         var pageSize = Math.Clamp(filter.PageSize, 1, AdminAuditFilter.MaxPageSize);
-        // Default to the last 30 days when no since is provided — bounds the query for
-        // active users with long histories.
+        // Last 30 days by default — bounds the query for users with long histories.
         var since = filter.Since ?? DateTime.UtcNow.AddDays(-30);
 
         var query = _context.SecurityEvents
@@ -543,8 +518,7 @@ public class AdminService : IAdminService
             }
             catch (JsonException)
             {
-                // Malformed JSON (shouldn't happen — we wrote it ourselves) — surface
-                // the raw text under a single key rather than dropping the row.
+                // Shouldn't happen — we wrote it. Surface raw text rather than dropping the row.
                 fields["_raw"] = row.PropertiesJson;
             }
         }

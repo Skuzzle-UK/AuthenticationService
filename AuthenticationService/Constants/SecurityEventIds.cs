@@ -1,38 +1,16 @@
 namespace AuthenticationService.Constants;
 
 /// <summary>
-/// Stable <see cref="EventId"/>s for security-relevant events emitted by this service. SIEM
-/// rules match on these IDs rather than message strings, so values must not change once
-/// deployed — treat them as a wire contract with whatever consumes the logs.
+/// Stable <see cref="EventId"/>s for security events. SIEM rules match on these IDs — treat
+/// them as a wire contract, values must not change once deployed.
 ///
-/// <para><b>Field-naming conventions</b> for log statements that use these EventIds:</para>
-/// <list type="bullet">
-///   <item><description><c>{UserId}</c> — the <c>sub</c> claim / <c>User.Id</c>. Empty string when the target user doesn't exist (e.g., login attempt against an unknown email).</description></item>
-///   <item><description><c>{IpAddress}</c> — caller's IP via <c>Request.GetRemoteIpAddress()</c>.</description></item>
-///   <item><description><c>{Jti}</c> — access-token <c>jti</c> claim, when relevant.</description></item>
-///   <item><description><c>{FamilyId}</c> — refresh-token family ID / <c>sid</c> claim, when relevant.</description></item>
-///   <item><description><c>{Reason}</c> — short token from <c>LoginFailureReason</c> or <c>RevocationReasons</c>.</description></item>
-///   <item><description><c>{Provider}</c> — <c>MfaProviders</c> enum value, when relevant.</description></item>
-///   <item><description><c>{Severity}</c> — <c>Severity</c> enum value, when relevant.</description></item>
-/// </list>
+/// <para>Property conventions: PascalCase names, same name = same meaning across every event.
+/// <c>UserId</c> (sub claim), <c>IpAddress</c>, <c>Jti</c>, <c>FamilyId</c> (sid claim),
+/// <c>Reason</c>, <c>Provider</c>, <c>Severity</c>. Email / passwords / token values /
+/// authenticator secrets MUST NOT appear in payloads — use <c>UserId</c> for correlation.</para>
 ///
-/// <para>Property names use PascalCase. The same field name carries the same meaning across
-/// every event — <c>UserId</c> is always the <c>sub</c> claim, <c>FamilyId</c> is always the
-/// session/refresh-token family, etc. Don't introduce parallel names for the same concept.</para>
-///
-/// <para>Email addresses, passwords, tokens, refresh-token values, and authenticator secrets
-/// MUST NOT appear in event payloads. Use <c>UserId</c> for forensic correlation; let the
-/// platform's separate user store map back to email if an investigator needs it.</para>
-///
-/// <para><b>EventId ranges:</b></para>
-/// <list type="bullet">
-///   <item><description><b>1000s</b> — Authentication (login, MFA, refresh, logout)</description></item>
-///   <item><description><b>2000s</b> — Registration</description></item>
-///   <item><description><b>3000s</b> — Account management</description></item>
-///   <item><description><b>4000s</b> — Token state</description></item>
-///   <item><description><b>5000s</b> — Admin actions (admin-initiated user-management operations)</description></item>
-///   <item><description><b>6000s</b> — Service-to-service auth (OAuth client-credentials grant)</description></item>
-/// </list>
+/// <para>Ranges: 1000s authentication, 2000s registration, 3000s account, 4000s token,
+/// 5000s admin, 6000s s2s.</para>
 /// </summary>
 public static class SecurityEventIds
 {
@@ -188,25 +166,39 @@ public static class SecurityEventIds
     // admin do?" / "what's been done to this user?" independently.
     // ------------------------------------------------------------------
 
-    /// <summary>An admin manually locked a user account (indefinite lockout).</summary>
+    /// <summary>
+    /// An admin manually locked a user account (indefinite lockout).
+    /// </summary>
     public static readonly EventId AdminLockedAccount = new(5001, nameof(AdminLockedAccount));
 
-    /// <summary>An admin lifted an active lockout and reset the failed-attempt counter.</summary>
+    /// <summary>
+    /// An admin lifted an active lockout and reset the failed-attempt counter.
+    /// </summary>
     public static readonly EventId AdminUnlockedAccount = new(5002, nameof(AdminUnlockedAccount));
 
-    /// <summary>An admin revoked all refresh-token families for a user and rotated the security stamp ("sign out everywhere" hammer).</summary>
+    /// <summary>
+    /// An admin revoked all refresh-token families for a user and rotated the security stamp ("sign out everywhere" hammer).
+    /// </summary>
     public static readonly EventId AdminRevokedSessions = new(5003, nameof(AdminRevokedSessions));
 
-    /// <summary>An admin cleared a user's MFA configuration (typically helpdesk handling a lost-phone case). Sessions are revoked implicitly.</summary>
+    /// <summary>
+    /// An admin cleared a user's MFA configuration (typically helpdesk handling a lost-phone case). Sessions are revoked implicitly.
+    /// </summary>
     public static readonly EventId AdminResetMfa = new(5004, nameof(AdminResetMfa));
 
-    /// <summary>An admin triggered a password reset on a user — a reset email goes to the user and existing sessions are revoked.</summary>
+    /// <summary>
+    /// An admin triggered a password reset on a user — a reset email goes to the user and existing sessions are revoked.
+    /// </summary>
     public static readonly EventId AdminForcedPasswordReset = new(5005, nameof(AdminForcedPasswordReset));
 
-    /// <summary>An admin created a new user via the invite flow. <c>EmailConfirmed</c> is false and no password is set until the user clicks the invitation link.</summary>
+    /// <summary>
+    /// An admin created a new user via the invite flow. <c>EmailConfirmed</c> is false and no password is set until the user clicks the invitation link.
+    /// </summary>
     public static readonly EventId AdminCreatedUser = new(5006, nameof(AdminCreatedUser));
 
-    /// <summary>An admin re-sent the invitation email for a user who never clicked their original link (still in pending-invitation state).</summary>
+    /// <summary>
+    /// An admin re-sent the invitation email for a user who never clicked their original link (still in pending-invitation state).
+    /// </summary>
     public static readonly EventId AdminResentInvitation = new(5007, nameof(AdminResentInvitation));
 
     // ------------------------------------------------------------------
@@ -216,24 +208,38 @@ public static class SecurityEventIds
     // Client-management events log {AdminUserId}, {ClientId}, {IpAddress}.
     // ------------------------------------------------------------------
 
-    /// <summary>A client successfully exchanged credentials at <c>/oauth/token</c> and was issued a service-identity JWT.</summary>
+    /// <summary>
+    /// A client successfully exchanged credentials at <c>/oauth/token</c> and was issued a service-identity JWT.
+    /// </summary>
     public static readonly EventId ClientCredentialsTokenIssued = new(6001, nameof(ClientCredentialsTokenIssued));
 
-    /// <summary>A token-endpoint request was rejected. Reason in <c>{Reason}</c> (invalid_client / invalid_scope / unsupported_grant_type / invalid_request).</summary>
+    /// <summary>
+    /// A token-endpoint request was rejected. Reason in <c>{Reason}</c> (invalid_client / invalid_scope / unsupported_grant_type / invalid_request).
+    /// </summary>
     public static readonly EventId ClientCredentialsTokenDenied = new(6002, nameof(ClientCredentialsTokenDenied));
 
-    /// <summary>An admin created a new s2s client via <c>POST /api/Admin/clients</c>. The plaintext secret is shown to the admin in the response (one-time display); only the hash is persisted.</summary>
+    /// <summary>
+    /// An admin created a new s2s client via <c>POST /api/Admin/clients</c>. The plaintext secret is shown to the admin in the response (one-time display); only the hash is persisted.
+    /// </summary>
     public static readonly EventId AdminCreatedClient = new(6101, nameof(AdminCreatedClient));
 
-    /// <summary>An admin rotated a client's secret. The previous hash is overwritten; the new plaintext is shown once in the response.</summary>
+    /// <summary>
+    /// An admin rotated a client's secret. The previous hash is overwritten; the new plaintext is shown once in the response.
+    /// </summary>
     public static readonly EventId AdminRotatedClientSecret = new(6102, nameof(AdminRotatedClientSecret));
 
-    /// <summary>An admin soft-disabled a client. Subsequent <c>/oauth/token</c> attempts return <c>invalid_client</c>; the row stays for audit / re-enable.</summary>
+    /// <summary>
+    /// An admin soft-disabled a client. Subsequent <c>/oauth/token</c> attempts return <c>invalid_client</c>; the row stays for audit / re-enable.
+    /// </summary>
     public static readonly EventId AdminDisabledClient = new(6103, nameof(AdminDisabledClient));
 
-    /// <summary>An admin added a (audience, scope) tuple to a client's scope list.</summary>
+    /// <summary>
+    /// An admin added a (audience, scope) tuple to a client's scope list.
+    /// </summary>
     public static readonly EventId AdminAddedClientScope = new(6104, nameof(AdminAddedClientScope));
 
-    /// <summary>An admin removed a (audience, scope) tuple from a client's scope list.</summary>
+    /// <summary>
+    /// An admin removed a (audience, scope) tuple from a client's scope list.
+    /// </summary>
     public static readonly EventId AdminRemovedClientScope = new(6105, nameof(AdminRemovedClientScope));
 }

@@ -14,6 +14,8 @@ public class ClientDetailDto : ApiResponse
     public DateTime? LastUsedAt { get; set; }
     public string? Description { get; set; }
 
-    /// <summary>The (Audience, Scope) tuples this client is permitted to request.</summary>
+    /// <summary>
+    /// The (Audience, Scope) tuples this client is permitted to request.
+    /// </summary>
     public IList<AdminClientScopeDto> Scopes { get; set; } = [];
 }

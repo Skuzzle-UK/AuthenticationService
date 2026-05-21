@@ -12,9 +12,7 @@ using Microsoft.EntityFrameworkCore;
 namespace AuthenticationService.Controllers;
 
 /// <summary>
-/// Admin user-management endpoints. All actions require the <see cref="PolicyConstants.AdminOnly"/>
-/// policy (which ties to the <c>Admin</c> role on the calling principal). Destructive
-/// actions refuse self-target so an admin can't fat-finger themselves out of the system.
+/// Admin user + client management. All actions require <see cref="PolicyConstants.AdminOnly"/>. Destructive actions refuse self-target so admins can't lock themselves out.
 /// </summary>
 [Route("api/[controller]")]
 [ApiController]
@@ -64,7 +62,7 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
-    /// Full detail for a single user — profile, lockout state, MFA, roles, active session count.
+    /// Full detail for a single user — profile, lockout, MFA, roles, active session count.
     /// </summary>
     [HttpGet("users/{id}")]
     public async Task<IActionResult> GetUserAsync(string id, CancellationToken ct)
@@ -74,8 +72,7 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
-    /// Creates a new user via the invitation flow. The user gets an email with a link to
-    /// set their initial password; the account is unusable until they do.
+    /// Creates a user via the invitation flow. Account is unusable until the user clicks the email link and sets a password.
     /// </summary>
     [HttpPost("users")]
     public async Task<IActionResult> CreateUserAsync(
@@ -101,8 +98,7 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
-    /// Re-sends the invitation email for a user still in the pending-invitation state.
-    /// Returns 409 if the user has already accepted (or otherwise activated their account).
+    /// Re-sends the invitation email. Returns 409 if the user has already activated their account.
     /// </summary>
     [HttpPost("users/{id}/resend-invitation")]
     public async Task<IActionResult> ResendInvitationAsync(string id, CancellationToken ct)
@@ -149,8 +145,7 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
-    /// Lifts an active lockout and resets the failed-attempt counter.
-    /// Refuses self-target (admins use the seed-account recovery path, not this endpoint).
+    /// Lifts an active lockout and resets the failed-attempt counter. Refuses self-target (admins use the seed-account recovery path).
     /// </summary>
     [HttpPost("users/{id}/unlock")]
     public async Task<IActionResult> UnlockUserAsync(string id, CancellationToken ct)
@@ -170,8 +165,7 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
-    /// Revokes every active session the user has — refresh-token families + rotates the security
-    /// stamp. The "log them out everywhere" hammer. Doesn't lock the account; user can sign back in.
+    /// Revokes every active session — refresh-token families + rotates security stamp. Doesn't lock the account; user can sign back in.
     /// </summary>
     [HttpPost("users/{id}/revoke-sessions")]
     public async Task<IActionResult> RevokeSessionsAsync(string id, CancellationToken ct)
@@ -191,8 +185,7 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
-    /// Disables the user's MFA and clears their authenticator key. Used by helpdesk for lost-phone
-    /// recovery. Revokes all sessions implicitly.
+    /// Disables MFA and clears the authenticator key — helpdesk lost-phone recovery. Revokes all sessions implicitly.
     /// </summary>
     [HttpPost("users/{id}/reset-mfa")]
     public async Task<IActionResult> ResetMfaAsync(string id, CancellationToken ct)
@@ -212,9 +205,7 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
-    /// Force-password-reset — generates an Identity reset token, emails it to the user, and
-    /// revokes the user's existing sessions. Admin never sees the new password (user picks it
-    /// themselves via the reset-password page).
+    /// Generates a reset token, emails it, and revokes existing sessions. Admin never sees the new password.
     /// </summary>
     [HttpPost("users/{id}/force-password-reset")]
     public async Task<IActionResult> ForcePasswordResetAsync(
@@ -237,19 +228,13 @@ public class AdminController : ControllerBase
         return ok ? Ok(new ApiResponse()) : NotFound();
     }
 
-    /// <summary>
-    /// Body shape for the optional callback override on force-password-reset. Sits in the
-    /// controller because it's only used here; a top-level DTO felt like overkill.
-    /// </summary>
     public sealed class ForcePasswordResetRequest
     {
         public string? CallbackUri { get; set; }
     }
 
     /// <summary>
-    /// Paginated audit log for the user — reads from the <c>SecurityEvents</c> table
-    /// populated by the custom Serilog sink. Defaults to the last 30 days of events;
-    /// passes <see cref="AdminAuditFilter"/> through to the service.
+    /// Paginated audit log for the user. Reads <c>SecurityEvents</c>; defaults to the last 30 days.
     /// </summary>
     [HttpGet("users/{id}/audit")]
     public async Task<IActionResult> GetAuditAsync(
@@ -279,11 +264,7 @@ public class AdminController : ControllerBase
     private string GetCurrentAdminId() =>
         User.FindFirst(ClaimConstants.Sub)?.Value ?? string.Empty;
 
-    /// <summary>
-    /// Self-protection guard: returns true (and populates the response) when the target id
-    /// matches the current admin's id. Destructive endpoints call this first so admins can't
-    /// accidentally lock / revoke themselves.
-    /// </summary>
+    // Self-protection guard for destructive endpoints — returns true (with response) when targetId matches the current admin.
     private bool RejectIfSelf(string targetId, out IActionResult response)
     {
         var currentId = GetCurrentAdminId();
@@ -303,9 +284,7 @@ public class AdminController : ControllerBase
     // ────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Creates a new OAuth client. The plaintext secret is generated server-side and
-    /// returned <em>once</em> in the response — admins must capture it now; only the
-    /// hash is persisted.
+    /// Creates a new OAuth client. Plaintext secret is returned <em>once</em> in the response — only the hash is persisted.
     /// </summary>
     [HttpPost("clients")]
     public async Task<IActionResult> CreateClientAsync(
@@ -386,7 +365,9 @@ public class AdminController : ControllerBase
         });
     }
 
-    /// <summary>Full detail for a single client — metadata + scopes list. Never includes the secret hash.</summary>
+    /// <summary>
+    /// Full detail for a single client — metadata + scopes list. Never includes the secret hash.
+    /// </summary>
     [HttpGet("clients/{id}")]
     public async Task<IActionResult> GetClientAsync(string id, CancellationToken ct)
     {
@@ -415,8 +396,7 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
-    /// Generates a fresh secret and overwrites the stored hash. Response carries the
-    /// new plaintext secret — same one-time-display contract as create.
+    /// Generates a fresh secret and overwrites the stored hash. Response carries the new plaintext — same one-time-display contract as create.
     /// </summary>
     [HttpPost("clients/{id}/rotate-secret")]
     public async Task<IActionResult> RotateClientSecretAsync(string id, CancellationToken ct)
@@ -444,9 +424,7 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
-    /// Soft-disable the client. Subsequent <c>/oauth/token</c> attempts return
-    /// <c>invalid_client</c>; the row stays for audit and can be re-enabled out-of-band.
-    /// Idempotent — disabling an already-disabled client returns 200 with no further effect.
+    /// Soft-disable the client. Subsequent /oauth/token attempts return invalid_client. Idempotent.
     /// </summary>
     [HttpPost("clients/{id}/disable")]
     public async Task<IActionResult> DisableClientAsync(string id, CancellationToken ct)
@@ -454,8 +432,7 @@ public class AdminController : ControllerBase
         var changed = await _clientService.DisableAsync(id, ct);
         if (!changed)
         {
-            // Could be "no such client" OR "already disabled". Differentiate so the
-            // admin tooling can give a precise message.
+            // Differentiate "no such client" vs "already disabled" so admin tooling can give a precise message.
             var exists = await _db.Clients.AsNoTracking().AnyAsync(c => c.Id == id, ct);
             return exists ? Ok(new ApiResponse()) : NotFound();
         }
@@ -471,8 +448,7 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
-    /// Add a (audience, scope) tuple to a client. Idempotent — adding a duplicate is a
-    /// no-op success.
+    /// Add an (audience, scope) tuple to a client. Idempotent.
     /// </summary>
     [HttpPost("clients/{id}/scopes")]
     public async Task<IActionResult> AddClientScopeAsync(
@@ -501,7 +477,9 @@ public class AdminController : ControllerBase
         return Ok(new ApiResponse());
     }
 
-    /// <summary>Remove a (audience, scope) tuple from a client. Returns 404 if the tuple wasn't present.</summary>
+    /// <summary>
+    /// Remove a (audience, scope) tuple from a client. Returns 404 if the tuple wasn't present.
+    /// </summary>
     [HttpDelete("clients/{id}/scopes/{audience}/{scope}")]
     public async Task<IActionResult> RemoveClientScopeAsync(
         string id,
@@ -527,11 +505,7 @@ public class AdminController : ControllerBase
         return Ok(new ApiResponse());
     }
 
-    /// <summary>
-    /// Generates a cryptographically-random client secret. 32 bytes / 256 bits of
-    /// entropy → 43 chars Base64URL — long enough that brute-force is infeasible and
-    /// short enough to paste into config without folding.
-    /// </summary>
+    // 32 bytes / 256 bits → 43 chars Base64URL. Brute-force infeasible, short enough to paste without line-folding.
     private static string GenerateSecret()
     {
         var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);

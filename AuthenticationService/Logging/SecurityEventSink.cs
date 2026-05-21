@@ -8,35 +8,22 @@ using Serilog.Events;
 namespace AuthenticationService.Logging;
 
 /// <summary>
-/// Custom Serilog sink that persists <see cref="Microsoft.Extensions.Logging.EventId"/>-tagged
-/// log events to the <c>SecurityEvents</c> table via the existing
-/// <see cref="DatabaseContext"/>. Powers the admin audit endpoint.
-///
-/// <para>Filter: only events whose <c>EventId.Id</c> falls in the security range
-/// (<see cref="MinSecurityEventId"/>..<see cref="MaxSecurityEventId"/>) are persisted —
-/// matching the ranges <c>SecurityEventIds</c> reserves (1000s authentication, 2000s
-/// registration, 3000s account, 4000s token, 5000s admin). EF Core / ASP.NET Core /
-/// Identity log events that happen to carry an EventId fall outside this range and
-/// are ignored — critical at startup where EF logs about migrations would otherwise
-/// try to write to the SecurityEvents table that the very migration is creating
-/// (deadlocks startup).</para>
-///
-/// <para>Writes synchronously per event via a fresh scope. Volume is bounded (at most a
-/// handful of security events per request, request rate is bounded by auth-flow limits)
-/// so per-event INSERT cost is invisible against everything else. If volume grows, swap
-/// for a batched implementation via <c>Channel</c> + a hosted-service drain.</para>
-///
-/// <para>Failure handling: any DB error is swallowed and written to Serilog's
-/// <see cref="SelfLog"/> — losing an audit row is bad but bringing the request down
-/// because the audit table is unreachable is worse. The console + OTLP sinks still
-/// capture the original event so the audit trail isn't entirely gone.</para>
+/// Persists <see cref="Microsoft.Extensions.Logging.EventId"/>-tagged log events to the
+/// <c>SecurityEvents</c> table. Filters to the security EventId range so EF/Identity/ASP.NET
+/// events stay out (their write attempts would deadlock startup against the very migration
+/// that creates the table). DB errors swallow into <see cref="SelfLog"/> — losing an audit
+/// row beats 500ing the request.
 /// </summary>
 public sealed class SecurityEventSink : ILogEventSink
 {
-    /// <summary>Lower bound (inclusive) of the security EventId range. Matches the 1000s "Authentication" block in <c>SecurityEventIds</c>.</summary>
+    /// <summary>
+    /// Lower bound (inclusive) of the security EventId range. Matches the 1000s "Authentication" block in <c>SecurityEventIds</c>.
+    /// </summary>
     public const int MinSecurityEventId = 1000;
 
-    /// <summary>Upper bound (exclusive) of the security EventId range. Leaves room above the current 6000s "Service-to-service auth" block for future categories without re-tuning the filter.</summary>
+    /// <summary>
+    /// Exclusive upper bound. Leaves headroom above the 6000s s2s block.
+    /// </summary>
     public const int MaxSecurityEventId = 7000;
 
     private readonly IServiceScopeFactory _scopeFactory;
@@ -67,11 +54,8 @@ public sealed class SecurityEventSink : ILogEventSink
         }
     }
 
-    /// <summary>
-    /// Maps a Serilog <see cref="LogEvent"/> into a <see cref="SecurityEvent"/> entity.
-    /// Returns false when the event has no <c>EventId</c> property (i.e. wasn't tagged
-    /// with one of our <c>SecurityEventIds</c>) — those don't belong in the audit table.
-    /// </summary>
+    // Returns false when the event has no EventId in the security range — those don't
+    // belong in the audit table.
     private static bool TryBuildEntity(LogEvent logEvent, out SecurityEvent entity)
     {
         entity = default!;
@@ -101,12 +85,7 @@ public sealed class SecurityEventSink : ILogEventSink
             }
         }
 
-        // Filter to the security EventId range. Skips:
-        //   - eventId == 0 (the "no event id" sentinel)
-        //   - EF Core / ASP.NET Core / Identity events that carry their own EventIds
-        //     (typically 10000+ or sub-1000 ranges) — none of those belong in the audit
-        //     trail, and during startup, persisting EF migration events would deadlock
-        //     against the very migration creating the SecurityEvents table.
+        // Range filter — excludes the 0 sentinel and EF/Identity/ASP.NET events.
         if (eventId < MinSecurityEventId || eventId >= MaxSecurityEventId)
         {
             return false;
@@ -115,8 +94,7 @@ public sealed class SecurityEventSink : ILogEventSink
         var userId = TryGetScalarString(logEvent, "UserId");
         var ipAddress = TryGetScalarString(logEvent, "IpAddress");
 
-        // Build the residual-properties JSON — everything except the two extracted columns
-        // (UserId, IpAddress) and the EventId structure that lives in its own columns.
+        // Residual JSON — everything not extracted into its own column.
         var residualProperties = new Dictionary<string, object?>();
         foreach (var (key, value) in logEvent.Properties)
         {
@@ -152,7 +130,6 @@ public sealed class SecurityEventSink : ILogEventSink
         return scalar.Value?.ToString();
     }
 
-    /// <summary>Renders a Serilog property value into a JSON-friendly shape. Strings stay strings; other scalars are coerced to string; complex types fall back to the rendered representation.</summary>
     private static object? RenderPropertyValue(LogEventPropertyValue value) =>
         value switch
         {

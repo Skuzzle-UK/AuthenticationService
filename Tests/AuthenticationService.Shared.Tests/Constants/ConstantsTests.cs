@@ -4,11 +4,9 @@ using AwesomeAssertions;
 namespace AuthenticationService.Shared.Tests.Constants;
 
 /// <summary>
-/// <para>Constants in the shared package form a wire contract — values are read directly
-/// by JwtBearer's <c>TokenValidationParameters</c> in consuming services. Changing any of
-/// these silently breaks every consumer that doesn't redeploy at the same time. These
-/// tests pin the strings so an accidental rename is caught at PR time, and so policy /
-/// role lookups don't drift between issuer and consumer.</para>
+/// Constants in the shared package form a wire contract — values are read by JwtBearer's
+/// TokenValidationParameters in consuming services. Tests pin the strings so an
+/// accidental rename is caught at PR time.
 /// </summary>
 public class ConstantsTests
 {

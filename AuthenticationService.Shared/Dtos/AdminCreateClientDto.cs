@@ -9,22 +9,32 @@ namespace AuthenticationService.Shared.Dtos;
 /// </summary>
 public class AdminCreateClientDto
 {
-    /// <summary>The <c>client_id</c>. Stable identifier; admins pick this. Convention: lower-case kebab-case (<c>inventory-api</c>, <c>orders-batch-worker</c>).</summary>
+    /// <summary>
+    /// The <c>client_id</c>. Stable identifier; admins pick this. Convention: lower-case kebab-case (<c>inventory-api</c>, <c>orders-batch-worker</c>).
+    /// </summary>
     [Required, MaxLength(255)]
     public string? Id { get; set; }
 
-    /// <summary>Human-readable label for admin UI / audit logs.</summary>
+    /// <summary>
+    /// Human-readable label for admin UI / audit logs.
+    /// </summary>
     [Required, MaxLength(255)]
     public string? Name { get; set; }
 
-    /// <summary>Optional note explaining what the client is for, who owns it.</summary>
+    /// <summary>
+    /// Optional note explaining what the client is for, who owns it.
+    /// </summary>
     public string? Description { get; set; }
 
-    /// <summary>Optional initial scope list. Each item is a (Audience, Scope) tuple.</summary>
+    /// <summary>
+    /// Optional initial scope list. Each item is a (Audience, Scope) tuple.
+    /// </summary>
     public IList<AdminClientScopeDto>? Scopes { get; set; }
 }
 
-/// <summary>A single (audience, scope) tuple — used by client-create and add-scope requests.</summary>
+/// <summary>
+/// A single (audience, scope) tuple — used by client-create and add-scope requests.
+/// </summary>
 public class AdminClientScopeDto
 {
     [Required, MaxLength(255)]

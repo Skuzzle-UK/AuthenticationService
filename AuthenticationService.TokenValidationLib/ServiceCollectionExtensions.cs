@@ -10,30 +10,15 @@ namespace AuthenticationService.TokenValidationLib;
 
 /// <summary>
 /// Registration entry point for incoming JWT validation against the central
-/// AuthenticationService. Pair with the <c>AddScopePolicy</c> helper on
-/// <see cref="Microsoft.AspNetCore.Authorization.AuthorizationOptions"/> /
-/// <see cref="Microsoft.AspNetCore.Authorization.AuthorizationBuilder"/> for
-/// scope-gated endpoints on service-to-service callers.
-///
-/// <para>Sibling library: <c>AuthenticationService.TokenClientLib</c> handles the
-/// <em>outgoing</em> side (acquiring service-identity tokens via client-credentials).
-/// The two halves are orthogonal — a service might validate incoming tokens without
-/// calling out, or call out without validating anything — so they're shipped as
-/// separate NuGets.</para>
+/// AuthenticationService. Pair with <c>AddScopePolicy</c> for scope-gated endpoints.
 /// </summary>
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers JwtBearer authentication that validates tokens issued by the central
-    /// authentication service. Reads <see cref="AuthenticationServiceOptions"/> from the
-    /// supplied configuration section and discovers signing keys via the issuer's JWKS endpoint.
+    /// Registers JwtBearer authentication validating tokens from the central auth
+    /// service. Binds <see cref="AuthenticationServiceOptions"/> from
+    /// <paramref name="configurationSection"/> (conventionally <c>"AuthenticationService"</c>).
     /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="configurationSection">
-    /// Configuration section containing <c>Authority</c>, <c>Audience</c>, and optionally
-    /// <c>RequireHttpsMetadata</c>. Conventionally bound from
-    /// <c>"AuthenticationService"</c> in appsettings.
-    /// </param>
     public static IServiceCollection AddAuthenticationServiceJwt(
         this IServiceCollection services,
         IConfiguration configurationSection)

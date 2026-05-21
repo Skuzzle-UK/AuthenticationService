@@ -1,9 +1,8 @@
-﻿namespace AuthenticationService.Shared.Dtos.Response;
+namespace AuthenticationService.Shared.Dtos.Response;
 
 /// <summary>
-/// Standard wrapper for API responses. <see cref="IsSuccessful"/> is true by default;
-/// adding any error flips it to false. Subclasses (like <see cref="AuthenticationResponse"/>)
-/// add domain-specific payload alongside this base shape.
+/// Standard wrapper for API responses. True by default; adding any error flips
+/// <see cref="IsSuccessful"/> to false.
 /// </summary>
 public class ApiResponse
 {
@@ -53,9 +52,8 @@ public class ApiResponse
     }
 
     /// <summary>
-    /// Forces <see cref="IsSuccessful"/> back to true even if errors have been added.
-    /// Used in the rare cases where errors are informational rather than fatal — call after
-    /// all <c>AddError</c> calls.
+    /// Forces <see cref="IsSuccessful"/> back to true even if errors were added — for cases
+    /// where errors are informational rather than fatal. Call after all <c>AddError</c> calls.
     /// </summary>
     public ApiResponse Successful()
     {

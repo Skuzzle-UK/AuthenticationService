@@ -5,42 +5,33 @@ using AuthenticationService.Shared.Enums;
 namespace AuthenticationService.Observability;
 
 /// <summary>
-/// Custom business metrics for the auth service. Registered as a singleton; callers
-/// inject this and call the named methods alongside their existing <c>_logger.LogXxx</c>
-/// emits. The meter name (<see cref="MeterName"/>) must match the
-/// <c>metrics.AddMeter(...)</c> registration in <c>ServiceDefaults.Extensions</c>.
-///
-/// <para>Tag cardinality is bounded by design: every tag value here comes from an enum
-/// or a fixed short string (success/failure, requested/completed, etc.). High-cardinality
-/// data (user IDs, IPs, JTIs) goes to logs and traces only — never tags — to keep the
-/// Prometheus time-series count manageable.</para>
+/// Custom business metrics. Singleton; tags are bounded enums/short strings only —
+/// user IDs, IPs, and JTIs go to logs/traces, never tags.
+/// <see cref="MeterName"/> must match the <c>metrics.AddMeter</c> registration in
+/// ServiceDefaults.Extensions.
 /// </summary>
 public sealed class AuthMetrics
 {
     public const string MeterName = "AuthenticationService";
 
-    // --- Counters ---
-    // Each emit site corresponds to one SecurityEventIds.* log call. See SecurityEventIds.cs
-    // for the canonical list and what each event means.
-
+    // Counter EventId references map to SecurityEventIds.cs.
     private readonly Counter<long> _logins;                  // 1001 / 1002
     private readonly Counter<long> _mfaChallenges;           // 1003
     private readonly Counter<long> _mfaVerifications;        // 1004 / 1005
     private readonly Counter<long> _refreshes;               // 1007
-    private readonly Counter<long> _refreshReuseDetected;    // 1008 — separate counter, alert-worthy on its own
+    private readonly Counter<long> _refreshReuseDetected;    // 1008 — alert-worthy on its own
     private readonly Counter<long> _registrations;           // 2001 / 2002
     private readonly Counter<long> _lockouts;                // 1006, 3004, 4005
     private readonly Counter<long> _passwordChanges;         // 3001
     private readonly Counter<long> _passwordResets;          // 3002 / 3003
-    private readonly Counter<long> _mfaEnabled;              // 3005 — ENABLE events; gauge of currently-enabled users comes via the periodic hosted service
+    private readonly Counter<long> _mfaEnabled;              // 3005 — enable events; total via gauge
     private readonly Counter<long> _tokensRevoked;           // 4001
     private readonly Counter<long> _revokedTokenReplays;     // 4002
     private readonly Counter<long> _thresholdEscalations;    // 4004 / 4005
-    private readonly Counter<long> _clientCredentialsTokens; // 6001 / 6002 — s2s OAuth token endpoint
+    private readonly Counter<long> _clientCredentialsTokens; // 6001 / 6002
 
-    // --- Observable gauges ---
-    // Snapshot values refreshed periodically by UserGaugeRefreshService. Volatile reads
-    // because the SDK collection thread is different from the refresh thread.
+    // Refreshed by UserGaugeRefreshService. Volatile pairs the SDK collection thread
+    // with the refresh thread.
     private long _totalUsers;
     private long _mfaEnabledUsers;
     private long _lockedUsers;
@@ -105,9 +96,7 @@ public sealed class AuthMetrics
             name: "auth.client_credentials.total",
             description: "OAuth client-credentials token requests. Tagged result=success|failure. On failure, reason carries the RFC 6749 error code (invalid_client / invalid_scope / unsupported_grant_type / invalid_request).");
 
-        // Observable gauges — callback fires on each SDK collection cycle and reports
-        // the most recently cached value. Volatile.Read pairs with Volatile.Write in
-        // UpdateUserGauges (called from the background refresh service).
+        // Volatile.Read pairs with Volatile.Write in UpdateUserGauges.
         m.CreateObservableGauge(
             name: "auth.users.total",
             observeValue: () => Volatile.Read(ref _totalUsers),
@@ -125,10 +114,7 @@ public sealed class AuthMetrics
     }
 
     /// <summary>
-    /// Snapshot update for the observable gauges. Called by
-    /// <c>UserGaugeRefreshService</c> on its sweep schedule. Values
-    /// are written with release semantics so the SDK collection thread sees
-    /// them.
+    /// Snapshot update for the observable gauges. Called from <c>UserGaugeRefreshService</c>.
     /// </summary>
     public void UpdateUserGauges(long totalUsers, long mfaEnabledUsers, long lockedUsers)
     {
@@ -137,10 +123,7 @@ public sealed class AuthMetrics
         Volatile.Write(ref _lockedUsers, lockedUsers);
     }
 
-    // ------------------------------------------------------------------
-    // Emit methods — one per security event. Tag values are bounded enums
-    // or short fixed strings; do not pass user-supplied data here.
-    // ------------------------------------------------------------------
+    // Emit methods — one per security event. Tag values must remain bounded.
 
     /// <summary>
     /// Records a successful login. <paramref name="mfaUsed"/> distinguishes MFA from password-only.
@@ -183,7 +166,7 @@ public sealed class AuthMetrics
         _refreshes.Add(1);
 
     /// <summary>
-    /// Records a refresh-token reuse cascade — every increment is a security incident.
+    /// Every increment is a security incident.
     /// </summary>
     public void RefreshTokenReuseDetected() =>
         _refreshReuseDetected.Add(1);
@@ -201,7 +184,7 @@ public sealed class AuthMetrics
         _registrations.Add(1, new KeyValuePair<string, object?>("stage", "confirmed"));
 
     /// <summary>
-    /// Records an account lockout. Lockout triggers: <c>failed_login</c>, <c>user</c>, <c>threshold_escalation</c>.
+    /// Triggers: <c>failed_login</c>, <c>user</c>, <c>threshold_escalation</c>.
     /// </summary>
     public void LockoutTriggered(string trigger) =>
         _lockouts.Add(1, new KeyValuePair<string, object?>("trigger", trigger));
@@ -243,16 +226,17 @@ public sealed class AuthMetrics
         _revokedTokenReplays.Add(1, new KeyValuePair<string, object?>("severity", severity));
 
     /// <summary>
-    /// Records a threshold-escalation worker fire. Level: <c>warned</c> or <c>locked</c>. The 'locked' increment also drives an <c>auth.lockouts.total</c> increment via the caller.
+    /// Level: <c>warned</c> or <c>locked</c>. 'locked' also drives auth.lockouts.total via the caller.
     /// </summary>
     public void ThresholdEscalationFired(string level) =>
         _thresholdEscalations.Add(1, new KeyValuePair<string, object?>("level", level));
 
-    /// <summary>Records a successful client-credentials token issuance.</summary>
     public void ClientCredentialsTokenIssued() =>
         _clientCredentialsTokens.Add(1, new KeyValuePair<string, object?>("result", "success"));
 
-    /// <summary>Records a denied client-credentials token request. <paramref name="reason"/> is the RFC 6749 error code returned to the caller.</summary>
+    /// <summary>
+    /// <paramref name="reason"/> is the RFC 6749 error code returned to the caller.
+    /// </summary>
     public void ClientCredentialsTokenDenied(string reason) =>
         _clientCredentialsTokens.Add(1,
             new KeyValuePair<string, object?>("result", "failure"),

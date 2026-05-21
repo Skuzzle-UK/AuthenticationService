@@ -6,20 +6,16 @@ namespace AuthenticationService.Services;
 
 
 /// <summary>
-/// Issues, validates, rotates and revokes JWT access tokens and their paired refresh tokens.
-/// All token logic lives behind this interface — controllers never touch JWT plumbing directly.
+/// Issues, validates, rotates and revokes JWT access tokens and their refresh-token pairs.
+/// Controllers never touch JWT plumbing directly.
 /// </summary>
 public interface ITokenService
 {
     /// <summary>
-    /// Creates a fresh access token + refresh token pair for the given user.
-    /// Pass <paramref name="familyId"/> to keep the new pair in an existing refresh-token
-    /// family (used during rotation); leave it null on a fresh login so a new family is started.
-    /// <paramref name="ipAddress"/> is recorded against the refresh token for audit.
+    /// Creates an access + refresh token pair. Pass <paramref name="familyId"/> to extend an
+    /// existing family during rotation; leave null on fresh login to start a new family.
     /// <paramref name="refreshTokenId"/> lets rotation pre-allocate the new row's PK so it
-    /// can be stamped into the predecessor row's <c>ReplacedByTokenId</c> in the same UPDATE
-    /// that consumes it. Login and other non-rotation callers leave it
-    /// null and get a fresh Guid generated inside the implementation.
+    /// can be stamped into the predecessor's <c>ReplacedByTokenId</c> in one UPDATE.
     /// </summary>
     Task<Token> CreateTokenAsync(
         User user,
@@ -29,60 +25,44 @@ public interface ITokenService
         Guid? refreshTokenId = null);
 
     /// <summary>
-    /// Issues a service-identity JWT for the OAuth client-credentials grant. Deliberately
-    /// distinct from <see cref="CreateTokenAsync(User, IList{string}, Guid?, string?, Guid?)"/>:
-    /// no refresh-token pairing, no user / role / email claims, single per-service
-    /// <paramref name="audience"/>, scopes encoded as a space-separated <c>scope</c> claim.
-    /// Lifetime comes from <c>ClientCredentialsSettings.TokenLifetimeInHours</c>.
-    ///
-    /// <para>Consumers can tell the two token kinds apart by the presence of
-    /// <see cref="AuthenticationService.Shared.Constants.ClaimConstants.Email"/> /
-    /// <see cref="AuthenticationService.Shared.Constants.ClaimConstants.Sid"/> — both
-    /// user-only — and by <c>sub</c> being the client_id rather than a user id.</para>
+    /// Issues a service-identity JWT for OAuth client-credentials. No refresh pair, no user
+    /// claims, per-service <paramref name="audience"/>, space-separated <c>scope</c> claim.
+    /// Distinguishable from user tokens by absent <c>email</c>/<c>sid</c> claims and by
+    /// <c>sub</c> being a client_id.
     /// </summary>
     Task<Token> CreateServiceTokenAsync(string clientId, string audience, IEnumerable<string> scopes);
 
     /// <summary>
-    /// Validates a token's signature, issuer and audience but ignores its expiry. Used during
-    /// the refresh flow where we expect the access token to have already expired.
+    /// Validates signature, issuer and audience but ignores expiry. Used during refresh.
     /// </summary>
     Task<bool> ValidateExpiredTokenAsync(string token);
 
     /// <summary>
-    /// Adds the access token's <c>jti</c> to the revoked-token list so any future presentation
-    /// is rejected. <paramref name="reason"/> is stored for audit (see <c>RevocationReasons</c>).
+    /// Adds the token's <c>jti</c> to the revoked-token deny-list.
     /// </summary>
     Task RevokeTokenAsync(string token, string ipAddress, string reason);
 
     /// <summary>
-    /// Revokes a token that arrived for a user who no longer exists in the database
-    /// Emits a Warning-level <see cref="SecurityEventIds.OrphanedTokenRevoked"/>
-    /// alongside the standard revoke event so SIEM can flag it as an anomoly
+    /// Revokes a token whose user no longer exists. Emits Warning-level
+    /// <see cref="SecurityEventIds.OrphanedTokenRevoked"/> for SIEM.
     /// </summary>
     Task RevokeOrphanedTokenAsync(string token, string ipAddress);
 
     /// <summary>
-    /// The refresh flow: validates the supplied refresh token, marks it consumed, and issues
-    /// a fresh access + refresh pair in the same family.
-    ///
-    /// <para>If the same refresh token is presented a second time we treat it as theft —
-    /// every active session for the user is revoked and the security stamp is rotated before
-    /// this method returns. Inspect the returned <see cref="RefreshResult"/> to know which
-    /// path was taken (success, expired, not-found, or reuse-detected).</para>
+    /// Refresh flow with reuse detection. If a token is presented a second time we treat it
+    /// as theft — all families for the user are revoked and the security stamp rotated before
+    /// returning. Inspect <see cref="RefreshResult"/> for the path taken.
     /// </summary>
     Task<RefreshResult> RotateRefreshTokenAsync(string accessToken, string rawRefreshToken, string ipAddress);
 
     /// <summary>
-    /// Revokes every active refresh token the user holds — the "log out everywhere" hammer.
-    /// Used by reuse-detection, password change/reset, lockout, and the explicit
-    /// <c>/logoutall</c> endpoint. Does not touch the security stamp; the caller decides
-    /// whether to rotate it as well.
+    /// "Log out everywhere" hammer. Used by reuse-detection, password change/reset, lockout,
+    /// and <c>/logoutall</c>. Does NOT touch the security stamp — caller decides.
     /// </summary>
     Task RevokeAllRefreshTokenFamiliesAsync(string userId, string reason);
 
     /// <summary>
-    /// Revokes every refresh token in a single family — i.e. signs out the one device the
-    /// caller is currently using. Other devices keep their sessions. Used by
+    /// Signs out one device (single family) — other devices keep their sessions. Used by
     /// <c>/logout</c>. Does not touch the security stamp.
     /// </summary>
     Task RevokeFamilyAsync(Guid familyId, string reason);
@@ -93,24 +73,19 @@ public interface ITokenService
     DateTime? GetExpiryDateTime(string token);
 
     /// <summary>
-    /// Reads the <c>sub</c> claim (the stable user id) from a JWT.
+    /// Reads the <c>sub</c> claim.
     /// </summary>
     string GetUserId(string token);
 
     /// <summary>
-    /// Looks up the revocation row for a token's <c>jti</c>. Returns null if the token
-    /// hasn't been revoked. Caller can pass the returned row through to
-    /// <see cref="RecordRevokedReplayAsync"/> to avoid a second DB lookup.
+    /// Returns null if not revoked. Caller can pass the row to <see cref="RecordRevokedReplayAsync"/>
+    /// to avoid a second DB lookup.
     /// </summary>
     Task<RevokedToken?> GetRevokedTokenAsync(string token);
 
     /// <summary>
-    /// Records that someone tried to use a token we'd already revoked. Writes one
-    /// <c>RevokedTokenAccessAttempt</c> row for the threshold-escalation worker and
-    /// SIEM forwarding to consume. The caller passes in the already-loaded
-    /// <see cref="RevokedToken"/> so we don't hit the DB twice. <paramref name="userAgent"/>
-    /// is captured on the audit row so SIEM rules that don't ingest logs can still
-    /// correlate replays by UA.
+    /// Records a revoked-token replay for the threshold-escalation worker and SIEM.
+    /// <paramref name="userAgent"/> captured so SIEM can correlate replays without ingesting logs.
     /// </summary>
     Task RecordRevokedReplayAsync(RevokedToken revokedToken, string ipAddress, string? userAgent);
 }

@@ -9,17 +9,8 @@ using Microsoft.EntityFrameworkCore;
 namespace AuthenticationService.Tests.Services;
 
 /// <summary>
-/// <para>Drives <see cref="ClientService"/> against a real SQLite-InMemory DbContext.
-/// The service is almost entirely EF queries + Identity's password hasher, so most of
-/// the value here is verifying the SQL-translatable shape of those queries plus the
-/// secret-hash round-trip.</para>
-///
-/// <para>Coverage focus:</para>
-/// <list type="bullet">
-///   <item><description><c>FindActiveAsync</c> returns null for both unknown <em>and</em> disabled clients — the contract that prevents an attacker enumerating valid IDs at the token endpoint.</description></item>
-///   <item><description>Secret hash round-trips correctly via <see cref="IPasswordHasher{Client}"/>.</description></item>
-///   <item><description>Admin-side methods (Create / RotateSecret / Disable / AddScope / RemoveScope) are idempotent where they should be and return the right "did anything happen" booleans.</description></item>
-/// </list>
+/// Drives <see cref="ClientService"/> against SQLite-InMemory. Verifies the SQL-translatable query shapes
+/// plus the secret-hash round-trip and the idempotency contracts on admin-side methods.
 /// </summary>
 public class ClientServiceTests : IDisposable
 {
@@ -36,8 +27,7 @@ public class ClientServiceTests : IDisposable
     [Fact]
     public async Task FindActiveAsync_DisabledClient_ReturnsNullSameAsUnknown()
     {
-        // The contract is deliberate: token endpoint can't reveal whether a client id
-        // exists when it's disabled, only that authentication failed.
+        // Token endpoint can't reveal whether a client id exists when disabled — only that auth failed.
         var (svc, db) = BuildService();
         await SeedClientAsync(db, id: "disabled", isDisabled: true);
 
@@ -93,8 +83,7 @@ public class ClientServiceTests : IDisposable
     [Fact]
     public async Task HasScopeAsync_DifferentAudience_ReturnsFalse()
     {
-        // Audience + scope are checked as a tuple — having (inventory-api, inventory.read)
-        // doesn't grant (orders-api, inventory.read).
+        // Audience + scope checked as a tuple — (inventory-api, inventory.read) doesn't grant (orders-api, inventory.read).
         var (svc, db) = BuildService();
         await SeedClientAsync(db, id: "c", scopes: [("inventory-api", "inventory.read")]);
 
@@ -194,8 +183,7 @@ public class ClientServiceTests : IDisposable
     [Fact]
     public async Task AddScopeAsync_DuplicateTuple_NoOpReturnsFalse()
     {
-        // Idempotent — the unique index on (ClientId, Audience, Scope) would throw on a
-        // duplicate insert; the service preempts that with an existence check.
+        // Unique index on (ClientId, Audience, Scope) would throw — service preempts with an existence check.
         var (svc, db) = BuildService();
         await SeedClientAsync(db, id: "c", scopes: [("inventory-api", "inventory.read")]);
 

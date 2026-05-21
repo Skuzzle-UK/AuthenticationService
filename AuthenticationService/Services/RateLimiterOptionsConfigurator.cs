@@ -31,11 +31,8 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
     {
         if (!_hostingSettings.RateLimitingEnabled)
         {
-            // Integration tests disable rate limiting via this flag so a sequence of
-            // tests hitting credential endpoints doesn't trip the global 4/10s cap.
-            // Register a no-op global limiter that allows everything; named policies
-            // still register below so endpoints with [EnableRateLimiting] don't 500
-            // because the policy name is unknown.
+            // Integration-test escape hatch: no-op limiters across the board. Named policies
+            // still register so [EnableRateLimiting] endpoints don't 500 on an unknown name.
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(
                 _ => RateLimitPartition.GetNoLimiter("disabled"));
             options.AddPolicy(RateLimitPolicies.AuthStrict, _ => RateLimitPartition.GetNoLimiter("disabled"));
@@ -44,9 +41,8 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
             return;
         }
 
-        // Global limiter is the catch-all default applied to every request. Chained:
-        // Redis primary (distributed, accurate cluster-wide cap) + in-memory fallback
-        // (per-replica, kicks in if Redis is unavailable). Most-restrictive wins.
+        // Redis primary (cluster-wide cap) chained with in-memory fallback (per-replica,
+        // for Redis outages). Most-restrictive wins.
         options.GlobalLimiter = PartitionedRateLimiter.CreateChained(
             BuildRedisGlobalLimiter(),
             BuildInMemoryGlobalFallbackLimiter());
@@ -87,8 +83,7 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
     private PartitionedRateLimiter<HttpContext> BuildRedisGlobalLimiter() =>
         PartitionedRateLimiter.Create<HttpContext, string>(context =>
         {
-            // Health-check endpoints get a permissive bucket so orchestrator / monitoring
-            // probes aren't throttled alongside regular API traffic.
+            // Permissive bucket for orchestrator/monitoring probes.
             if (context.Request.Path.StartsWithSegments("/livez")
                 || context.Request.Path.StartsWithSegments("/readyz")
                 || context.Request.Path.StartsWithSegments("/healthz"))
@@ -104,10 +99,8 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
                     });
             }
 
-            // Discovery + JWKS endpoints get their own bucket. During a key
-            // rotation a fleet of consumers behind the same corporate NAT may all refresh
-            // their cached JWKS within a few seconds — the default 4/10s would trip on
-            // anything more than a handful.
+            // Discovery + JWKS need headroom: during key rotation, many consumers behind one
+            // NAT may all refresh within seconds — the default 4/10s would trip on a handful.
             if (context.Request.Path.StartsWithSegments($"/{WellKnownPaths.Prefix}"))
             {
                 var probeIp = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
@@ -139,11 +132,8 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
     private static PartitionedRateLimiter<HttpContext> BuildInMemoryGlobalFallbackLimiter() =>
         PartitionedRateLimiter.Create<HttpContext, string>(context =>
         {
-            // Same partition shape as the Redis primary so caps match meaning. Caps
-            // themselves are PER-REPLICA when this is the binding constraint — i.e.
-            // when Redis is down. Set roughly equal to the Redis caps, accepting that
-            // with N replicas the cluster-wide effective cap during a Redis outage is
-            // N× the Redis cap. Acceptable degraded mode.
+            // Mirrors the Redis primary's partition shape. Caps are PER-REPLICA when Redis
+            // is down — cluster-wide effective cap is N× the Redis cap. Acceptable degraded mode.
             if (context.Request.Path.StartsWithSegments("/livez")
                 || context.Request.Path.StartsWithSegments("/readyz")
                 || context.Request.Path.StartsWithSegments("/healthz"))

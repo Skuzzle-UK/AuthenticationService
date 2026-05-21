@@ -19,16 +19,9 @@ using NSubstitute;
 namespace AuthenticationService.Tests.Controllers;
 
 /// <summary>
-/// <para>Controller-layer tests for <see cref="OAuthController"/>. Drives the controller
-/// with stubbed <see cref="IClientService"/> and <see cref="ITokenService"/> — the goal
-/// is to pin the RFC 6749 error-mapping contract end-to-end.</para>
-///
-/// <para>Coverage:</para>
-/// <list type="bullet">
-///   <item><description>Every RFC error code this endpoint can emit, with the right status code (400 for invalid_request / invalid_scope / unsupported_grant_type, 401 for invalid_client).</description></item>
-///   <item><description>Credential-extraction precedence: Basic auth header preferred over form-body; body fills in when no header; disagree-on-both rejected.</description></item>
-///   <item><description>Happy path: client found + secret verified + each scope authorised → 200 with token + expires_in.</description></item>
-/// </list>
+/// Pins the RFC 6749 error-mapping contract for <see cref="OAuthController"/>: every error code,
+/// the credential-extraction precedence (Basic header preferred, body fills in, disagree rejected),
+/// and the happy path.
 /// </summary>
 public class OAuthControllerTests
 {
@@ -51,8 +44,7 @@ public class OAuthControllerTests
     [Fact]
     public async Task TokenAsync_HttpsDisabledInConfig_AllowsHttpThrough()
     {
-        // Integration-test mode (HttpsRedirectionEnabled=false) flips RequireHttps off
-        // too — exercise it.
+        // Integration-test mode flips RequireHttps off.
         var (controller, deps) = BuildController(requireHttps: false, isHttps: false);
         StubHappyPath(deps);
 
@@ -199,7 +191,6 @@ public class OAuthControllerTests
         var client = new Client { Id = ClientId, Name = "T", ClientSecretHash = "any" };
         deps.ClientService.FindActiveAsync(ClientId, Arg.Any<CancellationToken>()).Returns(client);
         deps.ClientService.VerifySecret(client, ClientSecret).Returns(true);
-        // Has neither scope — first check fails.
         deps.ClientService.HasScopeAsync(ClientId, Audience, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(false);
 
@@ -252,9 +243,7 @@ public class OAuthControllerTests
     [Fact]
     public async Task TokenAsync_HappyPath_DeduplicatesScopes()
     {
-        // Duplicated scopes in the request are collapsed before authorisation. The
-        // resulting token (and the response's `scope` field) carries each distinct
-        // scope once.
+        // Duplicated scopes in request collapse before authorisation — token + response carry each distinct scope once.
         var (controller, deps) = BuildController();
         StubHappyPath(deps);
 
@@ -316,9 +305,8 @@ public class OAuthControllerTests
     };
 
     /// <summary>
-    /// Configures the dep stubs so the controller will accept the credentials, pass
-    /// scope checks, and emit a token. Tests that want to fail at a specific step then
-    /// override the relevant call.
+    /// Configures the dep stubs so the controller accepts credentials, passes scope checks, and emits a token.
+    /// Tests that want to fail at a specific step then override the relevant call.
     /// </summary>
     private static void StubHappyPath(Deps deps)
     {
@@ -344,8 +332,6 @@ public class OAuthControllerTests
 
     private static void AssertError(IActionResult result, HttpStatusCode expectedStatus, string expectedError)
     {
-        // Both 400 (BadRequestObjectResult) and 401 (UnauthorizedObjectResult) wrap the
-        // OAuthErrorResponse — assert against the shared shape.
         var status = result switch
         {
             ObjectResult obj => obj.StatusCode,

@@ -13,13 +13,7 @@ using NSubstitute;
 namespace AuthenticationService.Tests.Controllers;
 
 /// <summary>
-/// <para><see cref="WellKnownController"/> is the OIDC discovery + JWKS endpoint. It's
-/// the most-hit anonymous endpoint in the system (every consumer service polls JWKS
-/// on startup and refresh). Two paths covered:</para>
-/// <list type="bullet">
-///   <item><description>JWKS — returns the cached <see cref="JwksDocument"/> from <see cref="IEcdsaKeyProvider"/>; no per-request allocation.</description></item>
-///   <item><description>Discovery — returns the OIDC discovery doc with <c>issuer</c>, <c>jwks_uri</c>, and the supported signing algorithm restricted to ES256.</description></item>
-/// </list>
+/// Covers JWKS + OIDC discovery — the most-hit anonymous endpoint (every consumer polls JWKS).
 /// </summary>
 public class WellKnownControllerTests : IDisposable
 {
@@ -55,14 +49,11 @@ public class WellKnownControllerTests : IDisposable
     [Fact]
     public void Jwks_ReturnsCachedJwksDocumentFromKeyProvider()
     {
-        // arrange — the cached JwksDocument from EcdsaKeyProvider must be returned as-is.
-        // Pinned by reference equality so a regression that rebuilds it per call is caught.
+        // Pinned by reference equality — a regression that rebuilds per call would slip through value equality.
         var controller = MakeController();
 
-        // act
         var result = controller.Jwks();
 
-        // assert
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         ok.Value.Should().BeSameAs(_keyProvider.JwksDocument);
     }
@@ -70,16 +61,11 @@ public class WellKnownControllerTests : IDisposable
     [Fact]
     public void OpenIdConfiguration_BuildsDiscoveryDocFromConfiguredPublicUrlAndJwtSettings()
     {
-        // arrange — the discovery doc tells consumers where to fetch keys. The host part
-        // comes from PublicUrlSettings (canonical host) rather than the request, defending
-        // against host-header attacks.
+        // Host part comes from PublicUrlSettings rather than the request — defends against host-header attacks.
         var controller = MakeController();
 
-        // act
         var result = controller.OpenIdConfiguration();
 
-        // assert — check each documented field. Use reflection because the controller
-        // returns an anonymous object which the test can't reference by type.
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         var body = ok.Value!;
         var type = body.GetType();

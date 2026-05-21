@@ -12,21 +12,11 @@ using System.Text;
 namespace AuthenticationService.Services.Hosted;
 
 /// <summary>
-/// Watches the <c>RevokedTokenAccessAttempts</c> audit table for sustained replay of
-/// already-revoked access tokens. Two thresholds, both evaluated within a sliding window:
-/// <list type="bullet">
-///   <item><description><b>Warn threshold</b> — emits <see cref="SecurityEventIds.RevokedTokenReplayThresholdWarned"/> for SIEM. No user-facing impact.</description></item>
-///   <item><description><b>Lock threshold</b> — locks the account indefinitely (<see cref="DateTimeOffset.MaxValue"/>), revokes every refresh-token family for the user, emails the user a recovery link, and emits <see cref="SecurityEventIds.RevokedTokenReplayThresholdLocked"/>.</description></item>
-/// </list>
-///
-/// <para>Idempotency is via two nullable columns on <see cref="RevokedToken"/>
-/// (<c>WarnedAt</c>, <c>LockedAt</c>) — once an incident has been warned/locked we stamp
-/// the column and don't re-fire on subsequent sweeps. If the attacker keeps replaying
-/// after the lock, the middleware keeps writing audit rows but this service does nothing
-/// further (the account is already locked, the user already knows).</para>
-///
-/// <para>Defaults are aggressive (warn on the second replay, lock on the fifth, within a
-/// 5-min window). See <see cref="ThresholdEscalationSettings"/> for tuning.</para>
+/// Watches <c>RevokedTokenAccessAttempts</c> for sustained replay of revoked tokens.
+/// Warn threshold emits a SIEM event; lock threshold locks the account indefinitely, revokes
+/// every refresh-token family, and emails the user a recovery link.
+/// Idempotency via <c>WarnedAt</c> / <c>LockedAt</c> columns — each incident fires once.
+/// See <see cref="ThresholdEscalationSettings"/> for tuning.
 /// </summary>
 public class RevokedTokenReplayEscalationService : BackgroundService
 {
@@ -79,7 +69,6 @@ public class RevokedTokenReplayEscalationService : BackgroundService
         }
         catch (OperationCanceledException)
         {
-            // Expected during shutdown.
             _logger.LogInformation("Revoked-token replay escalation service cancellation requested.");
         }
         catch (Exception ex)
@@ -95,10 +84,7 @@ public class RevokedTokenReplayEscalationService : BackgroundService
         }
     }
 
-    /// <summary>
-    /// One pass of the sweep. Exposed as <c>internal</c> so tests can drive escalation
-    /// logic directly without going through <see cref="ExecuteAsync"/>'s timer loop.
-    /// </summary>
+    // Internal so tests can drive escalation without the timer loop.
     internal async Task RunSweepAsync(CancellationToken stoppingToken)
     {
         using var scope = _serviceScopeFactory.CreateScope();
@@ -109,9 +95,7 @@ public class RevokedTokenReplayEscalationService : BackgroundService
 
         var windowStart = DateTime.UtcNow.AddMinutes(-_settings.WindowInMinutes);
 
-        // Group attempts by jti within the window. Pulling the jti + count back to memory
-        // is fine — even at high-volume replay rates we're talking thousands of rows max
-        // (cleanup keeps the table bounded), not millions.
+        // Group by jti in the window — table is bounded by cleanup so this is small.
         var attemptCounts = await context.RevokedTokenAccessAttempts
             .Where(a => a.CreatedAt >= windowStart)
             .GroupBy(a => a.TokenJti)
@@ -124,14 +108,9 @@ public class RevokedTokenReplayEscalationService : BackgroundService
             return;
         }
 
-        // Look up the revoked-token row for each jti above-threshold. We loop one row
-        // at a time rather than batching with `Where(t => jtis.Contains(t.TokenJti))`
-        // because Oracle's MySql.EntityFrameworkCore provider can't translate
-        // Contains-on-collection cleanly ("expression does not have a type mapping"
-        // error). The N here is bounded by the number of jtis above WarnThreshold
-        // within the window — single-digit under realistic load — so the N round-trips
-        // are negligible against the 1-minute sweep cadence. If we ever migrate to
-        // Pomelo this can revert to a single batched query.
+        // One-row-at-a-time lookup instead of a batched Contains query: Oracle's
+        // MySql.EntityFrameworkCore can't translate Contains-on-collection. N is single-digit
+        // in practice. Revert to a batched query once we move to Pomelo.
         foreach (var attempt in attemptCounts)
         {
             var revokedToken = await context.RevokedTokens
@@ -139,8 +118,7 @@ public class RevokedTokenReplayEscalationService : BackgroundService
 
             if (revokedToken is null)
             {
-                // Audit row references a jti we don't have a revocation row for. Should
-                // not happen under normal flows but skip gracefully.
+                // Audit row points at a jti we don't have — shouldn't happen, skip gracefully.
                 continue;
             }
 
@@ -194,10 +172,8 @@ public class RevokedTokenReplayEscalationService : BackgroundService
         var user = await userService.FindByIdAsync(revokedToken.UserId);
         if (user is null)
         {
-            // User behind the revoked token is gone (deleted out of band). The
-            // orphan-token defence in the controllers handles this case for live
-            // requests. For escalation, just log and move on — there's nothing to
-            // lock.
+            // User deleted out of band — nothing to lock. Live requests are handled by the
+            // controllers' orphan-token defence.
             _logger.LogWarning(
                 "Cannot lock account for {UserId} jti {Jti} — user not found.",
                 revokedToken.UserId,
@@ -205,13 +181,10 @@ public class RevokedTokenReplayEscalationService : BackgroundService
             return;
         }
 
-        // Indefinite lock — same shape as the panic-button /lock endpoint. The user's
-        // forgot-password flow is the recovery path and clears LockoutEnd on success.
+        // Indefinite lock — forgot-password flow clears LockoutEnd on success.
         await userService.SetLockoutEndDateAsync(user, LockoutDurations.Indefinite);
 
-        // Treat every other live token for this user as suspect. Same defensive cascade
-        // as the refresh-token reuse-detected path — if one session is compromised, all
-        // are.
+        // If one session is compromised, treat all as suspect — same cascade as reuse-detected.
         await tokenService.RevokeAllRefreshTokenFamiliesAsync(user.Id, RevocationReasons.ReuseDetected);
         await userService.UpdateSecurityStampAsync(user);
 
@@ -242,9 +215,7 @@ public class RevokedTokenReplayEscalationService : BackgroundService
 
         try
         {
-            // Generate a reset-password token + link so the user can recover even if
-            // their UI doesn't have a "forgot password" affordance built. Same pattern
-            // as the existing forgot-password and panic-lock flows.
+            // Include a reset link so the user can recover without a "forgot password" UI affordance.
             var resetToken = await userService.GeneratePasswordResetTokenAsync(user);
             var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(resetToken));
             var resetUri = AccountHelpers.GenerateResetPasswordUri(
@@ -262,9 +233,7 @@ public class RevokedTokenReplayEscalationService : BackgroundService
         }
         catch (Exception ex)
         {
-            // Email send failure shouldn't prevent the lock from taking effect — the
-            // important security action (locking + revoking) has already happened by
-            // the time we get here.
+            // Don't let email failure block the lock — the security action already happened.
             _logger.LogError(
                 ex,
                 "Failed to send lock-notification email to {UserId}: {ErrorMsg}",

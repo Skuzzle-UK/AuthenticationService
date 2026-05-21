@@ -1,13 +1,8 @@
 namespace AuthenticationService.Services;
 
 /// <summary>
-/// Default <see cref="ISmsService"/> registration. Reports <see cref="IsConfigured"/> as
-/// <c>false</c>; throws on send. Phone-MFA endpoints check <c>IsConfigured</c> first and
-/// return a clear "not configured" error to clients rather than letting this throw.
-///
-/// <para>To enable phone MFA on a deployment, implement <see cref="ISmsService"/> against
-/// a real SMS provider (Twilio, AWS SNS, MessageBird, etc.) and replace the registration
-/// in <c>HostExtensions.AddServices</c>. Nothing in the controller code needs to change.</para>
+/// Default <see cref="ISmsService"/> stub. Reports <c>IsConfigured = false</c> and throws on send.
+/// Replace the registration in <c>HostExtensions.AddServices</c> with a real provider to enable phone MFA.
 /// </summary>
 public sealed class SmsService : ISmsService
 {

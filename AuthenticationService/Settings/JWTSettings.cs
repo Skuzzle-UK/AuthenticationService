@@ -4,43 +4,32 @@ using System.ComponentModel.DataAnnotations;
 namespace AuthenticationService.Settings;
 
 /// <summary>
-/// Configuration for JWT signing and validation. Bound from the <c>JWTSettings</c> section
-/// of <c>appsettings.json</c> (or env vars / user-secrets in dev / a secret store in prod).
+/// JWT signing and validation config.
 /// </summary>
 public class JWTSettings
 {
     /// <summary>
-    /// Directory containing one or more ES256 PEM-encoded private keys (<c>*.pem</c>). Every
-    /// PEM in the directory is loaded and published in the JWKS for validation. The active
-    /// signing key is the one whose thumbprint matches <see cref="ActiveKeyId"/>, or — if
-    /// <c>ActiveKeyId</c> is <c>"auto"</c> or empty — the first key found (deterministic for
-    /// single-key dev setups). Relative paths resolve against the content root.
-    ///
-    /// <para>In Development, an empty directory triggers auto-generation of a single key so
-    /// <c>dotnet run</c> works first time. In non-Development environments, an empty
-    /// directory throws at startup — keys must be provisioned by the deploy pipeline.</para>
+    /// Directory of ES256 PEM private keys. Every PEM is loaded and published in the JWKS.
+    /// In Development an empty directory triggers auto-generation; in non-Development it
+    /// throws at startup — keys must be provisioned by the deploy pipeline.
     /// </summary>
     [Required]
     public string PrivateKeyDirectory { get; set; }
 
     /// <summary>
-    /// Thumbprint of the key that should sign newly-issued tokens. Set to <c>"auto"</c>
-    /// (the default) to use the first key found in the directory — fine for single-key
-    /// setups and dev. During rotation, set this explicitly to the new key's thumbprint
-    /// to designate it as active without removing the previous key from the JWKS.
-    /// Thumbprints are logged at startup so operators can read them off the log.
+    /// Active signing key thumbprint, or <c>"auto"</c> to pick the first key found.
+    /// Set explicitly during rotation to swap signers while keeping old keys in the JWKS.
     /// </summary>
     public string ActiveKeyId { get; set; } = "auto";
 
     /// <summary>
-    /// The <c>iss</c> claim stamped onto issued tokens. Consumers validate against this.
+    /// The <c>iss</c> claim. Consumers validate against this.
     /// </summary>
     [Required]
     public string ValidIssuer { get; set; }
 
     /// <summary>
-    /// The <c>aud</c> claim stamped onto issued tokens. Every consuming microservice must be
-    /// configured with the same value or its JwtBearer middleware will reject the token.
+    /// The <c>aud</c> claim. Every consuming microservice must match it.
     /// </summary>
     [Required]
     public string ValidAudience { get; set; }

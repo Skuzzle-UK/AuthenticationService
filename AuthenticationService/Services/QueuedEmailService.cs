@@ -8,10 +8,8 @@ using System.Threading.Channels;
 namespace AuthenticationService.Services;
 
 /// <summary>
-/// SMTP-backed <see cref="IEmailService"/> that decouples the controller request thread
-/// from the actual SMTP send. Controllers' <c>await SendEmailAsync(...)</c> completes as
-/// soon as the message is queued (sub-millisecond); a background loop drains the queue
-/// and does the SMTP work off the request path.
+/// SMTP-backed <see cref="IEmailService"/>. <c>SendEmailAsync</c> returns as soon as the message
+/// is queued; a background loop drains the queue and does the SMTP work off the request path.
 /// </summary>
 public sealed class QueuedEmailService : BackgroundService, IEmailService
 {
@@ -30,9 +28,8 @@ public sealed class QueuedEmailService : BackgroundService, IEmailService
         _logger = logger;
         _queue = Channel.CreateBounded<EmailMessage>(new BoundedChannelOptions(QueueCapacity)
         {
-            // If the queue is full, the producer waits up to QueueWriteTimeout for space
-            // before WriteAsync's CancellationToken trips. The producer-side handling
-            // catches that and logs + drops.
+            // Producer waits up to QueueWriteTimeout for space before WriteAsync's
+            // CancellationToken trips — the producer catches and drops.
             FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
             SingleWriter = false,
@@ -54,9 +51,10 @@ public sealed class QueuedEmailService : BackgroundService, IEmailService
         }
         catch (OperationCanceledException)
         {
+            // Queue full usually means SMTP is failing and the dispatcher can't keep up.
             _logger.LogError(
                 "Email queue full for {QueueWriteTimeout}; dropping message {Subject} to {Recipient}. " +
-                "This typically means SMTP is failing and the dispatcher can't keep up — investigate SMTP health.",
+                "Investigate SMTP health.",
                 QueueWriteTimeout,
                 subject,
                 toEmail);
@@ -82,7 +80,7 @@ public sealed class QueuedEmailService : BackgroundService, IEmailService
         }
         catch (OperationCanceledException)
         {
-            // Expected during shutdown — the host called StopAsync.
+            // Expected during shutdown.
         }
         finally
         {
@@ -92,12 +90,8 @@ public sealed class QueuedEmailService : BackgroundService, IEmailService
         }
     }
 
-    /// <summary>
-    /// Sends one queued message, lazily (re)connecting the SMTP client if needed.
-    /// Returns the (possibly re-created) client so the caller's loop can reuse it on
-    /// the next iteration. SMTP send failures are logged but not propagated — the
-    /// dispatcher continues with the next message.
-    /// </summary>
+    // Sends one queued message and returns the (possibly re-created) client for reuse on the
+    // next iteration. SMTP send failures are logged but not propagated — the loop continues.
     private async Task<SmtpClient?> DispatchAsync(
         EmailMessage message,
         SmtpClient? client,
@@ -127,7 +121,7 @@ public sealed class QueuedEmailService : BackgroundService, IEmailService
                 _settings.SmtpServer,
                 _settings.Port);
 
-            // Connection might be in a bad state — drop it; the next message will reconnect from scratch.
+            // Connection might be in a bad state — drop it and reconnect on the next message.
             await TryDisconnectAsync(client);
             return null;
         }
@@ -180,9 +174,8 @@ public sealed class QueuedEmailService : BackgroundService, IEmailService
         {
             if (client.IsConnected)
             {
-                // QUIT properly so the SMTP server doesn't see this as a mid-session
-                // disconnect. Use a fresh CancellationToken since stoppingToken is
-                // already cancelled by the time we get here.
+                // QUIT properly so the server doesn't see this as a mid-session disconnect.
+                // Fresh CancellationToken because stoppingToken is already cancelled here.
                 using var disconnectCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 await client.DisconnectAsync(quit: true, disconnectCts.Token);
             }
@@ -213,8 +206,7 @@ public sealed class QueuedEmailService : BackgroundService, IEmailService
         }
         catch
         {
-            // Best-effort. If the connection is already broken we don't care; we're about
-            // to drop the client anyway.
+            // Best-effort — we're about to drop the client anyway.
         }
     }
 
