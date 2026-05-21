@@ -376,7 +376,7 @@ template needed.)
 
 ## Recommended next-up order
 
-1. **Knock out [Tier 0](#tier-0--pre-cutover-hardening-must-clear-before-first-prod-deploy)** — ~1 dev-day for the 5 blockers + 10 medium-priority items. After this, the service is genuinely production-ready (not just feature-complete).
+1. **Finish [Tier 0](#tier-0--pre-cutover-hardening-must-clear-before-first-prod-deploy)** — all 5 blockers + M4 are done; 9 medium-priority items left (M1–M3, M5–M10). Once those land, the service is genuinely production-ready (not just feature-complete).
 2. **Pick the secret store + write the signing-key backup runbook** (Tier 0 / M10). Without this the disaster-recovery story for crypto material is incomplete.
 3. **External IdP / SSO** — no plan yet. Wait until there's a concrete need (which
    provider, what claim mapping, what account-linking semantics).
@@ -389,8 +389,8 @@ template needed.)
 
 Phase 0 (admin endpoints), Phase 1 (s2s auth), Tier 4 observability, and the
 data-integrity fixes are all **feature-complete and tested**. The service has the test
-coverage (541 unit + 15 integration, zero skipped), CI workflow, audit pipeline, admin
+coverage (560+ unit + 15 integration, zero skipped), CI workflow, audit pipeline, admin
 surface, service-identity story, observability stack, and consumer client libraries
 worthy of a production-grade microservice **on paper**.
 
-The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. **All five blockers (B1–B5) are now closed (2026-05-21).** The 10 medium-severity items remain but none of them block shipping — they're "do in the first sprint after prod" items. Once they land, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice. Once they are, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.
+The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. **All five blockers (B1–B5) plus M4 (MySQL health-check timeout) are now closed (2026-05-21).** Nine medium-severity items remain (M1–M3, M5–M10) but none block shipping — they're "do in the first sprint after prod" items. Once those land, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.
