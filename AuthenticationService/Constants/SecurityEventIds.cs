@@ -201,6 +201,14 @@ public static class SecurityEventIds
     /// </summary>
     public static readonly EventId AdminResentInvitation = new(5007, nameof(AdminResentInvitation));
 
+    /// <summary>
+    /// Break-glass admin-account recovery ran (CLI subcommand or <c>ResetOnStartup</c>
+    /// flag). Password reset from <c>AdminAccountSeedSettings:Password</c>, lockout cleared,
+    /// MFA disabled, refresh tokens revoked, security stamp rotated. <b>Critical level</b> —
+    /// page on every occurrence; this should be a rare, deliberate operator action.
+    /// </summary>
+    public static readonly EventId AdminAccountRecovered = new(5100, nameof(AdminAccountRecovered));
+
     // ------------------------------------------------------------------
     // 6000s — Service-to-service auth (OAuth client-credentials grant)
     //

@@ -78,17 +78,23 @@ Test project gained a `FrameworkReference` to `Microsoft.AspNetCore.App` and a `
 
 ---
 
-#### B5. No documented recovery path if the seeded admin account is lost
+#### ~~B5. No documented recovery path if the seeded admin account is lost~~ ✅ DONE (2026-05-21)
 
-**What's wrong:** There's exactly one way to create an admin account: the runtime DB seed (`AdminAccountSeedSettings`). The `POST /api/Admin/users` endpoint **explicitly rejects** requests that include the Admin role, so an existing admin can't promote a colleague. If the seeded admin loses access (forgotten password + lost MFA + locked email account), nobody can recover.
+**What was wrong:** There was exactly one way to create the admin (runtime DB seed via `AdminAccountSeedSettings`) and no way to recover if the seeded admin lost access — `POST /api/Admin/users` rejects the Admin role to prevent privilege-escalation, so an existing admin can't promote a colleague. Day-1 production incident waiting to happen.
 
-**Why it matters:** Day-1 production incident — someone fat-fingers MFA enrolment, loses their phone, and now no admin can perform admin tasks. There's no documented playbook for this scenario.
+**What we shipped: three recovery paths, in order of operational invasiveness:**
 
-**Where to fix:** Add a new section in `docs/operations/runbook.md` (probably under "Common procedures"). Possibly also a small code change to allow controlled admin promotion through an existing-admin path.
+1. **Raw-SQL runbook** — `docs/operations/admin-recovery.md` documents the SQL to clear lockout / disable MFA / re-confirm email / revoke refresh tokens / rotate security stamp directly against `AspNetUsers` + `RefreshTokens`. Caveat documented: **cannot** reset password via raw SQL because Identity's hash format isn't safely portable — the runbook routes operators to option 2 or 3 for password reset.
 
-**How to fix (doc-only path, ~30 min):** Write a "Admin account recovery" runbook section that walks the operator through direct DB intervention: connect via the prod MySQL credentials, run a SQL UPDATE to add the Admin role to a known user. Include the exact SQL and the audit-log entry that should follow.
+2. **CLI subcommand** — `dotnet run --project AuthenticationService -- reset-admin`. Builds the full DI graph (same connection strings, same password policy validators) but doesn't start Kestrel or hosted services. Runs `RuntimeDbSeeders.ResetAdministratorAccountAsync` and exits. Picks up the new password from `AdminAccountSeedSettings:Password`.
 
-**How to fix (code+doc path, half day):** Add a `POST /api/Admin/users/{id}/promote-to-admin` endpoint, gated on `[Authorize(Policy = AdminOnly)]` so an existing admin can do it. Block self-promotion (already a pattern in `AdminController`). Audit-log the action. Update the runbook to use this endpoint as the primary path, with the DB intervention as the "all admins are locked out" fallback.
+3. **`ResetOnStartup` flag** — new bool on `AdminAccountSeedSettings`. When `true` and the admin exists, the seeder applies the same reset on startup with a loud warning log. Operator workflow: set + restart + unset + restart (the runbook spells this out so the second restart isn't forgotten).
+
+Shared core: `RuntimeDbSeeders.ResetAdministratorCoreAsync` — clears lockout, re-confirms email if needed, resets password through `UserManager.ResetPasswordAsync` (validation honoured), disables MFA, re-ensures Admin + DefaultUser role membership, revokes all active refresh tokens with reason `admin_recovery`, rotates the security stamp. Emits `SecurityEventIds.AdminAccountRecovered` (5100) at Critical so SIEM pages on it.
+
+**Tests:** 9 new tests in `RuntimeDbSeedersTests.cs` cover the happy path (full sequence + refresh-token revocation against a real SQLite DbContext), admin-missing no-op, password-policy rejection, email re-confirm branch, missing-role re-add branch, and the three `ResetOnStartup` states (on + admin exists, off + admin exists, on + admin missing → falls through to create). Full unit suite: 433 passing.
+
+**Doc nav:** `mkdocs.yml` updated so `Admin recovery` shows up under Operations in TechDocs / Backstage.
 
 ---
 
@@ -384,4 +390,4 @@ coverage (541 unit + 15 integration, zero skipped), CI workflow, audit pipeline,
 surface, service-identity story, observability stack, and consumer client libraries
 worthy of a production-grade microservice **on paper**.
 
-The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. They total roughly 1 dev-day to clear. **B1 (DB retry policy), B2 (ProblemDetails), B3 (CI branch gate), and B4 (plan-doc status drift) are now closed (2026-05-21). Only B5 (admin-recovery playbook) remains.** Once they are, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.
+The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. **All five blockers (B1–B5) are now closed (2026-05-21).** The 10 medium-severity items remain but none of them block shipping — they're "do in the first sprint after prod" items. Once they land, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice. Once they are, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.

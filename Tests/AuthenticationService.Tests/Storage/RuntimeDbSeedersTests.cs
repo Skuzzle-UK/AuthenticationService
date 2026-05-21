@@ -3,11 +3,14 @@ using AuthenticationService.Constants;
 using AuthenticationService.Entities;
 using AuthenticationService.Settings;
 using AuthenticationService.Shared.Constants;
+using AuthenticationService.Storage;
 using AuthenticationService.Storage.Seed;
+using AuthenticationService.Tests.Helpers;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -142,7 +145,167 @@ public class RuntimeDbSeedersTests : IDisposable
         await manager.DidNotReceive().CreateAsync(Arg.Any<User>(), Arg.Any<string>());
     }
 
-    private (WebApplication app, UserManager<User> manager) BuildApp()
+    // ─── ResetAdministratorAccountAsync (CLI break-glass entry point) ───────────────────
+
+    [Fact]
+    public async Task ResetAdministratorAccountAsync_HappyPath_RunsFullResetSequence()
+    {
+        var (app, manager) = BuildApp();
+        var admin = new User { Id = "admin-id", UserName = UserConstants.Admin, Email = "admin@example.com" };
+        manager.FindByNameAsync(UserConstants.Admin).Returns(admin);
+        manager.GeneratePasswordResetTokenAsync(admin).Returns("reset-token");
+        manager.ResetPasswordAsync(admin, "reset-token", "AdminPa$$1234").Returns(IdentityResult.Success);
+        manager.GetTwoFactorEnabledAsync(admin).Returns(true);
+        manager.IsInRoleAsync(admin, Arg.Any<string>()).Returns(true);
+
+        // Seed a User row (FK target) + a refresh token row that the reset should consume.
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+            db.Users.Add(admin);
+            db.RefreshTokens.Add(new RefreshToken
+            {
+                Id = Guid.NewGuid(),
+                UserId = admin.Id,
+                FamilyId = Guid.NewGuid(),
+                TokenHash = "hash",
+                CreatedAt = DateTime.UtcNow,
+                ExpiresAt = DateTime.UtcNow.AddDays(5),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await app.ResetAdministratorAccountAsync();
+
+        await manager.Received(1).SetLockoutEndDateAsync(admin, null);
+        await manager.Received(1).ResetAccessFailedCountAsync(admin);
+        await manager.Received(1).ResetPasswordAsync(admin, "reset-token", "AdminPa$$1234");
+        await manager.Received(1).SetTwoFactorEnabledAsync(admin, false);
+        await manager.Received(1).UpdateSecurityStampAsync(admin);
+
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+            var token = await db.RefreshTokens.AsNoTracking().FirstAsync();
+            token.ConsumedAt.Should().NotBeNull();
+            token.RevocationReason.Should().Be(RevocationReasons.AdminRecovery);
+        }
+    }
+
+    [Fact]
+    public async Task ResetAdministratorAccountAsync_AdminMissing_NoOpAndDoesNotThrow()
+    {
+        // Recovery is for resetting an existing admin — not for creating one.
+        var (app, manager) = BuildApp();
+        manager.FindByNameAsync(UserConstants.Admin).Returns((User?)null);
+
+        await app.ResetAdministratorAccountAsync();
+
+        await manager.DidNotReceive().ResetPasswordAsync(Arg.Any<User>(), Arg.Any<string>(), Arg.Any<string>());
+        await manager.DidNotReceive().SetLockoutEndDateAsync(Arg.Any<User>(), Arg.Any<DateTimeOffset?>());
+    }
+
+    [Fact]
+    public async Task ResetAdministratorAccountAsync_PasswordRejectedByPolicy_Throws()
+    {
+        var (app, manager) = BuildApp();
+        var admin = new User { Id = "admin-id", UserName = UserConstants.Admin };
+        manager.FindByNameAsync(UserConstants.Admin).Returns(admin);
+        manager.GeneratePasswordResetTokenAsync(admin).Returns("tok");
+        manager.ResetPasswordAsync(admin, "tok", Arg.Any<string>()).Returns(IdentityResult.Failed(
+            new IdentityError { Code = "PasswordTooShort", Description = "Password must be 12+ chars." }));
+
+        var act = async () => await app.ResetAdministratorAccountAsync();
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*PasswordTooShort*Password must be 12+ chars*");
+    }
+
+    [Fact]
+    public async Task ResetAdministratorAccountAsync_ReConfirmsEmailIfNeeded()
+    {
+        var (app, manager) = BuildApp();
+        var admin = new User { Id = "admin-id", UserName = UserConstants.Admin, EmailConfirmed = false };
+        manager.FindByNameAsync(UserConstants.Admin).Returns(admin);
+        manager.GeneratePasswordResetTokenAsync(admin).Returns("tok");
+        manager.ResetPasswordAsync(admin, "tok", Arg.Any<string>()).Returns(IdentityResult.Success);
+        manager.IsInRoleAsync(admin, Arg.Any<string>()).Returns(true);
+
+        await app.ResetAdministratorAccountAsync();
+
+        admin.EmailConfirmed.Should().BeTrue();
+        await manager.Received(1).UpdateAsync(admin);
+    }
+
+    [Fact]
+    public async Task ResetAdministratorAccountAsync_ReAddsMissingRoles()
+    {
+        // Defensive: if role membership was somehow lost (e.g. a manual DB edit), recovery
+        // restores it.
+        var (app, manager) = BuildApp();
+        var admin = new User { Id = "admin-id", UserName = UserConstants.Admin, EmailConfirmed = true };
+        manager.FindByNameAsync(UserConstants.Admin).Returns(admin);
+        manager.GeneratePasswordResetTokenAsync(admin).Returns("tok");
+        manager.ResetPasswordAsync(admin, "tok", Arg.Any<string>()).Returns(IdentityResult.Success);
+        manager.IsInRoleAsync(admin, RolesConstants.Admin).Returns(false);
+        manager.IsInRoleAsync(admin, RolesConstants.DefaultUser).Returns(false);
+
+        await app.ResetAdministratorAccountAsync();
+
+        await manager.Received(1).AddToRoleAsync(admin, RolesConstants.Admin);
+        await manager.Received(1).AddToRoleAsync(admin, RolesConstants.DefaultUser);
+    }
+
+    // ─── SeedAdministratorAccountAsync — ResetOnStartup flag ──────────────────────────────
+
+    [Fact]
+    public async Task SeedAdministratorAccountAsync_ResetOnStartupTrue_TriggersResetOnExistingAdmin()
+    {
+        var (app, manager) = BuildApp(settings => settings.ResetOnStartup = true);
+        var admin = new User { Id = "admin-id", UserName = UserConstants.Admin, EmailConfirmed = true };
+        manager.FindByNameAsync(UserConstants.Admin).Returns(admin);
+        manager.GeneratePasswordResetTokenAsync(admin).Returns("tok");
+        manager.ResetPasswordAsync(admin, "tok", Arg.Any<string>()).Returns(IdentityResult.Success);
+        manager.IsInRoleAsync(admin, Arg.Any<string>()).Returns(true);
+
+        await app.SeedAdministratorAccountAsync();
+
+        await manager.Received(1).ResetPasswordAsync(admin, "tok", Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task SeedAdministratorAccountAsync_ResetOnStartupFalse_DoesNotResetExistingAdmin()
+    {
+        // Default (off). Existing-admin path must remain the no-op it always was.
+        var (app, manager) = BuildApp();
+        var admin = new User { Id = "admin-id" };
+        manager.FindByNameAsync(UserConstants.Admin).Returns(admin);
+
+        await app.SeedAdministratorAccountAsync();
+
+        await manager.DidNotReceive().ResetPasswordAsync(Arg.Any<User>(), Arg.Any<string>(), Arg.Any<string>());
+        await manager.DidNotReceive().SetLockoutEndDateAsync(Arg.Any<User>(), Arg.Any<DateTimeOffset?>());
+    }
+
+    [Fact]
+    public async Task SeedAdministratorAccountAsync_ResetOnStartupTrueButAdminMissing_FallsThroughToCreate()
+    {
+        // ResetOnStartup is "reset if present" — if no admin exists at all, create it.
+        var (app, manager) = BuildApp(settings => settings.ResetOnStartup = true);
+        manager.FindByNameAsync(UserConstants.Admin).Returns((User?)null);
+        manager.CreateAsync(Arg.Any<User>(), Arg.Any<string>()).Returns(IdentityResult.Success);
+        var seeded = new User { Id = "admin-id", Email = "admin@example.com" };
+        manager.FindByEmailAsync(Arg.Any<string>()).Returns(seeded);
+        manager.AddToRoleAsync(seeded, Arg.Any<string>()).Returns(IdentityResult.Success);
+
+        await app.SeedAdministratorAccountAsync();
+
+        await manager.Received(1).CreateAsync(Arg.Any<User>(), "AdminPa$$1234");
+        await manager.DidNotReceive().ResetPasswordAsync(Arg.Any<User>(), Arg.Any<string>(), Arg.Any<string>());
+    }
+
+    private (WebApplication app, UserManager<User> manager) BuildApp(
+        Action<AdminAccountSeedSettings>? configure = null)
     {
         var connection = new SqliteConnection("DataSource=:memory:");
         connection.Open();
@@ -151,15 +314,29 @@ public class RuntimeDbSeedersTests : IDisposable
         var manager = StubUserManager();
         var builder = WebApplication.CreateBuilder();
         builder.Services.AddSingleton(manager);
-        builder.Services.AddSingleton(Options.Create(new AdminAccountSeedSettings
+
+        var settings = new AdminAccountSeedSettings
         {
             Email = "admin@example.com",
             Password = "AdminPa$$1234",
             FirstName = "Admin",
-        }));
+        };
+        configure?.Invoke(settings);
+        builder.Services.AddSingleton(Options.Create(settings));
+
+        // Real (SQLite in-memory) DbContext — the reset path touches RefreshTokens.
+        builder.Services.AddDbContext<DatabaseContext, TestDatabaseContext>(opt =>
+            opt.UseSqlite(connection));
+
         builder.Services.AddSingleton<ILoggerFactory>(_ => NullLoggerFactory.Instance);
 
-        return (builder.Build(), manager);
+        var app = builder.Build();
+        using (var scope = app.Services.CreateScope())
+        {
+            scope.ServiceProvider.GetRequiredService<DatabaseContext>().Database.EnsureCreated();
+        }
+
+        return (app, manager);
     }
 
     private static UserManager<User> StubUserManager()

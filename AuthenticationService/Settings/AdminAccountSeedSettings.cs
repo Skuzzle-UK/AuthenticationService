@@ -28,4 +28,12 @@ public class AdminAccountSeedSettings
 
     [MaxLength(60)]
     public string? Country { get; set; }
+
+    /// <summary>
+    /// Break-glass recovery flag. When <c>true</c>, the seeder resets the existing admin
+    /// account on startup (clears lockout, resets password from <c>Password</c>, disables
+    /// MFA, revokes sessions). Off by default — set, restart, then unset to avoid every
+    /// subsequent restart re-resetting the admin. See docs/operations/admin-recovery.md.
+    /// </summary>
+    public bool ResetOnStartup { get; set; }
 }

@@ -2,6 +2,7 @@ using AuthenticationService.Extensions;
 using AuthenticationService.Logging;
 using AuthenticationService.ServiceDefaults;
 using AuthenticationService.Settings;
+using AuthenticationService.Storage.Seed;
 using Serilog;
 using Serilog.Sinks.OpenTelemetry;
 
@@ -9,6 +10,8 @@ namespace AuthenticationService;
 
 public class Program
 {
+    private const string ResetAdminCommand = "reset-admin";
+
     public static async Task Main(string[] args)
     {
         Log.Logger = new LoggerConfiguration()
@@ -17,6 +20,15 @@ public class Program
 
         try
         {
+            // Break-glass CLI: build the DI graph + run admin recovery, then exit.
+            // No web pipeline starts. See docs/operations/admin-recovery.md.
+            if (args.Length > 0 && string.Equals(args[0], ResetAdminCommand, StringComparison.OrdinalIgnoreCase))
+            {
+                Log.Information("Running admin recovery (reset-admin). Web pipeline will not start.");
+                await RunResetAdminAsync(args);
+                return;
+            }
+
             Log.Information("Starting authentication service.");
 
             var builder = WebApplication.CreateBuilder(args);
@@ -84,5 +96,31 @@ public class Program
         {
             Log.CloseAndFlush();
         }
+    }
+
+    // Reuses the same builder + DI graph as the web app so config (connection strings,
+    // password policy, ResetOnStartup, etc.) is identical. We build the app but don't
+    // call ConfigureApplicationAsync (no migrations, no seeder auto-run, no pipeline)
+    // and don't call RunAsync — so no Kestrel, no hosted services, just DI + the reset.
+    private static async Task RunResetAdminAsync(string[] args)
+    {
+        var builder = WebApplication.CreateBuilder(args);
+
+        builder.AddServiceDefaults();
+
+        builder.Configuration
+            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+            .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
+            .AddEnvironmentVariables();
+
+        builder.Host.UseSerilog((ctx, services, cfg) => cfg
+            .ReadFrom.Configuration(ctx.Configuration)
+            .ReadFrom.Services(services)
+            .Enrich.FromLogContext());
+
+        builder.Host.ConfigureHost();
+
+        var app = builder.Build();
+        await app.ResetAdministratorAccountAsync();
     }
 }

@@ -54,4 +54,9 @@ public static class RevocationReasons
     public const string AdminResetMfa = "admin_reset_mfa";
 
     public const string AdminForcedPasswordReset = "admin_forced_password_reset";
+
+    /// <summary>
+    /// Break-glass admin-account recovery (CLI subcommand or ResetOnStartup flag).
+    /// </summary>
+    public const string AdminRecovery = "admin_recovery";
 }
