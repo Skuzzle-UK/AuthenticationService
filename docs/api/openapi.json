@@ -1,0 +1,1672 @@
+{
+  "openapi": "3.0.4",
+  "info": {
+    "title": "Authentication API",
+    "version": "v1"
+  },
+  "paths": {
+    "/api/Account/me": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Returns the current snapshot of the logged-in user's profile + roles. Useful for\r\nSPAs that want to render user info without parsing the JWT, and for developers\r\ndebugging \"is my token still valid?\" — a 200 here means the token is signed,\r\nunexpired, not revoked, and the user behind it still exists.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Updates editable profile fields on the logged-in user. Each field on the body is\r\noptional — only the supplied ones are written, the rest are left untouched. Returns\r\n200 with an empty AuthenticationService.Shared.Dtos.Response.ApiResponse on success; clients should re-fetch\r\n`GET /me` if they need the post-update snapshot.\r\n            \r\n\r\nChanging `PhoneNumber` resets the phone-confirmed flag — the user must\r\nre-confirm before SMS-based MFA will work against the new number. Username, email,\r\npassword, MFA, and roles are out of scope here — they each have a dedicated flow.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileDto"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileDto"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Account/enablemfa": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Starts MFA enrolment for the logged-in user. Returns the shared secret and a QR code\r\nthe user can scan into an authenticator app, or the verification details for the\r\nchosen non-app provider (e.g. email).",
+        "requestBody": {
+          "description": "EnableMfaRequest",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnableMfaRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnableMfaRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnableMfaRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Account/forgotpassword": {
+      "post": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Kicks off the \"I forgot my password\" flow. Sends an email with a single-use reset\r\nlink. Returns 200 even when the email isn't recognised — we don't leak which\r\naddresses are registered.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordDto"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordDto"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Account/forgotpassword/reset": {
+      "post": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Sets a new password using the single-use token from a forgot-password email. Also\r\nclears any active lockout — this endpoint doubles as the account-recovery path.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetForgottenPasswordDto"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetForgottenPasswordDto"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetForgottenPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Account/changepassword": {
+      "post": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Changes the logged-in user's password. The user is identified from the token's\r\n`sub` claim — a user can never change anyone else's password through here, even\r\nif they pass a different email in the request body.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Account/lock": {
+      "post": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "\"Wasn't me!\" — the link in the password-changed email lands here. Locks the account\r\nand sends the real owner a password-reset email so they can recover it.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LockAccountDto"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LockAccountDto"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/LockAccountDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Admin/users": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Paginated list of users with optional filters (search, locked-only, unconfirmed-only).",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lockedOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "unconfirmedOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Creates a new user via the invitation flow. The user gets an email with a link to\r\nset their initial password; the account is unusable until they do.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminCreateUserDto"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminCreateUserDto"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminCreateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Admin/users/{id}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Full detail for a single user — profile, lockout state, MFA, roles, active session count.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Admin/users/{id}/resend-invitation": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Re-sends the invitation email for a user still in the pending-invitation state.\r\nReturns 409 if the user has already accepted (or otherwise activated their account).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Admin/users/{id}/lock": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Locks a user account indefinitely. Refuses self-target.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Admin/users/{id}/unlock": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Lifts an active lockout and resets the failed-attempt counter.\r\nRefuses self-target (admins use the seed-account recovery path, not this endpoint).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Admin/users/{id}/revoke-sessions": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Revokes every active session the user has — refresh-token families + rotates the security\r\nstamp. The \"log them out everywhere\" hammer. Doesn't lock the account; user can sign back in.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Admin/users/{id}/reset-mfa": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Disables the user's MFA and clears their authenticator key. Used by helpdesk for lost-phone\r\nrecovery. Revokes all sessions implicitly.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Admin/users/{id}/force-password-reset": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Force-password-reset — generates an Identity reset token, emails it to the user, and\r\nrevokes the user's existing sessions. Admin never sees the new password (user picks it\r\nthemselves via the reset-password page).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForcePasswordResetRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForcePasswordResetRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForcePasswordResetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Admin/users/{id}/audit": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Paginated audit log for the user — reads from the `SecurityEvents` table\r\npopulated by the custom Serilog sink. Defaults to the last 30 days of events;\r\npasses AuthenticationService.Services.AdminAuditFilter through to the service.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "eventId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Admin/clients": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Creates a new OAuth client. The plaintext secret is generated server-side and\r\nreturned <em>once</em> in the response — admins must capture it now; only the\r\nhash is persisted.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminCreateClientDto"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminCreateClientDto"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminCreateClientDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Paginated list of clients with optional `activeOnly` filter.",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            }
+          },
+          {
+            "name": "activeOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Admin/clients/{id}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Full detail for a single client — metadata + scopes list. Never includes the secret hash.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Admin/clients/{id}/rotate-secret": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Generates a fresh secret and overwrites the stored hash. Response carries the\r\nnew plaintext secret — same one-time-display contract as create.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Admin/clients/{id}/disable": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Soft-disable the client. Subsequent `/oauth/token` attempts return\r\n`invalid_client`; the row stays for audit and can be re-enabled out-of-band.\r\nIdempotent — disabling an already-disabled client returns 200 with no further effect.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Admin/clients/{id}/scopes": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Add a (audience, scope) tuple to a client. Idempotent — adding a duplicate is a\r\nno-op success.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminClientScopeDto"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminClientScopeDto"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminClientScopeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Admin/clients/{id}/scopes/{audience}/{scope}": {
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Remove a (audience, scope) tuple from a client. Returns 404 if the tuple wasn't present.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "audience",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Authentication/authenticate": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Login. Returns an access + refresh token pair on success, or — if the user has MFA\r\nenabled — kicks off the MFA challenge instead and returns which method was used so\r\nthe client knows what to prompt for.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthenticationDto"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthenticationDto"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthenticationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Authentication/mfa": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Step 2 of login when MFA is enabled. The client calls this with the code the user\r\njust typed in (from their authenticator app or email). On success, returns the\r\naccess + refresh token pair just like a non-MFA login would have.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MfaAuthenticationDto"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MfaAuthenticationDto"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/MfaAuthenticationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Authentication/refresh": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Swaps an expired access token + its refresh token for a fresh pair. The expired\r\naccess token must still be in the Authorization header — its claims are read\r\n(signature still validated, expiry skipped) to know which user is refreshing.\r\n            \r\n\r\nIf the supplied refresh token has already been used, this is treated as theft:\r\nevery active session for the user is revoked and the request returns 401.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenDto"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenDto"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Authentication/logout": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Logs the caller out of this device only. Revokes the refresh-token family identified\r\nby the `sid` claim and adds the current access token to the deny-list. Other\r\ndevices for the same user are unaffected.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Authentication/logoutall": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Logs the caller out of every device. Revokes every refresh-token family for the user,\r\nrotates the security stamp (kills outstanding access tokens), and adds the current\r\naccess token to the deny-list. After this, every device that was logged in must re-authenticate.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "tags": [
+          "OAuth"
+        ],
+        "summary": "RFC 6749 §4.4 client-credentials grant. See class summary for the contract.",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "grant_type": {
+                    "type": "string",
+                    "description": "Must be `\"client_credentials\"`. Any other value yields `unsupported_grant_type`."
+                  },
+                  "client_id": {
+                    "type": "string",
+                    "description": "The client_id. Optional if supplied via Basic auth header."
+                  },
+                  "client_secret": {
+                    "type": "string",
+                    "description": "The client_secret. Optional if supplied via Basic auth header."
+                  },
+                  "audience": {
+                    "type": "string",
+                    "description": "Target audience for the token (e.g. `inventory-api`). Required. A token is\r\nscoped to a single audience — multi-audience requests must be issued as separate\r\ntokens."
+                  },
+                  "scope": {
+                    "type": "string",
+                    "description": "Space-separated list of scopes (e.g. `\"inventory.read inventory.write\"`).\r\nRequired. Every requested scope must be present in the client's allow-list\r\n(`ClientScopes`) for the supplied AuthenticationService.Controllers.OAuthTokenRequest.Audience — otherwise\r\n`invalid_scope`."
+                  }
+                }
+              },
+              "encoding": {
+                "grant_type": {
+                  "style": "form"
+                },
+                "client_id": {
+                  "style": "form"
+                },
+                "client_secret": {
+                  "style": "form"
+                },
+                "audience": {
+                  "style": "form"
+                },
+                "scope": {
+                  "style": "form"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Registration/register": {
+      "post": {
+        "tags": [
+          "Registration"
+        ],
+        "summary": "Creates a new user account and emails them a confirmation link. The account exists\r\nafter this call but can't log in until the email link is clicked.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationDto"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationDto"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Registration/confirm/email": {
+      "get": {
+        "tags": [
+          "Registration"
+        ],
+        "summary": "Lands here when the user clicks the confirmation link in their registration email.\r\nMarks the email as confirmed and rotates the user's security stamp so the link\r\ncan't be reused.",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "description": "Requires valid email address",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "description": "Token generated and sent to email in step 1",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "callbackUri",
+            "in": "query",
+            "description": "URI which user is redirected to after confirmation. Usually a page on the UI saying email confirmed and offering login",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Registration"
+        ],
+        "summary": "Resends the email-confirmation link if the user lost the original (e.g. it landed\r\nin spam). Returns 200 even when the email isn't recognised — we don't leak which\r\naddresses are registered.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendEmailConfirmationDto"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendEmailConfirmationDto"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendEmailConfirmationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Registration/accept-invitation": {
+      "post": {
+        "tags": [
+          "Registration"
+        ],
+        "summary": "Completes the admin-creates-user invitation flow. The user lands here from the\r\nAcceptInvitation page after the admin invited them — supplies a new password +\r\nthe Identity reset token from their invitation email. On success: password is\r\nset AND email is confirmed in one step.\r\n            \r\n\r\nReturns `400 invitation_invalid` when the email is unknown or the token\r\ninvalid (single shape for both — don't leak which emails exist). Returns\r\n`409 invitation_already_used` when the user has already activated their\r\naccount, so reuse-of-token can't reset an established password.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptInvitationDto"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptInvitationDto"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptInvitationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Test": {
+      "get": {
+        "tags": [
+          "Test"
+        ],
+        "summary": "A test endpoint locked down to only admin",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Test/all": {
+      "get": {
+        "tags": [
+          "Test"
+        ],
+        "summary": "A test endpoint for all authenticated users",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/.well-known/jwks.json": {
+      "get": {
+        "tags": [
+          "WellKnown"
+        ],
+        "summary": "Returns every public signing key the service currently knows about. During key\r\nrotation the active key plus any predecessors are all published here so consumers\r\ncan validate tokens issued by any of them — the JWT's `kid` header tells\r\nJwtBearer which to use.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/.well-known/openid-configuration": {
+      "get": {
+        "tags": [
+          "WellKnown"
+        ],
+        "summary": "Minimal OIDC discovery document. Lets consumers configure JwtBearer with just `Authority`.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AcceptInvitationDto": {
+        "required": [
+          "email",
+          "newPassword",
+          "token"
+        ],
+        "type": "object",
+        "properties": {
+          "email": {
+            "minLength": 1,
+            "type": "string",
+            "format": "email"
+          },
+          "token": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "newPassword": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "callbackUri": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminClientScopeDto": {
+        "required": [
+          "audience",
+          "scope"
+        ],
+        "type": "object",
+        "properties": {
+          "audience": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "scope": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminCreateClientDto": {
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminClientScopeDto"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdminCreateUserDto": {
+        "required": [
+          "email",
+          "firstName",
+          "lastName",
+          "userName"
+        ],
+        "type": "object",
+        "properties": {
+          "userName": {
+            "maxLength": 50,
+            "minLength": 1,
+            "type": "string"
+          },
+          "email": {
+            "minLength": 1,
+            "type": "string",
+            "format": "email"
+          },
+          "firstName": {
+            "maxLength": 50,
+            "minLength": 1,
+            "type": "string"
+          },
+          "lastName": {
+            "maxLength": 50,
+            "minLength": 1,
+            "type": "string"
+          },
+          "phoneNumber": {
+            "type": "string",
+            "format": "tel",
+            "nullable": true
+          },
+          "dateOfBirth": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "country": {
+            "maxLength": 60,
+            "type": "string",
+            "nullable": true
+          },
+          "addressLine1": {
+            "maxLength": 256,
+            "type": "string",
+            "nullable": true
+          },
+          "addressLine2": {
+            "maxLength": 256,
+            "type": "string",
+            "nullable": true
+          },
+          "addressLine3": {
+            "maxLength": 256,
+            "type": "string",
+            "nullable": true
+          },
+          "city": {
+            "maxLength": 60,
+            "type": "string",
+            "nullable": true
+          },
+          "postcode": {
+            "maxLength": 20,
+            "type": "string",
+            "nullable": true
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "callbackUri": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AuthenticationDto": {
+        "required": [
+          "email",
+          "password"
+        ],
+        "type": "object",
+        "properties": {
+          "email": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "password": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "mfaProvider": {
+            "$ref": "#/components/schemas/MfaProviders"
+          },
+          "resetPasswordUri": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ChangePasswordDto": {
+        "required": [
+          "newPassword",
+          "oldPassword"
+        ],
+        "type": "object",
+        "properties": {
+          "oldPassword": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "newPassword": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "confirmPassword": {
+            "type": "string",
+            "nullable": true
+          },
+          "lockAccountUri": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EnableMfaRequest": {
+        "type": "object",
+        "properties": {
+          "preferredMfaProvider": {
+            "$ref": "#/components/schemas/MfaProviders"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ForcePasswordResetRequest": {
+        "type": "object",
+        "properties": {
+          "callbackUri": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Body shape for the optional callback override on force-password-reset. Sits in the\r\ncontroller because it's only used here; a top-level DTO felt like overkill."
+      },
+      "ForgotPasswordDto": {
+        "required": [
+          "email"
+        ],
+        "type": "object",
+        "properties": {
+          "email": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resetPasswordUri": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LockAccountDto": {
+        "required": [
+          "email",
+          "token"
+        ],
+        "type": "object",
+        "properties": {
+          "email": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "token": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resetPasswordUri": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MfaAuthenticationDto": {
+        "required": [
+          "email",
+          "mfaProvider",
+          "token"
+        ],
+        "type": "object",
+        "properties": {
+          "email": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "mfaProvider": {
+            "$ref": "#/components/schemas/MfaProviders"
+          },
+          "token": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resetPasswordUri": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MfaProviders": {
+        "enum": [
+          "email",
+          "phone",
+          "authenticator"
+        ],
+        "type": "string"
+      },
+      "RefreshTokenDto": {
+        "required": [
+          "refreshToken"
+        ],
+        "type": "object",
+        "properties": {
+          "refreshToken": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RegistrationDto": {
+        "required": [
+          "dateOfBirth",
+          "email",
+          "password",
+          "userName"
+        ],
+        "type": "object",
+        "properties": {
+          "userName": {
+            "maxLength": 50,
+            "minLength": 1,
+            "type": "string"
+          },
+          "firstName": {
+            "maxLength": 50,
+            "type": "string",
+            "nullable": true
+          },
+          "lastName": {
+            "maxLength": 50,
+            "type": "string",
+            "nullable": true
+          },
+          "dateOfBirth": {
+            "type": "string",
+            "format": "date"
+          },
+          "email": {
+            "minLength": 1,
+            "type": "string",
+            "format": "email"
+          },
+          "phoneNumber": {
+            "type": "string",
+            "format": "tel",
+            "nullable": true
+          },
+          "country": {
+            "maxLength": 60,
+            "type": "string",
+            "nullable": true
+          },
+          "password": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "confirmPassword": {
+            "type": "string",
+            "nullable": true
+          },
+          "emailConfirmationCallbackUri": {
+            "type": "string",
+            "nullable": true
+          },
+          "preferredMfaProvider": {
+            "$ref": "#/components/schemas/MfaProviders"
+          },
+          "addressLine1": {
+            "maxLength": 256,
+            "type": "string",
+            "nullable": true
+          },
+          "addressLine2": {
+            "maxLength": 256,
+            "type": "string",
+            "nullable": true
+          },
+          "addressLine3": {
+            "maxLength": 256,
+            "type": "string",
+            "nullable": true
+          },
+          "postcode": {
+            "maxLength": 20,
+            "type": "string",
+            "nullable": true
+          },
+          "city": {
+            "maxLength": 60,
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ResendEmailConfirmationDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "callbackUri": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ResetForgottenPasswordDto": {
+        "required": [
+          "email",
+          "newPassword",
+          "token"
+        ],
+        "type": "object",
+        "properties": {
+          "email": {
+            "minLength": 1,
+            "type": "string",
+            "format": "email"
+          },
+          "token": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "newPassword": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "confirmPassword": {
+            "type": "string",
+            "nullable": true
+          },
+          "lockAccountUri": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateProfileDto": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "maxLength": 50,
+            "type": "string",
+            "nullable": true
+          },
+          "lastName": {
+            "maxLength": 50,
+            "type": "string",
+            "nullable": true
+          },
+          "dateOfBirth": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "phoneNumber": {
+            "type": "string",
+            "format": "tel",
+            "nullable": true
+          },
+          "country": {
+            "maxLength": 60,
+            "type": "string",
+            "nullable": true
+          },
+          "addressLine1": {
+            "maxLength": 256,
+            "type": "string",
+            "nullable": true
+          },
+          "addressLine2": {
+            "maxLength": 256,
+            "type": "string",
+            "nullable": true
+          },
+          "addressLine3": {
+            "maxLength": 256,
+            "type": "string",
+            "nullable": true
+          },
+          "city": {
+            "maxLength": 60,
+            "type": "string",
+            "nullable": true
+          },
+          "postcode": {
+            "maxLength": 20,
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "Bearer": {
+        "type": "http",
+        "description": "Paste the JWT access token (without the 'Bearer ' prefix).",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "security": [
+    {
+      "Bearer": [ ]
+    }
+  ],
+  "tags": [
+    {
+      "name": "Account"
+    },
+    {
+      "name": "Admin"
+    },
+    {
+      "name": "Authentication"
+    },
+    {
+      "name": "OAuth"
+    },
+    {
+      "name": "Registration"
+    },
+    {
+      "name": "Test"
+    },
+    {
+      "name": "WellKnown"
+    }
+  ]
+}

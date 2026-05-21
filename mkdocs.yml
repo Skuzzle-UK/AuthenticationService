@@ -84,13 +84,14 @@ markdown_extensions:
   - pymdownx.snippets
   - pymdownx.superfences
 
-# Plugins. TechDocs runs `mkdocs build` with the techdocs-core plugin pre-loaded
-# (it bundles the search plugin + a few rendering tweaks), so we don't list it
-# explicitly here — Backstage layers it on at render time. For local previews,
-# install it via `pip install mkdocs-techdocs-core` and uncomment:
-#
-# plugins:
-#   - techdocs-core
+# Plugins. techdocs-core bundles the search plugin + rendering tweaks Backstage
+# needs at render time. Declaring it explicitly here (rather than letting
+# Backstage's MkdocsYmlPatcher inject it on build) keeps the build stable even
+# when the docs/ tree is mounted read-only inside the TechDocs container --
+# Backstage's patcher only writes if the plugin is missing, so by listing it
+# upfront we sidestep the EROFS error.
+plugins:
+  - techdocs-core
 
 # Where to look for things that aren't docs but are referenced from them
 # (e.g. files in AuthenticationService.AppHost/grafana/dashboards). TechDocs

@@ -1,0 +1,96 @@
+name: Regenerate OpenAPI
+
+# Keeps docs/api/openapi.json in sync with what Swashbuckle would serve at
+# runtime, so Backstage's REST API entity (which loads the file via
+# `definition: $text: ./docs/api/openapi.json`) always reflects the current
+# controllers. Without this, devs would have to remember to run
+# scripts/regen-openapi.{ps1,sh} every time they touched a controller --
+# easy to forget, easy to drift.
+#
+# Triggers:
+#   - push to main (auto): regenerate + commit back if the file changed.
+#   - workflow_dispatch (manual): same flow, on demand. Useful for a one-off
+#     refresh without pushing other changes.
+#
+# Anti-loop guard: this workflow's own commits skip CI by including [skip ci]
+# in the message AND filtering pushes that touch only docs/api/openapi.json.
+# Without the filter, every regen would trigger another build of this workflow.
+on:
+  push:
+    branches: [main]
+    # Don't regen for PRs/branches -- only for what's actually on main.
+    # The path-filter excludes the file the workflow itself writes, so a
+    # commit made by this workflow never re-triggers it.
+    paths-ignore:
+      - 'docs/api/openapi.json'
+      - 'catalog-info.yaml'
+  workflow_dispatch:
+
+# Only one regen at a time per branch -- if commits arrive in quick succession,
+# cancel the in-flight regen and run against the latest tip.
+concurrency:
+  group: regen-openapi-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regen:
+    name: Regenerate docs/api/openapi.json
+    runs-on: ubuntu-latest
+    permissions:
+      # Write access is required so the workflow can commit back the
+      # regenerated spec. Scoped to this workflow only, not org-wide.
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Need full history so the commit-back step can push without
+          # complaining about a shallow fetch.
+          fetch-depth: 0
+          # Use the default GITHUB_TOKEN; the `contents: write` permission
+          # above lets it push to main.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Regenerate OpenAPI
+        # The script does: dotnet tool restore + dotnet build -c Release +
+        # dotnet swagger tofile docs/api/openapi.json. No infra needed --
+        # swagger CLI doesn't actually start the server, just constructs
+        # the DI graph and extracts the swagger doc.
+        run: bash scripts/regen-openapi.sh
+
+      - name: Check for drift
+        id: drift
+        run: |
+          # Both files may have changed -- the spec is the canonical export AND
+          # gets inlined into catalog-info.yaml's REST API entity definition.
+          if git diff --quiet -- docs/api/openapi.json catalog-info.yaml; then
+            echo 'OpenAPI spec is up to date; nothing to commit.'
+            echo 'drifted=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'OpenAPI spec drifted; will commit the regenerated version.'
+            echo 'drifted=true' >> "$GITHUB_OUTPUT"
+            # Show the diff in the workflow log so a reviewer can spot
+            # surprises (e.g. accidental endpoint removal) at a glance.
+            git diff -- docs/api/openapi.json catalog-info.yaml | head -200
+          fi
+
+      - name: Commit regenerated spec
+        if: steps.drift.outputs.drifted == 'true'
+        run: |
+          # GitHub Actions bot identity. Recognised as a bot in commit logs
+          # and PR review tooling, which makes filtering out "spec regen"
+          # commits from blame / changelog generation easy.
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/api/openapi.json catalog-info.yaml
+          # [skip ci] in the message belt-and-braces the paths-ignore filter
+          # above -- some CI features still trigger on path-ignored files if
+          # other files were also in the same push.
+          git commit -m 'chore(openapi): regenerate openapi.json + catalog-info.yaml [skip ci]'
+          git push origin HEAD:${{ github.ref_name }}

@@ -122,8 +122,23 @@ FROM node:22-bookworm-slim
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
-        libsqlite3-0 && \
+        libsqlite3-0 \
+        python3 \
+        python3-pip && \
     rm -rf /var/lib/apt/lists/*
+
+# TechDocs runs `mkdocs build` in-process when `techdocs.generator.runIn=local`
+# (our setting). Without mkdocs + mkdocs-techdocs-core (the plugin Backstage's
+# generator requires) installed in the runtime image, every Docs tab click
+# fails with `spawn mkdocs ENOENT`.
+#
+# --break-system-packages: Debian 12's pip refuses system-wide install by
+# default (PEP 668). Acceptable here because the container is single-purpose;
+# we don't care about colliding with system Python packages.
+RUN pip3 install --break-system-packages \
+        mkdocs \
+        mkdocs-techdocs-core \
+        mkdocs-material
 
 # Backstage's new frontend + backend systems behave very differently based on
 # NODE_ENV. In `development`:
