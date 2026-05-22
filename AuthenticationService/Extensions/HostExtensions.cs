@@ -128,6 +128,7 @@ public static class HostExtensions
     {
         services.AddSingleton<IValidateOptions<AdminAccountSeedSettings>, AdminAccountSeedSettingsValidator>();
         services.AddSingleton<IValidateOptions<ForwardedHeadersSettings>, ForwardedHeadersSettingsValidator>();
+        services.AddSingleton<IValidateOptions<DataProtectionSettings>, DataProtectionSettingsValidator>();
 
         return services;
     }

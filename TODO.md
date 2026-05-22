@@ -100,15 +100,17 @@ Shared core: `RuntimeDbSeeders.ResetAdministratorCoreAsync` — clears lockout, 
 
 ### ⚠️ Medium-priority (do in the first sprint after prod, before any incident proves them necessary)
 
-#### M1. Data-protection certificate isn't required at startup
+#### ~~M1. Data-protection certificate isn't required at startup~~ ✅ DONE (2026-05-21)
 
-**What's wrong:** Identity tokens (password reset, email confirmation, MFA codes, lockout links) are protected by ASP.NET Core's data-protection key ring, persisted to Redis. The team can optionally encrypt that key ring at rest with an X.509 certificate (via `DataProtectionSettings.Certificate.PfxPath` + `PfxPassword`). But that cert is **optional** — startup doesn't fail if it's missing.
+**What was wrong:** The optional cert (`DataProtectionSettings.Certificate.PfxPath`) was *truly* optional — startup didn't care if it was missing. Without it the data-protection key ring sat in Redis as readable XML, so anyone with Redis read access could extract the keys and forge Identity tokens (password reset, email confirmation, MFA codes) offline.
 
-**Why it matters:** Without the cert, the keys sit in Redis as plaintext-readable XML. Anyone with read access to the Redis database can extract them and forge anti-forgery tokens / decrypt protected payloads offline. The "Admin Password" pattern (rejecting startup if missing outside Development) should be applied here too.
+**What we shipped:** New `DataProtectionSettingsValidator : IValidateOptions<DataProtectionSettings>` following the same pattern just used for M2. Outside Development, an empty / null / whitespace `Certificate.PfxPath` fails startup with an `OptionsValidationException` whose message names the setting path, spells out the "readable XML in Redis" consequence, and gives the env-var form (`DataProtectionSettings__Certificate__PfxPath`) as the most common fix path.
 
-**Where to fix:** `AuthenticationService/Extensions/HostExtensions.cs:289-318` (the `AddDataProtection` extension).
+Registered in `HostExtensions.AddValidators`. `ValidateOnStart()` on the existing options registration picks it up automatically.
 
-**How to fix:** Mirror the existing `AdminAccountSeedSettingsValidator` — add a validator that requires `Certificate.PfxPath` to be populated when `env != Development`. Reject startup with a clear error message if missing. ~1 hour including a test.
+Validator does **not** check that the file exists at the given path — that's the cert loader's job (`X509CertificateLoader.LoadPkcs12FromFile`), and its failure mode is already loud enough.
+
+**Tests:** 10 new cases in `ValidatorsTests.cs` — named-instance skip, Development allows missing, non-Development null `Certificate` fails with the right message keywords, `[Theory]` over null / "" / "   " for blank PfxPath, populated PfxPath succeeds, plus the env-name theory (Staging / Production / custom-env-name) to confirm "any non-Development" triggers. Full suite: 480 passing.
 
 ---
 
@@ -364,7 +366,7 @@ template needed.)
 
 ## Recommended next-up order
 
-1. **Finish [Tier 0](#tier-0--pre-cutover-hardening-must-clear-before-first-prod-deploy)** — all 5 blockers + M2–M9 are done; 2 medium-priority items left (M1, M10). Once those land, the service is genuinely production-ready (not just feature-complete).
+1. **Finish [Tier 0](#tier-0--pre-cutover-hardening-must-clear-before-first-prod-deploy)** — all 5 blockers + M1–M9 are done. Only M10 (signing-key backup runbook) remains, and it's blocked on a team decision about which secret store to use. The service is genuinely production-ready once that decision is made and the runbook is written.
 2. **Pick the secret store + write the signing-key backup runbook** (Tier 0 / M10). Without this the disaster-recovery story for crypto material is incomplete.
 3. **External IdP / SSO** — no plan yet. Wait until there's a concrete need (which
    provider, what claim mapping, what account-linking semantics).
@@ -381,4 +383,4 @@ coverage (560+ unit + 15 integration, zero skipped), CI workflow, audit pipeline
 surface, service-identity story, observability stack, and consumer client libraries
 worthy of a production-grade microservice **on paper**.
 
-The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. **All five blockers (B1–B5) plus M2–M9 (forwarded-headers strict, settings validation, MySQL health-check timeout, worker survive-on-throw, trace IDs in console logs, doc-truth fixes) are now closed (2026-05-21).** Two medium-severity items remain (M1, M10) but neither blocks shipping — they're "do in the first sprint after prod" items. Once those land, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.
+The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. **All five blockers (B1–B5) plus M1–M9 are now closed (2026-05-21).** Only M10 (signing-key backup runbook) remains, and it's blocked on a team decision about which secret store to standardise on. Once those land, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.
