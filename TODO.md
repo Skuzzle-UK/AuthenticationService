@@ -169,15 +169,16 @@ Idempotency-safe because: cleanup uses `ExecuteDeleteAsync` predicates (re-runni
 
 ---
 
-#### M6. Console logs don't carry the trace ID
+#### ~~M6. Console logs don't carry the trace ID~~ ✅ DONE (2026-05-21)
 
-**What's wrong:** When the OpenTelemetry log exporter is configured (production), trace IDs land on every log entry and you can click from a span in Tempo/Jaeger straight to its logs. When OTel isn't configured (e.g. dev without Aspire, or any deploy that skips the OTLP env var), logs go only to stdout — and the stdout template doesn't include the trace/span IDs.
+**What was wrong:** When OTel was configured (production with `OTEL_EXPORTER_OTLP_ENDPOINT`), trace IDs landed on every log. When it wasn't (dev without Aspire, or any deploy that skipped the env var), stdout logs lost trace correlation — a teammate tailing the container couldn't tell which log lines belonged to which request.
 
-**Why it matters:** Stdout logs lose trace correlation. A teammate tailing the container's logs can't tell which log lines belong to which request without a separate join.
+**What we shipped:**
+- Added `Serilog.Enrichers.Span` 3.1.0 package.
+- Added `"WithSpan"` to the `Enrich` array in `appsettings.json`. This enricher pulls `TraceId` / `SpanId` off `Activity.Current` (which ASP.NET Core / `Microsoft.Extensions.Hosting` already populate per request).
+- Updated the Serilog console `outputTemplate` to `[{Timestamp:HH:mm:ss} {Level:u3}] [{TraceId}/{SpanId}] {Message:lj} {Properties:j}{NewLine}{Exception}`. Empty brackets when no active Activity — also a useful visual signal that something's running outside a request scope (background workers, startup).
 
-**Where to fix:** `appsettings.json:27` (the Serilog `outputTemplate`).
-
-**How to fix:** Add `{TraceId}` and `{SpanId}` placeholders to the template, and ensure `.Enrich.WithSpan()` is in the Serilog config (or the equivalent OpenTelemetry trace-enricher). ~15 min.
+Both `UseSerilog` blocks in `Program.cs` (web host + CLI reset-admin) already use `ReadFrom.Configuration`, so the change applies to both code paths with no `.cs` edits.
 
 ---
 
@@ -361,7 +362,7 @@ template needed.)
 
 ## Recommended next-up order
 
-1. **Finish [Tier 0](#tier-0--pre-cutover-hardening-must-clear-before-first-prod-deploy)** — all 5 blockers + M3–M5 + M7–M9 are done; 4 medium-priority items left (M1, M2, M6, M10). Once those land, the service is genuinely production-ready (not just feature-complete).
+1. **Finish [Tier 0](#tier-0--pre-cutover-hardening-must-clear-before-first-prod-deploy)** — all 5 blockers + M3–M9 (except M1, M2) are done; 3 medium-priority items left (M1, M2, M10). Once those land, the service is genuinely production-ready (not just feature-complete).
 2. **Pick the secret store + write the signing-key backup runbook** (Tier 0 / M10). Without this the disaster-recovery story for crypto material is incomplete.
 3. **External IdP / SSO** — no plan yet. Wait until there's a concrete need (which
    provider, what claim mapping, what account-linking semantics).
@@ -378,4 +379,4 @@ coverage (560+ unit + 15 integration, zero skipped), CI workflow, audit pipeline
 surface, service-identity story, observability stack, and consumer client libraries
 worthy of a production-grade microservice **on paper**.
 
-The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. **All five blockers (B1–B5) plus M3 (settings range validation), M4 (MySQL health-check timeout), M5 (background-worker survive-on-throw), and M7–M9 (doc-truth fixes) are now closed (2026-05-21).** Four medium-severity items remain (M1, M2, M6, M10) but none block shipping — they're "do in the first sprint after prod" items. Once those land, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.
+The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. **All five blockers (B1–B5) plus M3–M9 (settings validation, MySQL health-check timeout, worker survive-on-throw, trace IDs in console logs, doc-truth fixes) are now closed (2026-05-21).** Three medium-severity items remain (M1, M2, M10) but none block shipping — they're "do in the first sprint after prod" items. Once those land, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.
