@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace AuthenticationService.Settings;
 
 /// <summary>
@@ -8,12 +10,15 @@ public class DataProtectionSettings
     /// <summary>
     /// Must be unique per application sharing the Redis instance.
     /// </summary>
+    [Required]
     public string RedisKey { get; set; } = "AuthenticationService:DataProtectionKeys";
 
     /// <summary>
     /// Replicas must share the same value. Don't change once deployed — invalidates all
     /// outstanding Identity tokens.
+    /// Required: a blank value would silently invalidate every issued token next deploy.
     /// </summary>
+    [Required]
     public string ApplicationName { get; set; } = "AuthenticationService";
 
     /// <summary>

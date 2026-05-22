@@ -346,7 +346,7 @@ public class SettingsValidationTests
         results.Should().Contain(r => r.MemberNames.Contains(nameof(HostingSettings.MaxRequestBodySizeInKilobytes)));
     }
 
-    // ─── ThresholdEscalationSettings (defaults — no annotations) ────────────────────────
+    // ─── ThresholdEscalationSettings ────────────────────────────────────────────────────
 
     [Fact]
     public void ThresholdEscalationSettings_Defaults_AggressiveButForgiving()
@@ -360,9 +360,74 @@ public class SettingsValidationTests
         settings.WindowInMinutes.Should().Be(5);
         settings.WarnThreshold.Should().Be(2);
         settings.LockThreshold.Should().Be(5);
+        Validate(settings).Should().BeEmpty();
     }
 
-    // ─── DataRetentionSettings (defaults — no annotations) ──────────────────────────────
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-1.0)]
+    [InlineData(61.0)]
+    public void ThresholdEscalationSettings_SweepIntervalOutOfRange_Fails(double minutes)
+    {
+        // arrange — 0 / negative would crash PeriodicTimer; anything more than hourly defeats the purpose.
+        var settings = new ThresholdEscalationSettings { SweepIntervalInMinutes = minutes };
+
+        // act
+        var results = Validate(settings);
+
+        // assert
+        results.Should().Contain(r => r.MemberNames.Contains(nameof(ThresholdEscalationSettings.SweepIntervalInMinutes)));
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-5.0)]
+    [InlineData(1441.0)]
+    public void ThresholdEscalationSettings_WindowOutOfRange_Fails(double minutes)
+    {
+        // arrange
+        var settings = new ThresholdEscalationSettings { WindowInMinutes = minutes };
+
+        // act
+        var results = Validate(settings);
+
+        // assert
+        results.Should().Contain(r => r.MemberNames.Contains(nameof(ThresholdEscalationSettings.WindowInMinutes)));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(101)]
+    public void ThresholdEscalationSettings_WarnThresholdOutOfRange_Fails(int n)
+    {
+        // arrange
+        var settings = new ThresholdEscalationSettings { WarnThreshold = n };
+
+        // act
+        var results = Validate(settings);
+
+        // assert
+        results.Should().Contain(r => r.MemberNames.Contains(nameof(ThresholdEscalationSettings.WarnThreshold)));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(1001)]
+    public void ThresholdEscalationSettings_LockThresholdOutOfRange_Fails(int n)
+    {
+        // arrange
+        var settings = new ThresholdEscalationSettings { LockThreshold = n };
+
+        // act
+        var results = Validate(settings);
+
+        // assert
+        results.Should().Contain(r => r.MemberNames.Contains(nameof(ThresholdEscalationSettings.LockThreshold)));
+    }
+
+    // ─── DataRetentionSettings ──────────────────────────────────────────────────────────
 
     [Fact]
     public void DataRetentionSettings_Defaults_TwelveHourSweepNinetyDayTtl()
@@ -373,6 +438,89 @@ public class SettingsValidationTests
         // assert
         settings.CleanupIntervalInHours.Should().Be(12);
         settings.RevokedReplayTTLInDays.Should().Be(90);
+        settings.SecurityEventTTLInDays.Should().Be(365);
+        Validate(settings).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-1.0)]
+    [InlineData(169.0)]
+    public void DataRetentionSettings_CleanupIntervalOutOfRange_Fails(double hours)
+    {
+        // arrange — 0 / negative would crash PeriodicTimer at startup; > 168h (1 week) is misconfiguration.
+        var settings = new DataRetentionSettings { CleanupIntervalInHours = hours };
+
+        // act
+        var results = Validate(settings);
+
+        // assert
+        results.Should().Contain(r => r.MemberNames.Contains(nameof(DataRetentionSettings.CleanupIntervalInHours)));
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-1.0)]
+    [InlineData(3651.0)]
+    public void DataRetentionSettings_RevokedReplayTtlOutOfRange_Fails(double days)
+    {
+        // arrange
+        var settings = new DataRetentionSettings { RevokedReplayTTLInDays = days };
+
+        // act
+        var results = Validate(settings);
+
+        // assert
+        results.Should().Contain(r => r.MemberNames.Contains(nameof(DataRetentionSettings.RevokedReplayTTLInDays)));
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-1.0)]
+    [InlineData(3651.0)]
+    public void DataRetentionSettings_SecurityEventTtlOutOfRange_Fails(double days)
+    {
+        // arrange
+        var settings = new DataRetentionSettings { SecurityEventTTLInDays = days };
+
+        // act
+        var results = Validate(settings);
+
+        // assert
+        results.Should().Contain(r => r.MemberNames.Contains(nameof(DataRetentionSettings.SecurityEventTTLInDays)));
+    }
+
+    // ─── DataProtectionSettings ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void DataProtectionSettings_Defaults_PassValidation()
+    {
+        // arrange
+        var settings = new DataProtectionSettings();
+
+        // act + assert
+        Validate(settings).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(nameof(DataProtectionSettings.ApplicationName))]
+    [InlineData(nameof(DataProtectionSettings.RedisKey))]
+    public void DataProtectionSettings_RequiredFieldBlank_Fails(string field)
+    {
+        // arrange — blank ApplicationName would silently invalidate every issued token on next
+        // deploy; blank RedisKey would collide with anything else sharing the Redis instance.
+        var settings = new DataProtectionSettings();
+        switch (field)
+        {
+            case nameof(DataProtectionSettings.ApplicationName): settings.ApplicationName = null!; break;
+            case nameof(DataProtectionSettings.RedisKey): settings.RedisKey = null!; break;
+        }
+
+        // act
+        var results = Validate(settings);
+
+        // assert
+        results.Should().Contain(r => r.MemberNames.Contains(field));
     }
 
     private static List<ValidationResult> Validate(object instance)

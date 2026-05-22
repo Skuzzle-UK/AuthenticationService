@@ -124,17 +124,19 @@ Shared core: `RuntimeDbSeeders.ResetAdministratorCoreAsync` — clears lockout, 
 
 ---
 
-#### M3. Three settings classes are missing range validation
+#### ~~M3. Three settings classes are missing range validation~~ ✅ DONE (2026-05-21)
 
-**What's wrong:** Three settings classes have numeric properties without `[Range]` validation. If an operator sets one to `0` or a negative number, things crash at runtime instead of failing fast at startup.
+**What was wrong:** Numeric properties had no bounds — setting e.g. `CleanupIntervalInHours: 0` would crash `PeriodicTimer` at startup and kill the background worker silently. Strings that change a token's validity scope (`DataProtectionSettings.ApplicationName`) had no `[Required]` guard, so a blank value would silently invalidate every issued Identity token on the next deploy.
 
-- `Settings/DataRetentionSettings.cs` — `CleanupIntervalInHours`, `RevokedReplayTTLInDays`, `SecurityEventTTLInDays`
-- `Settings/ThresholdEscalationSettings.cs` — `SweepIntervalInMinutes`, `WindowInMinutes`, `WarnThreshold`, `LockThreshold`
-- `Settings/DataProtectionSettings.cs:20` — `ApplicationName` is also missing `[Required]` (silent change to it invalidates every outstanding Identity token).
+**What we shipped:**
 
-**Why it matters:** Setting `CleanupIntervalInHours: 0` makes `PeriodicTimer` throw on construction, which kills the background worker. The service "comes up healthy" but cleanup never runs.
+- `DataRetentionSettings` — `[Range(0.01, 168.0)]` on `CleanupIntervalInHours` (no faster than 36s sweeps, no slower than weekly); `[Range(1.0, 3650.0)]` on `RevokedReplayTTLInDays` and `SecurityEventTTLInDays` (1 day to 10 years).
+- `ThresholdEscalationSettings` — `[Range(0.1, 60.0)]` on `SweepIntervalInMinutes`; `[Range(1.0, 1440.0)]` on `WindowInMinutes`; `[Range(1, 100)]` on `WarnThreshold`; `[Range(1, 1000)]` on `LockThreshold`.
+- `DataProtectionSettings` — `[Required]` on both `ApplicationName` and `RedisKey` (blank `RedisKey` would collide with anything else sharing the Redis instance).
 
-**Where to fix:** Add `[Range]` attributes to each numeric property, `[Required]` to `ApplicationName`. ~20 min total, plus a quick options-validation unit test for each (mirror the existing `*OptionsTests` pattern).
+`ValidateOnStart()` was already wired in `HostExtensions.AddValidatedSettings`, so misconfiguration now fails the host at boot with a useful error message rather than crashing background workers at runtime.
+
+**Tests:** Extended `Tests/AuthenticationService.Tests/Settings/SettingsValidationTests.cs` with 26 new `[Theory]` rows — happy-path defaults plus boundary-violating values for every annotated property. Full suite: 462 passing.
 
 ---
 
@@ -359,7 +361,7 @@ template needed.)
 
 ## Recommended next-up order
 
-1. **Finish [Tier 0](#tier-0--pre-cutover-hardening-must-clear-before-first-prod-deploy)** — all 5 blockers + M4 + M5 + M7–M9 are done; 5 medium-priority items left (M1, M2, M3, M6, M10). Once those land, the service is genuinely production-ready (not just feature-complete).
+1. **Finish [Tier 0](#tier-0--pre-cutover-hardening-must-clear-before-first-prod-deploy)** — all 5 blockers + M3–M5 + M7–M9 are done; 4 medium-priority items left (M1, M2, M6, M10). Once those land, the service is genuinely production-ready (not just feature-complete).
 2. **Pick the secret store + write the signing-key backup runbook** (Tier 0 / M10). Without this the disaster-recovery story for crypto material is incomplete.
 3. **External IdP / SSO** — no plan yet. Wait until there's a concrete need (which
    provider, what claim mapping, what account-linking semantics).
@@ -376,4 +378,4 @@ coverage (560+ unit + 15 integration, zero skipped), CI workflow, audit pipeline
 surface, service-identity story, observability stack, and consumer client libraries
 worthy of a production-grade microservice **on paper**.
 
-The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. **All five blockers (B1–B5) plus M4 (MySQL health-check timeout), M5 (background-worker survive-on-throw), and M7–M9 (doc-truth fixes) are now closed (2026-05-21).** Five medium-severity items remain (M1, M2, M3, M6, M10) but none block shipping — they're "do in the first sprint after prod" items. Once those land, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.
+The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. **All five blockers (B1–B5) plus M3 (settings range validation), M4 (MySQL health-check timeout), M5 (background-worker survive-on-throw), and M7–M9 (doc-truth fixes) are now closed (2026-05-21).** Four medium-severity items remain (M1, M2, M6, M10) but none block shipping — they're "do in the first sprint after prod" items. Once those land, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.
