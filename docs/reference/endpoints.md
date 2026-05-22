@@ -26,12 +26,11 @@ Quick lookup for what's exposed. Full Swagger lives at `https://localhost:<port>
 | Endpoint | Auth | Purpose |
 |---|---|---|
 | `GET /api/Account/me` | Bearer | Current user's profile + roles, read live from the DB. Useful for SPA UI rendering and as a "is my token still good?" diagnostic. |
-| `POST /api/Account/profile` | Bearer | Update non-sensitive profile fields. Phone changes reset phone-confirmed. |
+| `PUT /api/Account/me` | Bearer | Update non-sensitive profile fields. Phone changes reset phone-confirmed. |
 | `POST /api/Account/changepassword` | Bearer | Change password while authenticated. Identity is read from the token's `sub`. |
 | `POST /api/Account/forgotpassword` | None | Request a password-reset email. Also clears any active lockout on successful reset. |
 | `POST /api/Account/forgotpassword/reset` | None | Apply the reset using the email-link token. |
-| `GET /api/Account/enablemfa` | Bearer | Begin MFA enrolment; returns a QR code for the authenticator app. |
-| `POST /api/Account/enablemfa` | Bearer | Confirm MFA enrolment with the first code from the authenticator. |
+| `GET /api/Account/enablemfa` | Bearer | Enable MFA in one call: flips `MfaEnabled = true` on the user AND returns the shared secret + QR code (authenticator) or verification details (email / phone). There is no separate "confirm" endpoint — the first successful login under MFA proves possession. |
 | `POST /api/Account/lock` | Email-link token | Triggered from the "wasn't you?" link in password-changed emails — locks the account and sends a reset link. |
 
 ## Admin

@@ -28,7 +28,7 @@ Every authenticated request returns 401
 
 Login endpoint returns 429
   └─ Rate-limit triggered → Expected during brute-force attempts; check `auth.logins.total{result="failed"}` in Prometheus
-                          → If legitimate traffic, see operations/deployment.md §11 — tighten / loosen the policy
+                          → If legitimate traffic, see ../concepts/security-model.md#rate-limiting — tighten / loosen the policy
 
 Refresh endpoint returns 401 unexpectedly
   ├─ Reuse cascade fired → DB: SELECT * FROM RefreshTokens WHERE UserId = ... ORDER BY CreatedAt DESC
@@ -58,7 +58,10 @@ Email isn't arriving
 - Covered by integration scenario 9.
 
 ### Lock an account
-- TBD — currently admin endpoint exists but lock-via-admin isn't directly exposed; user-driven lock (`/api/Account/lock` via the "wasn't me!" link) is the only path.
+- Admin endpoint: `POST /api/Admin/users/{id}/lock`
+- Effect: account locked indefinitely; existing sessions are NOT auto-revoked, so pair with `POST /api/Admin/users/{id}/revoke-sessions` if the user is suspected compromised.
+- Recovery path: forgot-password flow clears the lockout on successful reset.
+- User-driven alternative: the "wasn't me!" link in password-changed emails (`POST /api/Account/lock`) locks the user's own account.
 
 ### Issue an emergency `/logoutall` against a user
 - Admin endpoint: `POST /api/Admin/users/{id}/revoke-sessions`

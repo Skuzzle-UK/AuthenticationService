@@ -179,44 +179,29 @@ Idempotency-safe because: cleanup uses `ExecuteDeleteAsync` predicates (re-runni
 
 ---
 
-#### M7. `docs/reference/endpoints.md` has stale entries
+#### ~~M7. `docs/reference/endpoints.md` has stale entries~~ ✅ DONE (2026-05-21)
 
-**What's wrong:** Two entries in the endpoints reference don't match the actual code:
-- Line 29: lists `POST /api/Account/profile`, but the controller exposes `PUT /api/Account/me` (per `AccountController.cs:112` and the regenerated OpenAPI spec).
-- Line 34: lists `POST /api/Account/enablemfa` for "Confirm MFA enrolment", but the controller only has `GET /api/Account/enablemfa` (`AccountController.cs:228`); enrolment confirmation is part of the GET response flow.
+**What was wrong:** Two entries in the endpoints reference didn't match the actual code:
+- `POST /api/Account/profile` listed — the real endpoint is `PUT /api/Account/me` (`AccountController.cs:101`).
+- `POST /api/Account/enablemfa` listed for "Confirm MFA enrolment" — no such POST exists. The `GET /api/Account/enablemfa` (line 212) does the whole enrolment in one call (sets `MfaEnabled = true` AND returns QR code).
 
-**Why it matters:** Anyone using this doc to integrate will write client code against endpoints that don't exist. Confusing, embarrassing, easy to fix.
-
-**Where to fix:** `docs/reference/endpoints.md:29` and `:34`.
-
-**How to fix:** Cross-check each entry against the corresponding controller action AND `docs/api/openapi.json`. Update the path, method, and summary to match. ~15 min.
+**What we shipped:** Updated `docs/reference/endpoints.md` — corrected `POST /api/Account/profile` → `PUT /api/Account/me`; removed the bogus `POST /api/Account/enablemfa` row; expanded the `GET /api/Account/enablemfa` description to make the one-call-does-everything semantic explicit ("There is no separate 'confirm' endpoint — the first successful login under MFA proves possession.") so future doc-readers don't add the missing row back.
 
 ---
 
-#### M8. Broken cross-reference in the runbook
+#### ~~M8. Broken cross-reference in the runbook~~ ✅ DONE (2026-05-21)
 
-**What's wrong:** `docs/operations/runbook.md:31` references "`operations/deployment.md §11`", but the deployment doc only goes to §8. The content the runbook is gesturing at (rate-limit discussion) actually lives in `docs/concepts/security-model.md#rate-limiting`.
+**What was wrong:** The decision tree's "Login endpoint returns 429" branch pointed at `operations/deployment.md §11` which doesn't exist (deployment.md only goes to §8). The rate-limit policy discussion the runbook was gesturing at actually lives in `docs/concepts/security-model.md#rate-limiting`.
 
-**Why it matters:** Broken links erode confidence in the docs. The person clicking the link is usually under pressure (incident response).
-
-**Where to fix:** `docs/operations/runbook.md:31`.
-
-**How to fix:** Update the link to point at `../concepts/security-model.md#rate-limiting`. ~5 min.
+**What we shipped:** Updated the link to `../concepts/security-model.md#rate-limiting` (verified the `## Rate limiting` heading exists at line 43, which GitHub-style markdown converts to `#rate-limiting`).
 
 ---
 
-#### M9. Runbook says "TBD" for a procedure that's already implemented
+#### ~~M9. Runbook says "TBD" for a procedure that's already implemented~~ ✅ DONE (2026-05-21)
 
-**What's wrong:** `docs/operations/runbook.md:61` says:
-> *"Lock an account — TBD — currently admin endpoint exists but lock-via-admin isn't directly exposed; user-driven lock (`/api/Account/lock`) is the only path."*
+**What was wrong:** The "Lock an account" procedure was a TBD stub claiming "currently admin endpoint exists but lock-via-admin isn't directly exposed; user-driven lock is the only path." Wrong on both counts — `POST /api/Admin/users/{id}/lock` was shipped in Phase 0 and is documented in `docs/reference/endpoints.md`.
 
-But `POST /api/Admin/users/{id}/lock` exists and is documented in `docs/reference/endpoints.md:47`.
-
-**Why it matters:** Same as M7 — confidence erosion + missed capability. Someone needing this procedure will think it doesn't exist.
-
-**Where to fix:** `docs/operations/runbook.md:61`.
-
-**How to fix:** Replace the TBD with a one-paragraph "Use `POST /api/Admin/users/{id}/lock` as an admin. Effect: account locked indefinitely; recovery via forgot-password flow." ~10 min.
+**What we shipped:** Replaced the TBD with the real procedure — the admin endpoint, its effect (indefinite lockout, sessions NOT auto-revoked so pair with revoke-sessions if compromise suspected), the recovery path (forgot-password clears lockout), and a callout that the user-driven `/api/Account/lock` (panic button from email link) is the user-side alternative, not the only path.
 
 ---
 
@@ -374,7 +359,7 @@ template needed.)
 
 ## Recommended next-up order
 
-1. **Finish [Tier 0](#tier-0--pre-cutover-hardening-must-clear-before-first-prod-deploy)** — all 5 blockers + M4 + M5 are done; 8 medium-priority items left (M1–M3, M6–M10). Once those land, the service is genuinely production-ready (not just feature-complete).
+1. **Finish [Tier 0](#tier-0--pre-cutover-hardening-must-clear-before-first-prod-deploy)** — all 5 blockers + M4 + M5 + M7–M9 are done; 5 medium-priority items left (M1, M2, M3, M6, M10). Once those land, the service is genuinely production-ready (not just feature-complete).
 2. **Pick the secret store + write the signing-key backup runbook** (Tier 0 / M10). Without this the disaster-recovery story for crypto material is incomplete.
 3. **External IdP / SSO** — no plan yet. Wait until there's a concrete need (which
    provider, what claim mapping, what account-linking semantics).
@@ -391,4 +376,4 @@ coverage (560+ unit + 15 integration, zero skipped), CI workflow, audit pipeline
 surface, service-identity story, observability stack, and consumer client libraries
 worthy of a production-grade microservice **on paper**.
 
-The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. **All five blockers (B1–B5) plus M4 (MySQL health-check timeout) and M5 (background-worker survive-on-throw) are now closed (2026-05-21).** Eight medium-severity items remain (M1–M3, M6–M10) but none block shipping — they're "do in the first sprint after prod" items. Once those land, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.
+The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. **All five blockers (B1–B5) plus M4 (MySQL health-check timeout), M5 (background-worker survive-on-throw), and M7–M9 (doc-truth fixes) are now closed (2026-05-21).** Five medium-severity items remain (M1, M2, M3, M6, M10) but none block shipping — they're "do in the first sprint after prod" items. Once those land, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.
