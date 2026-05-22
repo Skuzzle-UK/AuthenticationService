@@ -16,6 +16,7 @@ public class SettingsValidationTests
     [Fact]
     public void JWTSettings_FullyPopulated_Passes()
     {
+        // arrange
         var settings = new JWTSettings
         {
             PrivateKeyDirectory = "keys",
@@ -25,6 +26,7 @@ public class SettingsValidationTests
             RefreshTokenExpiryInDays = 14,
         };
 
+        // act + assert
         Validate(settings).Should().BeEmpty();
     }
 
@@ -34,6 +36,7 @@ public class SettingsValidationTests
     [InlineData(nameof(JWTSettings.ValidAudience))]
     public void JWTSettings_RequiredFieldMissing_Fails(string field)
     {
+        // arrange
         var settings = new JWTSettings
         {
             PrivateKeyDirectory = "keys",
@@ -49,8 +52,10 @@ public class SettingsValidationTests
             case nameof(JWTSettings.ValidAudience): settings.ValidAudience = null!; break;
         }
 
+        // act
         var results = Validate(settings);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(field));
     }
 
@@ -60,6 +65,7 @@ public class SettingsValidationTests
     [InlineData(1441)]
     public void JWTSettings_ExpiryInMinutesOutOfRange_Fails(int minutes)
     {
+        // arrange
         var settings = new JWTSettings
         {
             PrivateKeyDirectory = "keys",
@@ -69,8 +75,10 @@ public class SettingsValidationTests
             RefreshTokenExpiryInDays = 14,
         };
 
+        // act
         var results = Validate(settings);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(JWTSettings.ExpiryInMinutes)));
     }
 
@@ -80,6 +88,7 @@ public class SettingsValidationTests
     [InlineData(366)]
     public void JWTSettings_RefreshTokenExpiryInDaysOutOfRange_Fails(int days)
     {
+        // arrange
         var settings = new JWTSettings
         {
             PrivateKeyDirectory = "keys",
@@ -89,17 +98,20 @@ public class SettingsValidationTests
             RefreshTokenExpiryInDays = days,
         };
 
+        // act
         var results = Validate(settings);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(JWTSettings.RefreshTokenExpiryInDays)));
     }
 
     [Fact]
     public void JWTSettings_ActiveKeyId_DefaultsToAuto()
     {
-        // "auto" sentinel means "pick first key in the directory."
+        // arrange — "auto" sentinel means "pick first key in the directory."
         var settings = new JWTSettings();
 
+        // assert
         settings.ActiveKeyId.Should().Be("auto");
     }
 
@@ -108,9 +120,10 @@ public class SettingsValidationTests
     [Fact]
     public void PasswordSettings_Defaults_MatchNistGuidance()
     {
-        // Defaults should equal NIST 800-63B / OWASP guidance — silent loosening would weaken every deployment.
+        // arrange — defaults should equal NIST 800-63B / OWASP guidance; silent loosening would weaken every deployment.
         var settings = new PasswordSettings();
 
+        // assert
         settings.RequiredLength.Should().Be(12);
         settings.RequireDigit.Should().BeTrue();
         settings.RequireLowercase.Should().BeTrue();
@@ -125,10 +138,13 @@ public class SettingsValidationTests
     [InlineData(257)]
     public void PasswordSettings_RequiredLengthOutOfRange_Fails(int length)
     {
+        // arrange
         var settings = new PasswordSettings { RequiredLength = length };
 
+        // act
         var results = Validate(settings);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(PasswordSettings.RequiredLength)));
     }
 
@@ -137,18 +153,23 @@ public class SettingsValidationTests
     [InlineData(257)]
     public void PasswordSettings_RequiredUniqueCharsOutOfRange_Fails(int chars)
     {
+        // arrange
         var settings = new PasswordSettings { RequiredUniqueChars = chars };
 
+        // act
         var results = Validate(settings);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(PasswordSettings.RequiredUniqueChars)));
     }
 
     [Fact]
     public void UserSettings_Defaults_RequireUniqueEmailAndPermissiveCharacterSet()
     {
+        // arrange
         var settings = new UserSettings();
 
+        // assert
         settings.RequireUniqueEmail.Should().BeTrue();
         settings.AllowedUserNameCharacters
             .Should().Be("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._@+");
@@ -158,9 +179,10 @@ public class SettingsValidationTests
     [Fact]
     public void LockoutSettings_Defaults_AllowedForNewUsersAndAggressive()
     {
-        // Defaults are the security baseline: lockout on, 3 attempts, 2 minutes.
+        // arrange — defaults are the security baseline: lockout on, 3 attempts, 2 minutes.
         var settings = new LockoutSettings();
 
+        // assert
         settings.AllowedForNewUsers.Should().BeTrue();
         settings.DefaultLockoutDurationInMinutes.Should().Be(2);
         settings.MaxFailedAccessAttempts.Should().Be(3);
@@ -171,10 +193,13 @@ public class SettingsValidationTests
     [InlineData(1441)]
     public void LockoutSettings_DefaultLockoutDurationOutOfRange_Fails(double minutes)
     {
+        // arrange
         var settings = new LockoutSettings { DefaultLockoutDurationInMinutes = minutes };
 
+        // act
         var results = Validate(settings);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(LockoutSettings.DefaultLockoutDurationInMinutes)));
     }
 
@@ -183,10 +208,13 @@ public class SettingsValidationTests
     [InlineData(101)]
     public void LockoutSettings_MaxFailedAccessAttemptsOutOfRange_Fails(int attempts)
     {
+        // arrange
         var settings = new LockoutSettings { MaxFailedAccessAttempts = attempts };
 
+        // act
         var results = Validate(settings);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(LockoutSettings.MaxFailedAccessAttempts)));
     }
 
@@ -195,6 +223,7 @@ public class SettingsValidationTests
     [Fact]
     public void AdminAccountSeedSettings_FullyPopulated_Passes()
     {
+        // arrange
         var settings = new AdminAccountSeedSettings
         {
             Email = "admin@example.com",
@@ -202,6 +231,7 @@ public class SettingsValidationTests
             FirstName = "Admin",
         };
 
+        // act + assert
         Validate(settings).Should().BeEmpty();
     }
 
@@ -211,6 +241,7 @@ public class SettingsValidationTests
     [InlineData(nameof(AdminAccountSeedSettings.FirstName))]
     public void AdminAccountSeedSettings_RequiredFieldMissing_Fails(string field)
     {
+        // arrange
         var settings = new AdminAccountSeedSettings
         {
             Email = "admin@example.com",
@@ -224,18 +255,23 @@ public class SettingsValidationTests
             case nameof(AdminAccountSeedSettings.FirstName): settings.FirstName = null!; break;
         }
 
+        // act
         var results = Validate(settings);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(field));
     }
 
     [Fact]
     public void AdminAccountSeedSettings_InvalidEmail_Fails()
     {
+        // arrange
         var settings = new AdminAccountSeedSettings { Email = "not-email", Password = "p", FirstName = "A" };
 
+        // act
         var results = Validate(settings);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(AdminAccountSeedSettings.Email)));
     }
 
@@ -245,6 +281,7 @@ public class SettingsValidationTests
     [InlineData(nameof(AdminAccountSeedSettings.Country), 61)]
     public void AdminAccountSeedSettings_LengthBoundedFieldOverLength_Fails(string field, int overLength)
     {
+        // arrange
         var oversize = new string('x', overLength);
         var settings = new AdminAccountSeedSettings { Email = "a@b.com", Password = "p", FirstName = "A" };
         switch (field)
@@ -254,14 +291,17 @@ public class SettingsValidationTests
             case nameof(AdminAccountSeedSettings.Country): settings.Country = oversize; break;
         }
 
+        // act
         var results = Validate(settings);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(field));
     }
 
     [Fact]
     public void AdminAccountSeedSettings_PhoneNumberMalformed_Fails()
     {
+        // arrange
         var settings = new AdminAccountSeedSettings
         {
             Email = "a@b.com",
@@ -270,8 +310,10 @@ public class SettingsValidationTests
             PhoneNumber = "obviously-not-a-phone",
         };
 
+        // act
         var results = Validate(settings);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(AdminAccountSeedSettings.PhoneNumber)));
     }
 
@@ -280,8 +322,10 @@ public class SettingsValidationTests
     [Fact]
     public void HostingSettings_Defaults_BackgroundWorkersOnAndOneMbBodyCap()
     {
+        // arrange
         var settings = new HostingSettings();
 
+        // assert
         settings.BackgroundWorkersEnabled.Should().BeTrue();
         settings.MaxRequestBodySizeInKilobytes.Should().Be(1024);
     }
@@ -292,10 +336,13 @@ public class SettingsValidationTests
     [InlineData(30_721)]
     public void HostingSettings_MaxRequestBodySizeInKilobytesOutOfRange_Fails(int kb)
     {
+        // arrange
         var settings = new HostingSettings { MaxRequestBodySizeInKilobytes = kb };
 
+        // act
         var results = Validate(settings);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(HostingSettings.MaxRequestBodySizeInKilobytes)));
     }
 
@@ -304,8 +351,10 @@ public class SettingsValidationTests
     [Fact]
     public void ThresholdEscalationSettings_Defaults_AggressiveButForgiving()
     {
+        // arrange
         var settings = new ThresholdEscalationSettings();
 
+        // assert
         settings.Enabled.Should().BeTrue();
         settings.SweepIntervalInMinutes.Should().Be(1);
         settings.WindowInMinutes.Should().Be(5);
@@ -318,8 +367,10 @@ public class SettingsValidationTests
     [Fact]
     public void DataRetentionSettings_Defaults_TwelveHourSweepNinetyDayTtl()
     {
+        // arrange
         var settings = new DataRetentionSettings();
 
+        // assert
         settings.CleanupIntervalInHours.Should().Be(12);
         settings.RevokedReplayTTLInDays.Should().Be(90);
     }

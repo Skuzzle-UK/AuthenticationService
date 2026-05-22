@@ -153,19 +153,17 @@ The "MySQL refuses the connection" path isn't a separate test because SQLite is 
 
 ---
 
-#### M5. Two background workers exit silently on the first exception
+#### ~~M5. Two background workers exit silently on the first exception~~ ✅ DONE (2026-05-21)
 
-**What's wrong:** When a transient error happens (e.g. MySQL drops a connection), two of the background workers leave the loop and don't come back until the pod restarts:
-- `Services/Hosted/DataRetentionCleanupService.cs:56-62` — the periodic cleanup that prunes expired audit rows.
-- `Services/Hosted/RevokedTokenReplayEscalationService.cs:85-91` — the worker that escalates revoked-token replay attempts to warn/lock.
+**What was wrong:** Two workers had try/catch around the *outer* timer loop, so any in-body exception killed the worker until pod restart. The service "looked healthy" via probes but cleanup / escalation stopped silently:
+- `DataRetentionCleanupService.RunCleanupAsync` — audit-table pruning
+- `RevokedTokenReplayEscalationService.RunSweepAsync` — replay-threshold lock cascade
 
-A third worker (`UserGaugeRefreshService`) does catch and continue (`:104-113`) — that's the pattern the other two should follow.
+**What we shipped:** Moved the try/catch *inside* each per-iteration method, matching the existing `UserGaugeRefreshService.RefreshAsync` pattern. A throw now logs a warning ("…will retry on next sweep.") and returns, leaving the timer loop intact. `OperationCanceledException` still bubbles through cleanly via the timer's `WaitForNextTickAsync` so host shutdown still works.
 
-**Why it matters:** These workers are critical: cleanup keeps the audit table from growing forever, escalation locks accounts being hammered with revoked tokens. If they silently die, the service "looks healthy" via probes but security/cleanup behaviour stops working.
+Idempotency-safe because: cleanup uses `ExecuteDeleteAsync` predicates (re-running deletes the same rows or none); escalation gates on `WarnedAt` / `LockedAt` columns so re-sweeping a partially-escalated incident doesn't double-fire.
 
-**Where to fix:** The two file paths above.
-
-**How to fix:** Wrap the inner loop body with a try/catch that logs the exception and continues. Don't re-throw transients. Look at `UserGaugeRefreshService.cs:104-113` as the canonical pattern. ~30 min total.
+**Tests:** 2 new tests in `Tests/AuthenticationService.Tests/Services/Hosted/` (one per worker). Each injects a substituted `IServiceScopeFactory` that throws on `CreateScope()` and asserts the per-iteration method returns without propagating. Full unit suite: 438 passing.
 
 ---
 
@@ -376,7 +374,7 @@ template needed.)
 
 ## Recommended next-up order
 
-1. **Finish [Tier 0](#tier-0--pre-cutover-hardening-must-clear-before-first-prod-deploy)** — all 5 blockers + M4 are done; 9 medium-priority items left (M1–M3, M5–M10). Once those land, the service is genuinely production-ready (not just feature-complete).
+1. **Finish [Tier 0](#tier-0--pre-cutover-hardening-must-clear-before-first-prod-deploy)** — all 5 blockers + M4 + M5 are done; 8 medium-priority items left (M1–M3, M6–M10). Once those land, the service is genuinely production-ready (not just feature-complete).
 2. **Pick the secret store + write the signing-key backup runbook** (Tier 0 / M10). Without this the disaster-recovery story for crypto material is incomplete.
 3. **External IdP / SSO** — no plan yet. Wait until there's a concrete need (which
    provider, what claim mapping, what account-linking semantics).
@@ -393,4 +391,4 @@ coverage (560+ unit + 15 integration, zero skipped), CI workflow, audit pipeline
 surface, service-identity story, observability stack, and consumer client libraries
 worthy of a production-grade microservice **on paper**.
 
-The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. **All five blockers (B1–B5) plus M4 (MySQL health-check timeout) are now closed (2026-05-21).** Nine medium-severity items remain (M1–M3, M5–M10) but none block shipping — they're "do in the first sprint after prod" items. Once those land, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.
+The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. **All five blockers (B1–B5) plus M4 (MySQL health-check timeout) and M5 (background-worker survive-on-throw) are now closed (2026-05-21).** Eight medium-severity items remain (M1–M3, M6–M10) but none block shipping — they're "do in the first sprint after prod" items. Once those land, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.

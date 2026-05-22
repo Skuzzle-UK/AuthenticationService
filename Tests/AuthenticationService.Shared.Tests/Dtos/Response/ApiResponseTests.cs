@@ -12,8 +12,10 @@ public class ApiResponseTests
     [Fact]
     public void DefaultState_IsSuccessfulWithNoErrors()
     {
+        // arrange
         var response = new ApiResponse();
 
+        // assert
         response.IsSuccessful.Should().BeTrue();
         response.Errors.Should().BeNull();
     }
@@ -21,10 +23,13 @@ public class ApiResponseTests
     [Fact]
     public void AddError_FirstCall_AllocatesDictionaryAndFlipsToUnsuccessful()
     {
+        // arrange
         var response = new ApiResponse();
 
+        // act
         var returned = response.AddError("key1", "error1");
 
+        // assert
         returned.Should().BeSameAs(response, because: "fluent chaining contract");
         response.IsSuccessful.Should().BeFalse();
         response.Errors.Should().NotBeNull().And.ContainKey("key1");
@@ -34,12 +39,15 @@ public class ApiResponseTests
     [Fact]
     public void AddError_MultipleCalls_AccumulatesAllErrors()
     {
+        // arrange
         var response = new ApiResponse();
 
+        // act
         response
             .AddError("emailRequired", "Email is required.")
             .AddError("passwordWeak", "Password too weak.");
 
+        // assert
         response.IsSuccessful.Should().BeFalse();
         response.Errors.Should().HaveCount(2);
         response.Errors!["emailRequired"].Should().Be("Email is required.");
@@ -49,10 +57,11 @@ public class ApiResponseTests
     [Fact]
     public void AddError_DuplicateKey_ThrowsArgumentException()
     {
-        // Errors is Dictionary<,> with .Add() — pinned so callers don't expect overwrite.
+        // arrange — Errors is Dictionary<,> with .Add(); pinned so callers don't expect overwrite.
         var response = new ApiResponse();
         response.AddError("dup", "first");
 
+        // act + assert
         var act = () => response.AddError("dup", "second");
 
         act.Should().Throw<ArgumentException>();
@@ -61,6 +70,7 @@ public class ApiResponseTests
     [Fact]
     public void AddErrors_ManyAtOnce_MergesEveryEntryAndFlipsToUnsuccessful()
     {
+        // arrange
         var response = new ApiResponse();
         var batch = new Dictionary<string, string>
         {
@@ -68,8 +78,10 @@ public class ApiResponseTests
             ["PasswordRequiresDigit"] = "Password must contain a digit",
         };
 
+        // act
         var returned = response.AddErrors(batch);
 
+        // assert
         returned.Should().BeSameAs(response);
         response.IsSuccessful.Should().BeFalse();
         response.Errors.Should().HaveCount(2)
@@ -79,24 +91,28 @@ public class ApiResponseTests
     [Fact]
     public void AddErrors_OverwritesExistingKeys_BecauseUsesIndexer()
     {
-        // AddErrors uses indexer assignment (overwrites) — intentional asymmetry with AddError.
+        // arrange — AddErrors uses indexer assignment (overwrites); intentional asymmetry with AddError.
         var response = new ApiResponse();
         response.AddError("conflict", "original");
 
+        // act
         response.AddErrors(new Dictionary<string, string> { ["conflict"] = "overwritten" });
 
+        // assert
         response.Errors!["conflict"].Should().Be("overwritten");
     }
 
     [Fact]
     public void Successful_AfterAddError_FlipsBackToTrue()
     {
-        // Informational-errors pattern: controller adds non-fatal notes but treats the op as successful.
+        // arrange — informational-errors pattern: controller adds non-fatal notes but treats the op as successful.
         var response = new ApiResponse();
         response.AddError("note", "Some informational signal");
 
+        // act
         var returned = response.Successful();
 
+        // assert
         returned.Should().BeSameAs(response);
         response.IsSuccessful.Should().BeTrue();
         response.Errors.Should().NotBeNull(because: "Successful() doesn't clear errors — only re-marks the envelope.");

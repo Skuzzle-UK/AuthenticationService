@@ -17,12 +17,15 @@ public class ProblemDetailsExceptionHandlerTests
     [Fact]
     public async Task UnhandledException_ReturnsProblemDetailsJson()
     {
+        // arrange
         await using var app = BuildApp();
         await app.StartAsync();
         var client = app.GetTestClient();
 
+        // act
         var response = await client.GetAsync("/boom");
 
+        // assert
         response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
         response.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
 
@@ -36,13 +39,15 @@ public class ProblemDetailsExceptionHandlerTests
     [Fact]
     public async Task EmptyNotFound_AlsoProducesProblemDetails()
     {
-        // UseStatusCodePages() should fill in a body for an otherwise-empty 404 too.
+        // arrange — UseStatusCodePages() should fill in a body for an otherwise-empty 404 too.
         await using var app = BuildApp();
         await app.StartAsync();
         var client = app.GetTestClient();
 
+        // act
         var response = await client.GetAsync("/no-such-route");
 
+        // assert
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
         response.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
 

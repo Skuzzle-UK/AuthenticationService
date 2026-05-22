@@ -36,6 +36,7 @@ public class RuntimeDbSeedersTests : IDisposable
     [Fact]
     public async Task SeedAdministratorAccountAsync_HappyPath_CreatesAdminWithBothRoles()
     {
+        // arrange
         var (app, manager) = BuildApp();
         manager.FindByNameAsync(UserConstants.Admin).Returns((User?)null);
         manager.CreateAsync(Arg.Any<User>(), Arg.Any<string>()).Returns(IdentityResult.Success);
@@ -43,8 +44,10 @@ public class RuntimeDbSeedersTests : IDisposable
         manager.FindByEmailAsync(Arg.Any<string>()).Returns(seededUser);
         manager.AddToRoleAsync(seededUser, Arg.Any<string>()).Returns(IdentityResult.Success);
 
+        // act
         await app.SeedAdministratorAccountAsync();
 
+        // assert
         await manager.Received(1).CreateAsync(
             Arg.Is<User>(u => u.UserName == UserConstants.Admin && u.EmailConfirmed == true),
             Arg.Is<string>(p => p == "AdminPa$$1234"));
@@ -55,12 +58,15 @@ public class RuntimeDbSeedersTests : IDisposable
     [Fact]
     public async Task SeedAdministratorAccountAsync_AdminAlreadyExists_NoOp()
     {
+        // arrange
         var (app, manager) = BuildApp();
         var existing = new User { Id = "admin-id" };
         manager.FindByNameAsync(UserConstants.Admin).Returns(existing);
 
+        // act
         await app.SeedAdministratorAccountAsync();
 
+        // assert
         await manager.DidNotReceive().CreateAsync(Arg.Any<User>(), Arg.Any<string>());
         await manager.DidNotReceive().AddToRoleAsync(Arg.Any<User>(), Arg.Any<string>());
     }
@@ -68,12 +74,13 @@ public class RuntimeDbSeedersTests : IDisposable
     [Fact]
     public async Task SeedAdministratorAccountAsync_DuplicateUsernameRace_TreatedAsSuccess()
     {
-        // Another replica seeded the admin first between our FindByName and CreateAsync.
+        // arrange — another replica seeded the admin first between our FindByName and CreateAsync.
         var (app, manager) = BuildApp();
         manager.FindByNameAsync(UserConstants.Admin).Returns((User?)null);
         manager.CreateAsync(Arg.Any<User>(), Arg.Any<string>())
             .Returns(IdentityResult.Failed(new IdentityError { Code = "DuplicateUserName", Description = "duplicate" }));
 
+        // act + assert
         var act = async () => await app.SeedAdministratorAccountAsync();
 
         await act.Should().NotThrowAsync(
@@ -84,11 +91,13 @@ public class RuntimeDbSeedersTests : IDisposable
     [Fact]
     public async Task SeedAdministratorAccountAsync_DuplicateEmailRace_TreatedAsSuccess()
     {
+        // arrange
         var (app, manager) = BuildApp();
         manager.FindByNameAsync(UserConstants.Admin).Returns((User?)null);
         manager.CreateAsync(Arg.Any<User>(), Arg.Any<string>())
             .Returns(IdentityResult.Failed(new IdentityError { Code = "DuplicateEmail", Description = "duplicate" }));
 
+        // act + assert
         var act = async () => await app.SeedAdministratorAccountAsync();
 
         await act.Should().NotThrowAsync();
@@ -97,12 +106,13 @@ public class RuntimeDbSeedersTests : IDisposable
     [Fact]
     public async Task SeedAdministratorAccountAsync_RealConfigurationError_ThrowsArgumentExceptionWithErrors()
     {
-        // Operator misconfiguration must fail startup with a useful message.
+        // arrange — operator misconfiguration must fail startup with a useful message.
         var (app, manager) = BuildApp();
         manager.FindByNameAsync(UserConstants.Admin).Returns((User?)null);
         manager.CreateAsync(Arg.Any<User>(), Arg.Any<string>())
             .Returns(IdentityResult.Failed(new IdentityError { Code = "PasswordTooShort", Description = "Password must be 12+ chars." }));
 
+        // act + assert
         var act = async () => await app.SeedAdministratorAccountAsync();
 
         (await act.Should().ThrowAsync<ArgumentException>())
@@ -112,10 +122,11 @@ public class RuntimeDbSeedersTests : IDisposable
     [Fact]
     public async Task SeedAdministratorAccountAsync_TransientDatabaseError_RethrowsForOrchestratorReschedule()
     {
-        // Fail fast so K8s reschedules the pod.
+        // arrange — fail fast so K8s reschedules the pod.
         var (app, manager) = BuildApp();
         manager.FindByNameAsync(UserConstants.Admin).Returns<Task<User?>>(_ => throw new TestDbException("connection refused"));
 
+        // act + assert
         var act = async () => await app.SeedAdministratorAccountAsync();
 
         await act.Should().ThrowAsync<TestDbException>();
@@ -124,9 +135,11 @@ public class RuntimeDbSeedersTests : IDisposable
     [Fact]
     public async Task SeedAdministratorAccountAsync_UnexpectedException_Rethrows()
     {
+        // arrange
         var (app, manager) = BuildApp();
         manager.FindByNameAsync(UserConstants.Admin).Returns<Task<User?>>(_ => throw new InvalidOperationException("kaboom"));
 
+        // act + assert
         var act = async () => await app.SeedAdministratorAccountAsync();
 
         await act.Should().ThrowAsync<InvalidOperationException>();
@@ -135,12 +148,15 @@ public class RuntimeDbSeedersTests : IDisposable
     [Fact]
     public async Task RuntimeDbSeedAsync_DelegatesToSeedAdministratorAccountAsync()
     {
+        // arrange
         var (app, manager) = BuildApp();
         var existing = new User { Id = "id" };
         manager.FindByNameAsync(UserConstants.Admin).Returns(existing);
 
+        // act
         var returned = await app.RuntimeDbSeedAsync();
 
+        // assert
         returned.Should().BeSameAs(app);
         await manager.DidNotReceive().CreateAsync(Arg.Any<User>(), Arg.Any<string>());
     }
@@ -150,6 +166,7 @@ public class RuntimeDbSeedersTests : IDisposable
     [Fact]
     public async Task ResetAdministratorAccountAsync_HappyPath_RunsFullResetSequence()
     {
+        // arrange
         var (app, manager) = BuildApp();
         var admin = new User { Id = "admin-id", UserName = UserConstants.Admin, Email = "admin@example.com" };
         manager.FindByNameAsync(UserConstants.Admin).Returns(admin);
@@ -175,8 +192,10 @@ public class RuntimeDbSeedersTests : IDisposable
             await db.SaveChangesAsync();
         }
 
+        // act
         await app.ResetAdministratorAccountAsync();
 
+        // assert
         await manager.Received(1).SetLockoutEndDateAsync(admin, null);
         await manager.Received(1).ResetAccessFailedCountAsync(admin);
         await manager.Received(1).ResetPasswordAsync(admin, "reset-token", "AdminPa$$1234");
@@ -195,12 +214,14 @@ public class RuntimeDbSeedersTests : IDisposable
     [Fact]
     public async Task ResetAdministratorAccountAsync_AdminMissing_NoOpAndDoesNotThrow()
     {
-        // Recovery is for resetting an existing admin — not for creating one.
+        // arrange — recovery is for resetting an existing admin, not for creating one.
         var (app, manager) = BuildApp();
         manager.FindByNameAsync(UserConstants.Admin).Returns((User?)null);
 
+        // act
         await app.ResetAdministratorAccountAsync();
 
+        // assert
         await manager.DidNotReceive().ResetPasswordAsync(Arg.Any<User>(), Arg.Any<string>(), Arg.Any<string>());
         await manager.DidNotReceive().SetLockoutEndDateAsync(Arg.Any<User>(), Arg.Any<DateTimeOffset?>());
     }
@@ -208,6 +229,7 @@ public class RuntimeDbSeedersTests : IDisposable
     [Fact]
     public async Task ResetAdministratorAccountAsync_PasswordRejectedByPolicy_Throws()
     {
+        // arrange
         var (app, manager) = BuildApp();
         var admin = new User { Id = "admin-id", UserName = UserConstants.Admin };
         manager.FindByNameAsync(UserConstants.Admin).Returns(admin);
@@ -215,6 +237,7 @@ public class RuntimeDbSeedersTests : IDisposable
         manager.ResetPasswordAsync(admin, "tok", Arg.Any<string>()).Returns(IdentityResult.Failed(
             new IdentityError { Code = "PasswordTooShort", Description = "Password must be 12+ chars." }));
 
+        // act + assert
         var act = async () => await app.ResetAdministratorAccountAsync();
 
         await act.Should().ThrowAsync<InvalidOperationException>()
@@ -224,6 +247,7 @@ public class RuntimeDbSeedersTests : IDisposable
     [Fact]
     public async Task ResetAdministratorAccountAsync_ReConfirmsEmailIfNeeded()
     {
+        // arrange
         var (app, manager) = BuildApp();
         var admin = new User { Id = "admin-id", UserName = UserConstants.Admin, EmailConfirmed = false };
         manager.FindByNameAsync(UserConstants.Admin).Returns(admin);
@@ -231,8 +255,10 @@ public class RuntimeDbSeedersTests : IDisposable
         manager.ResetPasswordAsync(admin, "tok", Arg.Any<string>()).Returns(IdentityResult.Success);
         manager.IsInRoleAsync(admin, Arg.Any<string>()).Returns(true);
 
+        // act
         await app.ResetAdministratorAccountAsync();
 
+        // assert
         admin.EmailConfirmed.Should().BeTrue();
         await manager.Received(1).UpdateAsync(admin);
     }
@@ -240,8 +266,7 @@ public class RuntimeDbSeedersTests : IDisposable
     [Fact]
     public async Task ResetAdministratorAccountAsync_ReAddsMissingRoles()
     {
-        // Defensive: if role membership was somehow lost (e.g. a manual DB edit), recovery
-        // restores it.
+        // arrange — defensive: if role membership was somehow lost (e.g. a manual DB edit), recovery restores it.
         var (app, manager) = BuildApp();
         var admin = new User { Id = "admin-id", UserName = UserConstants.Admin, EmailConfirmed = true };
         manager.FindByNameAsync(UserConstants.Admin).Returns(admin);
@@ -250,8 +275,10 @@ public class RuntimeDbSeedersTests : IDisposable
         manager.IsInRoleAsync(admin, RolesConstants.Admin).Returns(false);
         manager.IsInRoleAsync(admin, RolesConstants.DefaultUser).Returns(false);
 
+        // act
         await app.ResetAdministratorAccountAsync();
 
+        // assert
         await manager.Received(1).AddToRoleAsync(admin, RolesConstants.Admin);
         await manager.Received(1).AddToRoleAsync(admin, RolesConstants.DefaultUser);
     }
@@ -261,6 +288,7 @@ public class RuntimeDbSeedersTests : IDisposable
     [Fact]
     public async Task SeedAdministratorAccountAsync_ResetOnStartupTrue_TriggersResetOnExistingAdmin()
     {
+        // arrange
         var (app, manager) = BuildApp(settings => settings.ResetOnStartup = true);
         var admin = new User { Id = "admin-id", UserName = UserConstants.Admin, EmailConfirmed = true };
         manager.FindByNameAsync(UserConstants.Admin).Returns(admin);
@@ -268,21 +296,25 @@ public class RuntimeDbSeedersTests : IDisposable
         manager.ResetPasswordAsync(admin, "tok", Arg.Any<string>()).Returns(IdentityResult.Success);
         manager.IsInRoleAsync(admin, Arg.Any<string>()).Returns(true);
 
+        // act
         await app.SeedAdministratorAccountAsync();
 
+        // assert
         await manager.Received(1).ResetPasswordAsync(admin, "tok", Arg.Any<string>());
     }
 
     [Fact]
     public async Task SeedAdministratorAccountAsync_ResetOnStartupFalse_DoesNotResetExistingAdmin()
     {
-        // Default (off). Existing-admin path must remain the no-op it always was.
+        // arrange — default (off). Existing-admin path must remain the no-op it always was.
         var (app, manager) = BuildApp();
         var admin = new User { Id = "admin-id" };
         manager.FindByNameAsync(UserConstants.Admin).Returns(admin);
 
+        // act
         await app.SeedAdministratorAccountAsync();
 
+        // assert
         await manager.DidNotReceive().ResetPasswordAsync(Arg.Any<User>(), Arg.Any<string>(), Arg.Any<string>());
         await manager.DidNotReceive().SetLockoutEndDateAsync(Arg.Any<User>(), Arg.Any<DateTimeOffset?>());
     }
@@ -290,7 +322,7 @@ public class RuntimeDbSeedersTests : IDisposable
     [Fact]
     public async Task SeedAdministratorAccountAsync_ResetOnStartupTrueButAdminMissing_FallsThroughToCreate()
     {
-        // ResetOnStartup is "reset if present" — if no admin exists at all, create it.
+        // arrange — ResetOnStartup is "reset if present"; if no admin exists at all, create it.
         var (app, manager) = BuildApp(settings => settings.ResetOnStartup = true);
         manager.FindByNameAsync(UserConstants.Admin).Returns((User?)null);
         manager.CreateAsync(Arg.Any<User>(), Arg.Any<string>()).Returns(IdentityResult.Success);
@@ -298,8 +330,10 @@ public class RuntimeDbSeedersTests : IDisposable
         manager.FindByEmailAsync(Arg.Any<string>()).Returns(seeded);
         manager.AddToRoleAsync(seeded, Arg.Any<string>()).Returns(IdentityResult.Success);
 
+        // act
         await app.SeedAdministratorAccountAsync();
 
+        // assert
         await manager.Received(1).CreateAsync(Arg.Any<User>(), "AdminPa$$1234");
         await manager.DidNotReceive().ResetPasswordAsync(Arg.Any<User>(), Arg.Any<string>(), Arg.Any<string>());
     }

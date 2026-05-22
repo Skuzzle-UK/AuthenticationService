@@ -21,6 +21,7 @@ public class PasswordChangeLockAccountTests(AppHostFixture fixture) : Integratio
     [Fact]
     public async Task PasswordChange_WasntMeLink_LocksAccountAndSendsConfirmation()
     {
+        // arrange
         var user = await RegisterAndConfirmUserAsync();
         var loginToken = await LoginAsync(user);
 
@@ -33,6 +34,7 @@ public class PasswordChangeLockAccountTests(AppHostFixture fixture) : Integratio
 
         var newPassword = "NewP@ssw0rd9876";
 
+        // act — phase 1: change password
         var changeResponse = await AuthClient.PostAsJsonAsync(
             "/api/Account/changepassword",
             new ChangePasswordDto
@@ -41,6 +43,8 @@ public class PasswordChangeLockAccountTests(AppHostFixture fixture) : Integratio
                 NewPassword = newPassword,
                 ConfirmPassword = newPassword,
             });
+
+        // assert — phase 1
         changeResponse.IsSuccessStatusCode.Should().BeTrue(
             because: "a password change with the correct old password must succeed.");
 
@@ -68,10 +72,12 @@ public class PasswordChangeLockAccountTests(AppHostFixture fixture) : Integratio
         // Clear inbox so the next wait-for-email sees only the post-lock confirmation.
         await SmtpClient.ClearAsync();
 
+        // act — phase 2: "wasn't me" lock
         var lockResponse = await AuthClient.PostAsJsonAsync(
             "/api/Account/lock",
             new LockAccountDto { Email = lockEmail, Token = lockToken });
 
+        // assert — phase 2
         lockResponse.IsSuccessStatusCode.Should().BeTrue(
             because: "a valid lockout token from the email must lock the account.");
 

@@ -39,11 +39,14 @@ public class SecurityEventSinkTests : IDisposable
     [Fact]
     public void Emit_NoEventIdProperty_SkipsWrite()
     {
+        // arrange
         var sink = new SecurityEventSink(_scopeFactory);
         var logEvent = MakeLogEvent(LogEventLevel.Information, eventId: null);
 
+        // act
         sink.Emit(logEvent);
 
+        // assert
         using var scope = _provider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
         db.SecurityEvents.Should().BeEmpty(
@@ -57,13 +60,15 @@ public class SecurityEventSinkTests : IDisposable
     [InlineData(20402, "EfMigrationApplied")]
     public void Emit_EventIdOutsideSecurityRange_SkipsWrite(int eventIdValue, string eventName)
     {
-        // Filter persists only SecurityEventIds 1000–6000. EF migration events at startup would deadlock the sink
+        // arrange — filter persists only SecurityEventIds 1000–6000. EF migration events at startup would deadlock the sink
         // against the migration creating the SecurityEvents table.
         var sink = new SecurityEventSink(_scopeFactory);
         var logEvent = MakeLogEvent(LogEventLevel.Information, eventId: (eventIdValue, eventName));
 
+        // act
         sink.Emit(logEvent);
 
+        // assert
         using var scope = _provider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
         db.SecurityEvents.Should().BeEmpty();
@@ -72,6 +77,7 @@ public class SecurityEventSinkTests : IDisposable
     [Fact]
     public void Emit_NonZeroEventId_PersistsRowWithExtractedColumns()
     {
+        // arrange
         var sink = new SecurityEventSink(_scopeFactory);
         var props = new Dictionary<string, object?>
         {
@@ -81,8 +87,10 @@ public class SecurityEventSinkTests : IDisposable
         };
         var logEvent = MakeLogEvent(LogEventLevel.Warning, eventId: (SecurityEventIds.LoginFailed.Id, "LoginFailed"), props);
 
+        // act
         sink.Emit(logEvent);
 
+        // assert
         using var scope = _provider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
         var row = db.SecurityEvents.Single();
@@ -101,7 +109,7 @@ public class SecurityEventSinkTests : IDisposable
     [Fact]
     public void Emit_PropertiesJson_ExcludesExtractedColumns()
     {
-        // UserId and IpAddress are their own columns — shouldn't also live in the JSON blob.
+        // arrange — UserId and IpAddress are their own columns, shouldn't also live in the JSON blob.
         var sink = new SecurityEventSink(_scopeFactory);
         var props = new Dictionary<string, object?>
         {
@@ -111,8 +119,10 @@ public class SecurityEventSinkTests : IDisposable
         };
         var logEvent = MakeLogEvent(LogEventLevel.Information, eventId: (1001, "LoginSucceeded"), props);
 
+        // act
         sink.Emit(logEvent);
 
+        // assert
         using var scope = _provider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
         var row = db.SecurityEvents.Single();
@@ -127,12 +137,13 @@ public class SecurityEventSinkTests : IDisposable
     [Fact]
     public void Emit_DbWriteFails_SwallowsExceptionDoesNotThrow()
     {
-        // Force SaveChanges to throw — auditing failure must never bring down the request that triggered the log.
+        // arrange — force SaveChanges to throw, auditing failure must never bring down the request that triggered the log.
         _connection.Close();
         var sink = new SecurityEventSink(_scopeFactory);
         var logEvent = MakeLogEvent(LogEventLevel.Fatal, eventId: (1008, "RefreshTokenReuseDetected"),
             properties: new Dictionary<string, object?> { ["UserId"] = "u1" });
 
+        // act + assert
         var act = () => sink.Emit(logEvent);
 
         act.Should().NotThrow(

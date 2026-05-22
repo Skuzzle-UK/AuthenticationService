@@ -17,6 +17,7 @@ public class DtoValidationTests
     [Fact]
     public void RegistrationDto_FullyPopulated_PassesValidation()
     {
+        // arrange
         var dto = new RegistrationDto
         {
             UserName = "alice",
@@ -31,8 +32,10 @@ public class DtoValidationTests
             PreferredMfaProvider = MfaProviders.Email,
         };
 
+        // act
         var results = Validate(dto);
 
+        // assert
         results.Should().BeEmpty();
     }
 
@@ -43,6 +46,7 @@ public class DtoValidationTests
     [InlineData(nameof(RegistrationDto.Password), "Password is required.")]
     public void RegistrationDto_RequiredFieldMissing_ProducesFieldNamedError(string field, string expectedMessage)
     {
+        // arrange
         var dto = MinimalValidRegistrationDto();
         switch (field)
         {
@@ -52,21 +56,25 @@ public class DtoValidationTests
             case nameof(RegistrationDto.Password): dto.Password = null; break;
         }
 
+        // act
         var results = Validate(dto);
 
-        // Exact-message assertion: operators read this in the API response and act on it.
+        // assert — exact-message assertion: operators read this in the API response and act on it.
         results.Should().ContainSingle(r => r.MemberNames.Contains(field) && r.ErrorMessage == expectedMessage);
     }
 
     [Fact]
     public void RegistrationDto_ConfirmPasswordMismatch_ProducesCompareError()
     {
+        // arrange
         var dto = MinimalValidRegistrationDto();
         dto.Password = "MatchMe123!";
         dto.ConfirmPassword = "Different!";
 
+        // act
         var results = Validate(dto);
 
+        // assert
         results.Should().Contain(r =>
             r.MemberNames.Contains(nameof(RegistrationDto.ConfirmPassword))
             && r.ErrorMessage == "The password and confirmation password do not match.");
@@ -75,11 +83,14 @@ public class DtoValidationTests
     [Fact]
     public void RegistrationDto_EmailMalformed_ProducesEmailAddressError()
     {
+        // arrange
         var dto = MinimalValidRegistrationDto();
         dto.Email = "not-an-email";
 
+        // act
         var results = Validate(dto);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(RegistrationDto.Email)));
     }
 
@@ -95,6 +106,7 @@ public class DtoValidationTests
     [InlineData(nameof(RegistrationDto.City), 61)]
     public void RegistrationDto_LengthBoundedField_OverLengthFails(string field, int overLength)
     {
+        // arrange
         var dto = MinimalValidRegistrationDto();
         var oversize = new string('x', overLength);
         switch (field)
@@ -110,19 +122,24 @@ public class DtoValidationTests
             case nameof(RegistrationDto.City): dto.City = oversize; break;
         }
 
+        // act
         var results = Validate(dto);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(field));
     }
 
     [Fact]
     public void RegistrationDto_PhoneNumberMalformed_FailsPhoneValidation()
     {
+        // arrange
         var dto = MinimalValidRegistrationDto();
         dto.PhoneNumber = "not a phone";
 
+        // act
         var results = Validate(dto);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(RegistrationDto.PhoneNumber)));
     }
 
@@ -131,12 +148,14 @@ public class DtoValidationTests
     [Fact]
     public void UpdateProfileDto_EmptyBody_PassesBecauseEveryFieldOptional()
     {
-        // PUT /me with an empty body means "don't change anything" — the controller
+        // arrange — PUT /me with an empty body means "don't change anything"; the controller
         // skips writes. A [Required] sneaking in here would break that contract.
         var dto = new UpdateProfileDto();
 
+        // act
         var results = Validate(dto);
 
+        // assert
         results.Should().BeEmpty();
     }
 
@@ -151,6 +170,7 @@ public class DtoValidationTests
     [InlineData(nameof(UpdateProfileDto.Postcode), 21)]
     public void UpdateProfileDto_LengthBoundedField_OverLengthFails(string field, int overLength)
     {
+        // arrange
         var dto = new UpdateProfileDto();
         var oversize = new string('x', overLength);
         switch (field)
@@ -165,20 +185,24 @@ public class DtoValidationTests
             case nameof(UpdateProfileDto.Postcode): dto.Postcode = oversize; break;
         }
 
+        // act
         var results = Validate(dto);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(field));
     }
 
     [Fact]
     public void UpdateProfileDto_PhoneNumberMalformed_FailsPhoneValidation()
     {
-        // UpdateProfile resets PhoneNumberConfirmed when phone changes — accepting
+        // arrange — UpdateProfile resets PhoneNumberConfirmed when phone changes; accepting
         // garbage would corrupt the SMS-MFA path.
         var dto = new UpdateProfileDto { PhoneNumber = "not a phone" };
 
+        // act
         var results = Validate(dto);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(UpdateProfileDto.PhoneNumber)));
     }
 
@@ -187,6 +211,7 @@ public class DtoValidationTests
     [Fact]
     public void ChangePasswordDto_BothPasswordsAndMatchingConfirm_Passes()
     {
+        // arrange
         var dto = new ChangePasswordDto
         {
             OldPassword = "old",
@@ -194,6 +219,7 @@ public class DtoValidationTests
             ConfirmPassword = "newPass!1234",
         };
 
+        // act + assert
         Validate(dto).Should().BeEmpty();
     }
 
@@ -202,6 +228,7 @@ public class DtoValidationTests
     [InlineData(nameof(ChangePasswordDto.NewPassword), "New password is required.")]
     public void ChangePasswordDto_MissingPasswords_FailsWithExpectedMessage(string field, string expectedMessage)
     {
+        // arrange
         var dto = new ChangePasswordDto
         {
             OldPassword = "old",
@@ -211,14 +238,17 @@ public class DtoValidationTests
         if (field == nameof(ChangePasswordDto.OldPassword)) dto.OldPassword = null;
         else dto.NewPassword = null;
 
+        // act
         var results = Validate(dto);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(field) && r.ErrorMessage == expectedMessage);
     }
 
     [Fact]
     public void ChangePasswordDto_ConfirmPasswordMismatch_FailsCompareValidation()
     {
+        // arrange
         var dto = new ChangePasswordDto
         {
             OldPassword = "old",
@@ -226,8 +256,10 @@ public class DtoValidationTests
             ConfirmPassword = "different!",
         };
 
+        // act
         var results = Validate(dto);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(ChangePasswordDto.ConfirmPassword)));
     }
 
@@ -236,6 +268,7 @@ public class DtoValidationTests
     [Fact]
     public void ResetForgottenPasswordDto_Populated_Passes()
     {
+        // arrange
         var dto = new ResetForgottenPasswordDto
         {
             Email = "x@example.com",
@@ -243,12 +276,15 @@ public class DtoValidationTests
             NewPassword = "newpass!",
             ConfirmPassword = "newpass!",
         };
+
+        // act + assert
         Validate(dto).Should().BeEmpty();
     }
 
     [Fact]
     public void ResetForgottenPasswordDto_MismatchedConfirm_Fails()
     {
+        // arrange
         var dto = new ResetForgottenPasswordDto
         {
             Email = "x@example.com",
@@ -257,8 +293,10 @@ public class DtoValidationTests
             ConfirmPassword = "differs!",
         };
 
+        // act
         var results = Validate(dto);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(ResetForgottenPasswordDto.ConfirmPassword)));
     }
 
@@ -267,7 +305,10 @@ public class DtoValidationTests
     [Fact]
     public void AuthenticationDto_FullyPopulated_Passes()
     {
+        // arrange
         var dto = new AuthenticationDto { Email = "u@example.com", Password = "p" };
+
+        // act + assert
         Validate(dto).Should().BeEmpty();
     }
 
@@ -276,12 +317,15 @@ public class DtoValidationTests
     [InlineData(nameof(AuthenticationDto.Password), "Password is required.")]
     public void AuthenticationDto_RequiredFieldMissing_FailsWithExpectedMessage(string field, string expected)
     {
+        // arrange
         var dto = new AuthenticationDto { Email = "u@example.com", Password = "p" };
         if (field == nameof(AuthenticationDto.Email)) dto.Email = null;
         else dto.Password = null;
 
+        // act
         var results = Validate(dto);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(field) && r.ErrorMessage == expected);
     }
 
@@ -290,7 +334,10 @@ public class DtoValidationTests
     [Fact]
     public void MfaAuthenticationDto_FullyPopulated_Passes()
     {
+        // arrange
         var dto = new MfaAuthenticationDto { Email = "u@example.com", MfaProvider = MfaProviders.Email, Token = "123456" };
+
+        // act + assert
         Validate(dto).Should().BeEmpty();
     }
 
@@ -300,6 +347,7 @@ public class DtoValidationTests
     [InlineData(nameof(MfaAuthenticationDto.Token), "Token is required.")]
     public void MfaAuthenticationDto_RequiredFieldMissing_FailsWithExpectedMessage(string field, string expected)
     {
+        // arrange
         var dto = new MfaAuthenticationDto { Email = "u@example.com", MfaProvider = MfaProviders.Email, Token = "123456" };
         switch (field)
         {
@@ -308,8 +356,10 @@ public class DtoValidationTests
             case nameof(MfaAuthenticationDto.Token): dto.Token = null; break;
         }
 
+        // act
         var results = Validate(dto);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(field) && r.ErrorMessage == expected);
     }
 
@@ -324,10 +374,13 @@ public class DtoValidationTests
     [Fact]
     public void ForgotPasswordDto_MissingEmail_Fails()
     {
+        // arrange
         var dto = new ForgotPasswordDto();
 
+        // act
         var results = Validate(dto);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(ForgotPasswordDto.Email)));
     }
 
@@ -344,12 +397,15 @@ public class DtoValidationTests
     [InlineData(nameof(LockAccountDto.Token), "Token is required.")]
     public void LockAccountDto_RequiredFieldMissing_FailsWithExpectedMessage(string field, string expected)
     {
+        // arrange
         var dto = new LockAccountDto { Email = "u@example.com", Token = "tok" };
         if (field == nameof(LockAccountDto.Email)) dto.Email = null;
         else dto.Token = null;
 
+        // act
         var results = Validate(dto);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(field) && r.ErrorMessage == expected);
     }
 
@@ -364,10 +420,13 @@ public class DtoValidationTests
     [Fact]
     public void RefreshTokenDto_MissingToken_Fails()
     {
+        // arrange
         var dto = new RefreshTokenDto();
 
+        // act
         var results = Validate(dto);
 
+        // assert
         results.Should().Contain(r =>
             r.MemberNames.Contains(nameof(RefreshTokenDto.RefreshToken))
             && r.ErrorMessage == "RefreshToken is required.");

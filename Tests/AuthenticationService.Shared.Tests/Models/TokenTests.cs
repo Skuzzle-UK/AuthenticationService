@@ -13,9 +13,11 @@ public class TokenTests
     [Fact]
     public void RequiredAndOptionalFields_RoundTrip()
     {
+        // arrange
         var expires = DateTime.UtcNow.AddMinutes(15);
         var refreshExpires = DateTime.UtcNow.AddDays(14);
 
+        // act
         var token = new Token
         {
             Type = "Bearer",
@@ -25,6 +27,7 @@ public class TokenTests
             RefreshTokenExpiresAt = refreshExpires,
         };
 
+        // assert
         token.Type.Should().Be("Bearer");
         token.Value.Should().Be("eyJh...");
         token.Expires.Should().Be(expires);
@@ -35,8 +38,10 @@ public class TokenTests
     [Fact]
     public void OptionalFields_OmittedAreNull()
     {
+        // arrange
         var token = new Token { Type = "Bearer", Value = "v" };
 
+        // assert
         token.Expires.Should().BeNull();
         token.RefreshToken.Should().BeNull();
         token.RefreshTokenExpiresAt.Should().BeNull();

@@ -87,45 +87,57 @@ public class RevokedTokenReplayEscalationService : BackgroundService
     // Internal so tests can drive escalation without the timer loop.
     internal async Task RunSweepAsync(CancellationToken stoppingToken)
     {
-        using var scope = _serviceScopeFactory.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
-        var userService = scope.ServiceProvider.GetRequiredService<IUserService>();
-        var tokenService = scope.ServiceProvider.GetRequiredService<ITokenService>();
-        var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
-
-        var windowStart = DateTime.UtcNow.AddMinutes(-_settings.WindowInMinutes);
-
-        // Group by jti in the window — table is bounded by cleanup so this is small.
-        var attemptCounts = await context.RevokedTokenAccessAttempts
-            .Where(a => a.CreatedAt >= windowStart)
-            .GroupBy(a => a.TokenJti)
-            .Select(g => new { Jti = g.Key, Count = g.Count() })
-            .Where(g => g.Count >= _settings.WarnThreshold)
-            .ToListAsync(stoppingToken);
-
-        if (attemptCounts.Count == 0)
+        try
         {
-            return;
-        }
+            using var scope = _serviceScopeFactory.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+            var userService = scope.ServiceProvider.GetRequiredService<IUserService>();
+            var tokenService = scope.ServiceProvider.GetRequiredService<ITokenService>();
+            var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
 
-        // One-row-at-a-time lookup instead of a batched Contains query: Oracle's
-        // MySql.EntityFrameworkCore can't translate Contains-on-collection. N is single-digit
-        // in practice. Revert to a batched query once we move to Pomelo.
-        foreach (var attempt in attemptCounts)
-        {
-            var revokedToken = await context.RevokedTokens
-                .FirstOrDefaultAsync(t => t.TokenJti == attempt.Jti, stoppingToken);
+            var windowStart = DateTime.UtcNow.AddMinutes(-_settings.WindowInMinutes);
 
-            if (revokedToken is null)
+            // Group by jti in the window — table is bounded by cleanup so this is small.
+            var attemptCounts = await context.RevokedTokenAccessAttempts
+                .Where(a => a.CreatedAt >= windowStart)
+                .GroupBy(a => a.TokenJti)
+                .Select(g => new { Jti = g.Key, Count = g.Count() })
+                .Where(g => g.Count >= _settings.WarnThreshold)
+                .ToListAsync(stoppingToken);
+
+            if (attemptCounts.Count == 0)
             {
-                // Audit row points at a jti we don't have — shouldn't happen, skip gracefully.
-                continue;
+                return;
             }
 
-            await EscalateAsync(revokedToken, attempt.Count, context, userService, tokenService, emailService, stoppingToken);
-        }
+            // One-row-at-a-time lookup instead of a batched Contains query: Oracle's
+            // MySql.EntityFrameworkCore can't translate Contains-on-collection. N is single-digit
+            // in practice. Revert to a batched query once we move to Pomelo.
+            foreach (var attempt in attemptCounts)
+            {
+                var revokedToken = await context.RevokedTokens
+                    .FirstOrDefaultAsync(t => t.TokenJti == attempt.Jti, stoppingToken);
 
-        await context.SaveChangesAsync(stoppingToken);
+                if (revokedToken is null)
+                {
+                    // Audit row points at a jti we don't have — shouldn't happen, skip gracefully.
+                    continue;
+                }
+
+                await EscalateAsync(revokedToken, attempt.Count, context, userService, tokenService, emailService, stoppingToken);
+            }
+
+            await context.SaveChangesAsync(stoppingToken);
+        }
+        catch (Exception ex)
+        {
+            // Don't tear down the timer on a transient DB / downstream error — try again
+            // next sweep. Idempotency on WarnedAt / LockedAt means re-running is safe.
+            _logger.LogWarning(
+                ex,
+                "Revoked-token replay escalation sweep failed: {ErrorMsg}. Will retry on next sweep.",
+                ex.Message);
+        }
     }
 
     private async Task EscalateAsync(

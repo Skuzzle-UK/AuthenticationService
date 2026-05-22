@@ -13,6 +13,7 @@ public class AuthenticationServiceOptionsTests
     [Fact]
     public void RequireHttpsMetadata_DefaultsToTrue()
     {
+        // arrange
         var options = new AuthenticationServiceOptions
         {
             Authority = "https://auth.example.com",
@@ -20,13 +21,14 @@ public class AuthenticationServiceOptionsTests
             Issuer = "https://auth.example.com",
         };
 
-        // HTTPS-by-default — weakening must be explicit operator opt-in.
+        // assert — HTTPS-by-default; weakening must be explicit operator opt-in.
         options.RequireHttpsMetadata.Should().BeTrue();
     }
 
     [Fact]
     public void Validate_AllRequiredFieldsPresent_PassesValidation()
     {
+        // arrange
         var options = new AuthenticationServiceOptions
         {
             Authority = "https://auth.example.com",
@@ -34,8 +36,10 @@ public class AuthenticationServiceOptionsTests
             Issuer = "https://auth.example.com",
         };
 
+        // act
         var results = ValidateRecursive(options);
 
+        // assert
         results.Should().BeEmpty();
     }
 
@@ -45,6 +49,7 @@ public class AuthenticationServiceOptionsTests
     [InlineData(nameof(AuthenticationServiceOptions.Issuer))]
     public void Validate_RequiredFieldNullOrEmpty_FailsWithFieldNamed(string missingProperty)
     {
+        // arrange
         var options = new AuthenticationServiceOptions
         {
             Authority = "https://auth.example.com",
@@ -65,8 +70,10 @@ public class AuthenticationServiceOptionsTests
                 break;
         }
 
+        // act
         var results = ValidateRecursive(options);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(missingProperty));
     }
 

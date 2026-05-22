@@ -17,11 +17,13 @@ public class RateLimiterIntegrationTests(RateLimitedAppHostFixture fixture) : In
     [Fact]
     public async Task GlobalLimiter_TripsUnderBurstFromSameIp()
     {
+        // arrange
         // No pre-created user — the global limiter is per-IP and triggers regardless
         // of whether the email exists.
         var bogusEmail = UniqueEmail();
         var bogusPassword = "AnyPassword123!";
 
+        // act
         // 6 requests against a 4/10s cap — attempts 5+ should be 429.
         var statuses = new List<HttpStatusCode>();
         for (var i = 0; i < 6; i++)
@@ -32,6 +34,7 @@ public class RateLimiterIntegrationTests(RateLimitedAppHostFixture fixture) : In
             statuses.Add(response.StatusCode);
         }
 
+        // assert
         statuses.Should().Contain(
             HttpStatusCode.TooManyRequests,
             because: "the global rate limiter caps at 4 requests per 10 seconds per IP. " +

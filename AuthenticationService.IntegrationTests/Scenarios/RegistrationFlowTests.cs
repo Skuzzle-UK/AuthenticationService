@@ -19,6 +19,7 @@ public class RegistrationFlowTests(AppHostFixture fixture) : IntegrationTestBase
     [Fact]
     public async Task Register_ConfirmEmail_Login_FullHappyPath()
     {
+        // arrange
         var email = UniqueEmail();
         var password = "P@ssw0rd1234";
         var registration = new RegistrationDto
@@ -30,10 +31,12 @@ public class RegistrationFlowTests(AppHostFixture fixture) : IntegrationTestBase
             ConfirmPassword = password,
         };
 
+        // act — phase 1: register
         var registerResponse = await AuthClient.PostAsJsonAsync(
             "/api/Registration/register",
             registration);
 
+        // assert — phase 1
         registerResponse.IsSuccessStatusCode.Should().BeTrue(
             because: "registration with valid DTO + Identity-conformant password must succeed.");
 
@@ -50,17 +53,21 @@ public class RegistrationFlowTests(AppHostFixture fixture) : IntegrationTestBase
         confirmationLink.Should().NotBeNull(
             because: "the email body must contain a confirm-email link for the user to click.");
 
+        // act — phase 2: confirm email
         // "Click" the link — endpoint validates the token, marks email confirmed,
         // rotates security stamp, 302-redirects to the ActionComplete Razor page.
         var confirmResponse = await AuthClient.GetAsync(confirmationLink!);
 
+        // assert — phase 2
         confirmResponse.IsSuccessStatusCode.Should().BeTrue(
             because: "a valid confirmation link confirms the email and lands on the redirect target.");
 
+        // act — phase 3: login
         var loginResponse = await AuthClient.PostAsJsonAsync(
             "/api/Authentication/authenticate",
             new AuthenticationDto { Email = email, Password = password });
 
+        // assert — phase 3
         loginResponse.IsSuccessStatusCode.Should().BeTrue(
             because: "after email confirmation, login with the registration password must succeed.");
 

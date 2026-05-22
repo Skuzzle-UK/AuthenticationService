@@ -19,13 +19,16 @@ public class WellKnownDiscoveryTests(AppHostFixture fixture) : IntegrationTestBa
     [Fact]
     public async Task DiscoveryAndJwks_PublishKeysThatValidateRealIssuedJwt()
     {
+        // arrange
         var user = await RegisterAndConfirmUserAsync();
         var issuedToken = await LoginAsync(user);
         issuedToken.Value.Should().NotBeNullOrEmpty();
 
+        // act — phase 1: fetch the OIDC discovery document
         var discoveryDoc = await AuthClient.GetFromJsonAsync<OidcDiscoveryDocument>(
             "/.well-known/openid-configuration");
 
+        // assert — phase 1
         discoveryDoc.Should().NotBeNull();
         discoveryDoc!.Issuer.Should().NotBeNullOrEmpty(
             because: "consumers validate the iss claim against this — empty would break every JwtBearer setup.");
@@ -34,9 +37,11 @@ public class WellKnownDiscoveryTests(AppHostFixture fixture) : IntegrationTestBa
         discoveryDoc.IdTokenSigningAlgValuesSupported.Should().Contain("ES256",
             because: "the auth service signs with ES256 — advertising a different alg here would mean consumers reject every token.");
 
+        // act — phase 2: fetch the JWKS
         var jwksJson = await AuthClient.GetStringAsync("/.well-known/jwks.json");
         var keySet = new JsonWebKeySet(jwksJson);
 
+        // assert — phase 2
         keySet.Keys.Should().NotBeEmpty(
             because: "JWKS must publish at least the active signing key — empty means no consumer can validate any token.");
         keySet.Keys.Should().AllSatisfy(k =>
@@ -48,6 +53,7 @@ public class WellKnownDiscoveryTests(AppHostFixture fixture) : IntegrationTestBa
             k.Kid.Should().NotBeNullOrEmpty(because: "kid links a JWT's header to the right JWKS key during validation.");
         });
 
+        // act — phase 3: validate the JWT against the published wire contract
         // Validate the JWT using only the published wire contract — exactly what a
         // downstream consumer's JwtBearer middleware would do.
         var validationParameters = new TokenValidationParameters
@@ -71,6 +77,7 @@ public class WellKnownDiscoveryTests(AppHostFixture fixture) : IntegrationTestBa
             validationParameters,
             out var validatedToken);
 
+        // assert — phase 3
         principal.Should().NotBeNull(
             because: "the JWKS-published key must validate a JWT issued by the same service. " +
                      "If this fails, consumers cannot validate tokens — total auth-chain failure.");

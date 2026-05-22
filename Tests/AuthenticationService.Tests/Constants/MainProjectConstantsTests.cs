@@ -37,10 +37,12 @@ public class MainProjectConstantsTests
     [InlineData(nameof(SecurityEventIds.RevokedTokenReplayThresholdLocked), 4005, 4000, 4999)]
     public void SecurityEventIds_PinExpectedNumericIds(string fieldName, int expectedId, int rangeMin, int rangeMax)
     {
+        // act
         var field = typeof(SecurityEventIds).GetField(fieldName);
         field.Should().NotBeNull(because: "every public EventId must remain accessible by name.");
         var eventId = (EventId)field!.GetValue(null)!;
 
+        // assert
         eventId.Id.Should().Be(expectedId);
         eventId.Name.Should().Be(fieldName, because: "Name uses nameof() — rename of the field must update the wire string too.");
         eventId.Id.Should().BeInRange(rangeMin, rangeMax,
@@ -96,15 +98,15 @@ public class MainProjectConstantsTests
     [Fact]
     public void ErrorMessages_AreNonEmptyAndUniqueAcrossPublicConsts()
     {
+        // act
         var fields = typeof(ErrorMessages)
             .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             .Where(f => f.IsLiteral && f.FieldType == typeof(string))
             .ToList();
-
-        fields.Should().NotBeEmpty();
-
         var values = fields.Select(f => (string)f.GetRawConstantValue()!).ToList();
 
+        // assert
+        fields.Should().NotBeEmpty();
         values.Should().AllSatisfy(v => v.Should().NotBeNullOrWhiteSpace());
         values.Should().OnlyHaveUniqueItems();
     }
@@ -123,21 +125,26 @@ public class MainProjectConstantsTests
     [InlineData(nameof(ErrorMessages.MissingJtiClaim), "Token does not contain a jti claim.")]
     public void ErrorMessages_PinPublishedText(string fieldName, string expected)
     {
+        // arrange
         var field = typeof(ErrorMessages).GetField(fieldName);
 
+        // act
         var value = (string)field!.GetRawConstantValue()!;
 
+        // assert
         value.Should().Be(expected);
     }
 
     [Fact]
     public void UriConstants_AreNonEmpty()
     {
+        // act
         var fields = typeof(UriConstants)
             .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             .Where(f => f.IsLiteral && f.FieldType == typeof(string))
             .ToList();
 
+        // assert
         fields.Should().NotBeEmpty();
         fields.Select(f => (string)f.GetRawConstantValue()!)
             .Should().AllSatisfy(v => v.Should().NotBeNullOrWhiteSpace());
@@ -146,12 +153,14 @@ public class MainProjectConstantsTests
     [Fact]
     public void EmailSubjects_AreNonEmptyAndUnique()
     {
+        // act
         var fields = typeof(EmailSubjects)
             .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             .Where(f => f.IsLiteral && f.FieldType == typeof(string))
             .Select(f => (string)f.GetRawConstantValue()!)
             .ToList();
 
+        // assert
         fields.Should().NotBeEmpty();
         fields.Should().OnlyHaveUniqueItems();
         fields.Should().AllSatisfy(v => v.Should().NotBeNullOrWhiteSpace());
@@ -190,12 +199,14 @@ public class MainProjectConstantsTests
     [Fact]
     public void RevocationReasons_AllValues_AreUniqueAndSnakeCase()
     {
+        // act
         var values = typeof(RevocationReasons)
             .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             .Where(f => f.IsLiteral && f.FieldType == typeof(string))
             .Select(f => (string)f.GetRawConstantValue()!)
             .ToList();
 
+        // assert
         values.Should().NotBeEmpty();
         values.Should().OnlyHaveUniqueItems();
         values.Should().AllSatisfy(v => v.Should().MatchRegex("^[a-z_]+$"));

@@ -15,6 +15,7 @@ public class AuthenticationResponseTests
     [Fact]
     public void WithToken_ProducesTokenBearingResponse_NoMfaFields()
     {
+        // arrange
         var token = new Token
         {
             Type = "Bearer",
@@ -24,9 +25,10 @@ public class AuthenticationResponseTests
             RefreshTokenExpiresAt = DateTime.UtcNow.AddDays(14),
         };
 
+        // act
         var response = AuthenticationResponse.WithToken(token);
 
-        // Token populated and MFA fields null — both populated would be a bug
+        // assert — Token populated and MFA fields null; both populated would be a bug
         // (client uses Token!=null as "login completed" vs MfaRequired==true).
         response.Token.Should().BeSameAs(token);
         response.MfaRequired.Should().BeNull();
@@ -37,8 +39,10 @@ public class AuthenticationResponseTests
     [Fact]
     public void WithToken_NullToken_AllowedForCallSiteFlexibility()
     {
+        // act
         var response = AuthenticationResponse.WithToken(null);
 
+        // assert
         response.Token.Should().BeNull();
         response.MfaRequired.Should().BeNull();
         response.MfaProvider.Should().BeNull();
@@ -50,8 +54,10 @@ public class AuthenticationResponseTests
     [InlineData(MfaProviders.Authenticator)]
     public void WithMfaRequired_AllProviders_ProducesMfaPendingShape(MfaProviders provider)
     {
+        // act
         var response = AuthenticationResponse.WithMfaRequired(provider);
 
+        // assert
         response.Token.Should().BeNull();
         response.MfaRequired.Should().BeTrue();
         response.MfaProvider.Should().Be(provider);
@@ -60,8 +66,10 @@ public class AuthenticationResponseTests
     [Fact]
     public void WithMfaRequired_NullProvider_StillFlagsMfaButLeavesProviderNull()
     {
+        // act
         var response = AuthenticationResponse.WithMfaRequired(null);
 
+        // assert
         response.MfaRequired.Should().BeTrue();
         response.MfaProvider.Should().BeNull();
         response.Token.Should().BeNull();
@@ -70,11 +78,13 @@ public class AuthenticationResponseTests
     [Fact]
     public void Inherits_ApiResponse_AddErrorFlipsToUnsuccessful()
     {
-        // Guards against a regression where factories break the inherited error pipeline.
+        // arrange — guards against a regression where factories break the inherited error pipeline.
         var response = AuthenticationResponse.WithMfaRequired(MfaProviders.Email);
 
+        // act
         response.AddError("k", "v");
 
+        // assert
         response.IsSuccessful.Should().BeFalse();
         response.Errors.Should().NotBeNull().And.HaveCount(1);
     }

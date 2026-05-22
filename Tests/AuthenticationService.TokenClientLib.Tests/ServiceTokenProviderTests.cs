@@ -17,15 +17,17 @@ public class ServiceTokenProviderTests
     [Fact]
     public async Task GetTokenAsync_FirstCall_FetchesViaHttpAndReturnsAccessToken()
     {
-        // TokenEndpointOverride skips discovery so we assert on exactly one HTTP hit.
+        // arrange — TokenEndpointOverride skips discovery so we assert on exactly one HTTP hit.
         var stub = new StubHttpMessageHandler
         {
             Responder = _ => TestProviderBuilder.TokenOk("jwt-aaa"),
         };
         var provider = TestProviderBuilder.Build(stub);
 
+        // act
         var token = await provider.GetTokenAsync("inventory-api", new[] { "inventory.read" });
 
+        // assert
         token.Should().Be("jwt-aaa");
         stub.CountRequestsContaining("/oauth/token").Should().Be(1);
     }
@@ -33,7 +35,7 @@ public class ServiceTokenProviderTests
     [Fact]
     public async Task GetTokenAsync_TokenRequest_UsesBasicAuthAndClientCredentialsBody()
     {
-        // Capture the request body from INSIDE the responder — the provider's `using` block
+        // arrange — capture the request body from INSIDE the responder; the provider's `using` block
         // disposes the request before the test resumes, so reading Content afterwards
         // would throw ObjectDisposedException.
         string? capturedBody = null;
@@ -52,8 +54,10 @@ public class ServiceTokenProviderTests
         };
         var provider = TestProviderBuilder.Build(stub);
 
+        // act
         await provider.GetTokenAsync("inventory-api", new[] { "inventory.read", "inventory.write" });
 
+        // assert
         capturedMethod.Should().Be(HttpMethod.Post);
         capturedAuthScheme.Should().Be("Basic");
         capturedBody.Should().Contain("grant_type=client_credentials");
@@ -67,13 +71,16 @@ public class ServiceTokenProviderTests
     [Fact]
     public async Task GetTokenAsync_SecondCallWithinLifetime_ReturnsCachedToken()
     {
+        // arrange
         var stub = new StubHttpMessageHandler();
         stub.ResponseQueue.Enqueue(TestProviderBuilder.TokenOk("jwt-once", expiresIn: 3600));
         var provider = TestProviderBuilder.Build(stub);
 
+        // act
         var first = await provider.GetTokenAsync("inventory-api", new[] { "inventory.read" });
         var second = await provider.GetTokenAsync("inventory-api", new[] { "inventory.read" });
 
+        // assert
         second.Should().Be(first);
         stub.CountRequestsContaining("/oauth/token").Should().Be(1);
     }
@@ -81,15 +88,17 @@ public class ServiceTokenProviderTests
     [Fact]
     public async Task GetTokenAsync_PastExpiry_BlocksOnRefreshAndReturnsNewToken()
     {
-        // expires_in=-1 forces IsValid() false on the next call → slow refresh path.
+        // arrange — expires_in=-1 forces IsValid() false on the next call → slow refresh path.
         var stub = new StubHttpMessageHandler();
         stub.ResponseQueue.Enqueue(TestProviderBuilder.TokenOk("jwt-old", expiresIn: -1));
         stub.ResponseQueue.Enqueue(TestProviderBuilder.TokenOk("jwt-new", expiresIn: 3600));
         var provider = TestProviderBuilder.Build(stub);
 
+        // act
         var first = await provider.GetTokenAsync("aud", new[] { "read" });
         var second = await provider.GetTokenAsync("aud", new[] { "read" });
 
+        // assert
         first.Should().Be("jwt-old");
         second.Should().Be("jwt-new");
         stub.CountRequestsContaining("/oauth/token").Should().Be(2);
@@ -98,7 +107,7 @@ public class ServiceTokenProviderTests
     [Fact]
     public async Task GetTokenAsync_PastProactiveThreshold_ReturnsCurrentAndRefreshesInBackground()
     {
-        // RefreshAtFractionOfLifetime=0.0 → refresh threshold == issuedAt, so the second
+        // arrange — RefreshAtFractionOfLifetime=0.0 → refresh threshold == issuedAt, so the second
         // call sees the cached token as valid AND past the proactive threshold (returns
         // cached + fires fire-and-forget refresh).
         var stub = new StubHttpMessageHandler();
@@ -115,9 +124,11 @@ public class ServiceTokenProviderTests
         };
         var provider = TestProviderBuilder.Build(stub, options);
 
+        // act
         var first = await provider.GetTokenAsync("aud", new[] { "read" });
         var second = await provider.GetTokenAsync("aud", new[] { "read" });
 
+        // assert
         first.Should().Be("jwt-current");
         second.Should().Be("jwt-current",
             because: "the user-facing call should never block on the background refresh — that's the whole point of the proactive window.");
@@ -138,8 +149,8 @@ public class ServiceTokenProviderTests
     [Fact]
     public async Task GetTokenAsync_ConcurrentCallers_ConvergeOnSingleTokenFetch()
     {
-        // 50 callers race an empty cache. The 150ms delay ensures other callers actually
-        // pile up on the semaphore — without it a fast machine could let the winner finish
+        // arrange — 50 callers race an empty cache. The 150ms delay ensures other callers actually
+        // pile up on the semaphore; without it a fast machine could let the winner finish
         // before queueing starts, masking a regression in the dedup logic.
         var stub = new StubHttpMessageHandler
         {
@@ -148,11 +159,13 @@ public class ServiceTokenProviderTests
         };
         var provider = TestProviderBuilder.Build(stub);
 
+        // act
         var tasks = Enumerable.Range(0, 50)
             .Select(_ => provider.GetTokenAsync("inventory-api", new[] { "inventory.read" }))
             .ToArray();
         var tokens = await Task.WhenAll(tasks);
 
+        // assert
         tokens.Should().AllBe("jwt-shared");
         stub.CountRequestsContaining("/oauth/token").Should().Be(1,
             because: "the per-key semaphore is the only thing standing between us and a thundering herd at expiry.");
@@ -163,7 +176,7 @@ public class ServiceTokenProviderTests
     [Fact]
     public async Task GetTokenAsync_DifferentAudienceOrScopeSets_CacheIndependently()
     {
-        // Three (audience, scopes) tuples = three cache keys. Cross-contamination would
+        // arrange — three (audience, scopes) tuples = three cache keys. Cross-contamination would
         // either return the wrong token (security bug) or force unnecessary re-fetches.
         var counter = 0;
         var stub = new StubHttpMessageHandler
@@ -172,10 +185,12 @@ public class ServiceTokenProviderTests
         };
         var provider = TestProviderBuilder.Build(stub);
 
+        // act
         var a = await provider.GetTokenAsync("inventory-api", new[] { "inventory.read" });
         var b = await provider.GetTokenAsync("inventory-api", new[] { "inventory.write" });   // different scopes
         var c = await provider.GetTokenAsync("orders-api", new[] { "inventory.read" });      // different audience
 
+        // assert
         new[] { a, b, c }.Distinct().Should().HaveCount(3);
         stub.CountRequestsContaining("/oauth/token").Should().Be(3);
     }
@@ -183,14 +198,16 @@ public class ServiceTokenProviderTests
     [Fact]
     public async Task GetTokenAsync_ScopeOrderInvariant_HitsSameCacheKey()
     {
-        // Cache key normalises scope order so callers don't have to remember it.
+        // arrange — cache key normalises scope order so callers don't have to remember it.
         var stub = new StubHttpMessageHandler();
         stub.ResponseQueue.Enqueue(TestProviderBuilder.TokenOk("jwt-ordered", expiresIn: 3600));
         var provider = TestProviderBuilder.Build(stub);
 
+        // act
         var first = await provider.GetTokenAsync("aud", new[] { "read", "write" });
         var second = await provider.GetTokenAsync("aud", new[] { "write", "read" });
 
+        // assert
         first.Should().Be("jwt-ordered");
         second.Should().Be("jwt-ordered");
         stub.CountRequestsContaining("/oauth/token").Should().Be(1);
@@ -201,15 +218,18 @@ public class ServiceTokenProviderTests
     [Fact]
     public async Task Invalidate_CausesNextCallToRefetch()
     {
+        // arrange
         var stub = new StubHttpMessageHandler();
         stub.ResponseQueue.Enqueue(TestProviderBuilder.TokenOk("jwt-1", expiresIn: 3600));
         stub.ResponseQueue.Enqueue(TestProviderBuilder.TokenOk("jwt-2", expiresIn: 3600));
         var provider = TestProviderBuilder.Build(stub);
 
+        // act
         var first = await provider.GetTokenAsync("aud", new[] { "read" });
         provider.Invalidate("aud", new[] { "read" });
         var second = await provider.GetTokenAsync("aud", new[] { "read" });
 
+        // assert
         first.Should().Be("jwt-1");
         second.Should().Be("jwt-2");
         stub.CountRequestsContaining("/oauth/token").Should().Be(2);
@@ -220,6 +240,7 @@ public class ServiceTokenProviderTests
     [Fact]
     public async Task GetTokenAsync_4xxResponse_ThrowsServiceTokenExceptionWithOAuthCode_AndDoesNotRetry()
     {
+        // arrange
         var stub = new StubHttpMessageHandler
         {
             Responder = _ => TestProviderBuilder.OAuthError("invalid_scope", "scope not permitted for this client"),
@@ -234,6 +255,7 @@ public class ServiceTokenProviderTests
         };
         var provider = TestProviderBuilder.Build(stub, options);
 
+        // act + assert
         var act = async () => await provider.GetTokenAsync("aud", new[] { "forbidden.scope" });
 
         var ex = (await act.Should().ThrowAsync<ServiceTokenException>()).Subject.Single();
@@ -248,6 +270,7 @@ public class ServiceTokenProviderTests
     [Fact]
     public async Task GetTokenAsync_5xxRepeatedly_RetriesUpToConfiguredMaxThenThrows()
     {
+        // arrange
         var stub = new StubHttpMessageHandler
         {
             Responder = _ => TestProviderBuilder.Status(HttpStatusCode.ServiceUnavailable),
@@ -262,6 +285,7 @@ public class ServiceTokenProviderTests
         };
         var provider = TestProviderBuilder.Build(stub, options);
 
+        // act + assert
         var act = async () => await provider.GetTokenAsync("aud", new[] { "read" });
 
         var ex = (await act.Should().ThrowAsync<ServiceTokenException>()).Subject.Single();
@@ -273,6 +297,7 @@ public class ServiceTokenProviderTests
     [Fact]
     public async Task GetTokenAsync_5xxThenSuccess_RecoversWithoutThrowing()
     {
+        // arrange
         var stub = new StubHttpMessageHandler();
         stub.ResponseQueue.Enqueue(TestProviderBuilder.Status(HttpStatusCode.InternalServerError));
         stub.ResponseQueue.Enqueue(TestProviderBuilder.TokenOk("jwt-recovered", expiresIn: 3600));
@@ -286,8 +311,10 @@ public class ServiceTokenProviderTests
         };
         var provider = TestProviderBuilder.Build(stub, options);
 
+        // act
         var token = await provider.GetTokenAsync("aud", new[] { "read" });
 
+        // assert
         token.Should().Be("jwt-recovered");
         stub.CountRequestsContaining("/oauth/token").Should().Be(2);
     }
@@ -297,7 +324,7 @@ public class ServiceTokenProviderTests
     [Fact]
     public async Task GetTokenAsync_WithoutTokenEndpointOverride_HitsDiscoveryOnceAndCachesIt()
     {
-        // Discovery doc is cached for process lifetime — a second token request (with a
+        // arrange — discovery doc is cached for process lifetime; a second token request (with a
         // different cache key to force a fetch) must NOT trigger a second discovery hit.
         var stub = new StubHttpMessageHandler
         {
@@ -326,10 +353,11 @@ public class ServiceTokenProviderTests
         };
         var provider = TestProviderBuilder.Build(stub, options);
 
-        // Two different cache keys force two token requests.
+        // act — two different cache keys force two token requests.
         await provider.GetTokenAsync("aud-1", new[] { "read" });
         await provider.GetTokenAsync("aud-2", new[] { "read" });
 
+        // assert
         stub.CountRequestsContaining("/.well-known/openid-configuration").Should().Be(1,
             because: "the discovery doc URL is stable across a deploy; refetching it on every token request would be silly.");
         stub.CountRequestsContaining("/oauth/token").Should().Be(2);
@@ -338,14 +366,17 @@ public class ServiceTokenProviderTests
     [Fact]
     public async Task GetTokenAsync_WithTokenEndpointOverride_SkipsDiscovery()
     {
+        // arrange
         var stub = new StubHttpMessageHandler
         {
             Responder = _ => TestProviderBuilder.TokenOk("jwt-x", expiresIn: 3600),
         };
         var provider = TestProviderBuilder.Build(stub);  // builder sets override by default
 
+        // act
         await provider.GetTokenAsync("aud", new[] { "read" });
 
+        // assert
         stub.CountRequestsContaining("/.well-known").Should().Be(0,
             because: "TokenEndpointOverride is the explicit operator opt-out from discovery.");
         stub.CountRequestsContaining("/oauth/token").Should().Be(1);

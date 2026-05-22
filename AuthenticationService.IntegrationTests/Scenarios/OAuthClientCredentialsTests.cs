@@ -24,11 +24,13 @@ public class OAuthClientCredentialsTests(AppHostFixture fixture) : IntegrationTe
     [Fact]
     public async Task AdminCreatesClient_TokenEndpointIssuesServiceJwt_WithExpectedClaimShape()
     {
+        // arrange
         var adminToken = await AuthenticateAsync(AdminEmail, AdminPassword);
 
         var clientId = $"test-client-{Guid.NewGuid():N}";
         AuthClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
 
+        // act — phase 1: admin creates client
         var createResp = await AuthClient.PostAsJsonAsync(
             "/api/Admin/clients",
             new AdminCreateClientDto
@@ -43,6 +45,7 @@ public class OAuthClientCredentialsTests(AppHostFixture fixture) : IntegrationTe
                 },
             });
 
+        // assert — phase 1
         createResp.StatusCode.Should().Be(HttpStatusCode.Created,
             because: "admin-creates-client with a fresh id + valid scopes must succeed.");
 
@@ -65,6 +68,7 @@ public class OAuthClientCredentialsTests(AppHostFixture fixture) : IntegrationTe
         // Token endpoint is anonymous + uses Basic auth — drop the admin bearer.
         AuthClient.DefaultRequestHeaders.Authorization = null;
 
+        // act — phase 2: token endpoint issues service JWT
         var tokenForm = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["grant_type"] = "client_credentials",
@@ -75,6 +79,7 @@ public class OAuthClientCredentialsTests(AppHostFixture fixture) : IntegrationTe
         });
         var tokenResp = await AuthClient.PostAsync("/oauth/token", tokenForm);
 
+        // assert — phase 2
         tokenResp.IsSuccessStatusCode.Should().BeTrue(
             because: "valid credentials + authorised scopes must yield a token.");
 

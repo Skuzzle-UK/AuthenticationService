@@ -13,18 +13,20 @@ public class ServiceTokenClientOptionsTests
     [Fact]
     public void Defaults_RequireHttpsMetadataIsTrue()
     {
+        // arrange
         var options = new ServiceTokenClientOptions();
 
-        // HTTPS-by-default is a security property — weakening must be explicit opt-in.
+        // assert — HTTPS-by-default is a security property; weakening must be explicit opt-in.
         options.RequireHttpsMetadata.Should().BeTrue();
     }
 
     [Fact]
     public void Defaults_RefreshAtFractionAndMaxRetriesMatchPlan()
     {
+        // arrange
         var options = new ServiceTokenClientOptions();
 
-        // Defaults are part of the design contract (service-token-client-plan.md).
+        // assert — defaults are part of the design contract (service-token-client-plan.md).
         options.RefreshAtFractionOfLifetime.Should().Be(0.8);
         options.MaxRetriesOnTransient.Should().Be(3);
     }
@@ -32,6 +34,7 @@ public class ServiceTokenClientOptionsTests
     [Fact]
     public void Validate_AllRequiredFieldsPresent_PassesValidation()
     {
+        // arrange
         var options = new ServiceTokenClientOptions
         {
             Authority = "https://auth.example.com",
@@ -39,8 +42,10 @@ public class ServiceTokenClientOptionsTests
             ClientSecret = "super-secret",
         };
 
+        // act
         var results = Validate(options);
 
+        // assert
         results.Should().BeEmpty();
     }
 
@@ -50,6 +55,7 @@ public class ServiceTokenClientOptionsTests
     [InlineData(nameof(ServiceTokenClientOptions.ClientSecret))]
     public void Validate_RequiredFieldMissing_FailsWithFieldNamed(string missingProperty)
     {
+        // arrange
         var options = new ServiceTokenClientOptions
         {
             Authority = "https://auth.example.com",
@@ -69,8 +75,10 @@ public class ServiceTokenClientOptionsTests
                 break;
         }
 
+        // act
         var results = Validate(options);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(missingProperty));
     }
 
@@ -80,7 +88,7 @@ public class ServiceTokenClientOptionsTests
     [InlineData(2.0)]
     public void Validate_RefreshAtFractionOutOfRange_FailsValidation(double fraction)
     {
-        // Out-of-range fraction breaks the proactive-refresh maths (negative refreshes
+        // arrange — out-of-range fraction breaks the proactive-refresh maths (negative refreshes
         // constantly; >1 never refreshes).
         var options = new ServiceTokenClientOptions
         {
@@ -90,8 +98,10 @@ public class ServiceTokenClientOptionsTests
             RefreshAtFractionOfLifetime = fraction,
         };
 
+        // act
         var results = Validate(options);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(ServiceTokenClientOptions.RefreshAtFractionOfLifetime)));
     }
 
@@ -100,7 +110,7 @@ public class ServiceTokenClientOptionsTests
     [InlineData(11)]
     public void Validate_MaxRetriesOutOfRange_FailsValidation(int retries)
     {
-        // Upper sanity cap at 10 — prevents an operator from configuring a multi-minute
+        // arrange — upper sanity cap at 10; prevents an operator from configuring a multi-minute
         // retry storm against /oauth/token.
         var options = new ServiceTokenClientOptions
         {
@@ -110,8 +120,10 @@ public class ServiceTokenClientOptionsTests
             MaxRetriesOnTransient = retries,
         };
 
+        // act
         var results = Validate(options);
 
+        // assert
         results.Should().Contain(r => r.MemberNames.Contains(nameof(ServiceTokenClientOptions.MaxRetriesOnTransient)));
     }
 

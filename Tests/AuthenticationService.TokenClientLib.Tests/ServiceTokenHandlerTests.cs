@@ -16,6 +16,7 @@ public class ServiceTokenHandlerTests
     [Fact]
     public async Task SendAsync_StampsBearerTokenAndForwardsRequest()
     {
+        // arrange
         var provider = Substitute.For<IServiceTokenProvider>();
         provider
             .GetTokenAsync("inventory-api", Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
@@ -25,10 +26,11 @@ public class ServiceTokenHandlerTests
         var handler = new ServiceTokenHandler(provider, "inventory-api", new[] { "inventory.read" }) { InnerHandler = inner };
         using var invoker = new HttpMessageInvoker(handler, disposeHandler: false);
 
+        // act
         using var request = new HttpRequestMessage(HttpMethod.Get, "https://inventory.svc/items/1");
         using var response = await invoker.SendAsync(request, CancellationToken.None);
 
-        // RFC 6750 §2.1: no quotes, no extra spaces.
+        // assert — RFC 6750 §2.1: no quotes, no extra spaces.
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         inner.LastRequest!.Headers.Authorization!.Scheme.Should().Be("Bearer");
         inner.LastRequest.Headers.Authorization.Parameter.Should().Be("jwt-stamped");
@@ -38,6 +40,7 @@ public class ServiceTokenHandlerTests
     [Fact]
     public async Task SendAsync_Downstream401WithInvalidToken_InvalidatesAndRetriesOnceWithFreshToken()
     {
+        // arrange
         var provider = Substitute.For<IServiceTokenProvider>();
         provider
             .GetTokenAsync("aud", Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
@@ -50,10 +53,11 @@ public class ServiceTokenHandlerTests
         var handler = new ServiceTokenHandler(provider, "aud", new[] { "read" }) { InnerHandler = inner };
         using var invoker = new HttpMessageInvoker(handler, disposeHandler: false);
 
+        // act
         using var request = new HttpRequestMessage(HttpMethod.Get, "https://downstream/api");
         using var response = await invoker.SendAsync(request, CancellationToken.None);
 
-        // Three things must all be true: Invalidate called, retry happened, and the
+        // assert — three things must all be true: Invalidate called, retry happened, and the
         // retry used the fresh token (not the stale one).
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         provider.Received(1).Invalidate("aud", Arg.Any<IReadOnlyList<string>>());
@@ -65,7 +69,7 @@ public class ServiceTokenHandlerTests
     [Fact]
     public async Task SendAsync_401WithoutInvalidTokenHint_PassesThroughWithoutRetrying()
     {
-        // Plain 401 (no invalid_token hint) usually means authorisation-policy denial —
+        // arrange — plain 401 (no invalid_token hint) usually means authorisation-policy denial;
         // refreshing the token won't fix that. Pass straight to the consumer.
         var provider = Substitute.For<IServiceTokenProvider>();
         provider
@@ -76,9 +80,11 @@ public class ServiceTokenHandlerTests
         var handler = new ServiceTokenHandler(provider, "aud", new[] { "read" }) { InnerHandler = inner };
         using var invoker = new HttpMessageInvoker(handler, disposeHandler: false);
 
+        // act
         using var request = new HttpRequestMessage(HttpMethod.Get, "https://downstream/api");
         using var response = await invoker.SendAsync(request, CancellationToken.None);
 
+        // assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         provider.DidNotReceive().Invalidate(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>());
         inner.RequestCount.Should().Be(1);
@@ -87,7 +93,7 @@ public class ServiceTokenHandlerTests
     [Fact]
     public async Task SendAsync_TwoConsecutiveInvalidTokenResponses_BubblesSecond401Up()
     {
-        // Two invalid_token responses in a row — credentials don't work; give up rather
+        // arrange — two invalid_token responses in a row; credentials don't work, so give up rather
         // than spam the auth service.
         var provider = Substitute.For<IServiceTokenProvider>();
         provider
@@ -98,9 +104,11 @@ public class ServiceTokenHandlerTests
         var handler = new ServiceTokenHandler(provider, "aud", new[] { "read" }) { InnerHandler = inner };
         using var invoker = new HttpMessageInvoker(handler, disposeHandler: false);
 
+        // act
         using var request = new HttpRequestMessage(HttpMethod.Get, "https://downstream/api");
         using var response = await invoker.SendAsync(request, CancellationToken.None);
 
+        // assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         inner.RequestCount.Should().Be(2,
             because: "we retry exactly once; a third call would either spam the downstream or imply infinite recursion.");
@@ -110,7 +118,7 @@ public class ServiceTokenHandlerTests
     [Fact]
     public async Task SendAsync_ProviderThrows_BubblesUpAndDoesNotSendRequest()
     {
-        // A provider failure must never result in an unauthenticated outgoing call —
+        // arrange — a provider failure must never result in an unauthenticated outgoing call;
         // downstream would 401 for a completely different (and confusing) reason.
         var provider = Substitute.For<IServiceTokenProvider>();
         provider
@@ -122,6 +130,7 @@ public class ServiceTokenHandlerTests
         var handler = new ServiceTokenHandler(provider, "aud", new[] { "read" }) { InnerHandler = inner };
         using var invoker = new HttpMessageInvoker(handler, disposeHandler: false);
 
+        // act + assert
         using var request = new HttpRequestMessage(HttpMethod.Get, "https://downstream/api");
         var act = async () => await invoker.SendAsync(request, CancellationToken.None);
 

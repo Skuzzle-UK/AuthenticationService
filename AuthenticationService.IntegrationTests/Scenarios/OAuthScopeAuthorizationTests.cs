@@ -21,6 +21,7 @@ public class OAuthScopeAuthorizationTests(AppHostFixture fixture) : IntegrationT
     [Fact]
     public async Task UnauthorisedScopeRequest_ReturnsInvalidScope_AuthorisedScopeStillWorks()
     {
+        // arrange
         // Admin creates a client with ONLY inventory.read on inventory-api.
         var adminToken = await AuthenticateAsync(AdminEmail, AdminPassword);
         var clientId = $"scope-test-{Guid.NewGuid():N}";
@@ -42,7 +43,7 @@ public class OAuthScopeAuthorizationTests(AppHostFixture fixture) : IntegrationT
 
         AuthClient.DefaultRequestHeaders.Authorization = null;
 
-        // Request a scope the client doesn't have.
+        // act — phase 1: request a scope the client doesn't have
         var deniedResp = await AuthClient.PostAsync(
             "/oauth/token",
             new FormUrlEncodedContent(new Dictionary<string, string>
@@ -54,6 +55,7 @@ public class OAuthScopeAuthorizationTests(AppHostFixture fixture) : IntegrationT
                 ["scope"] = "inventory.write",
             }));
 
+        // assert — phase 1
         deniedResp.StatusCode.Should().Be(HttpStatusCode.BadRequest,
             because: "requesting a scope the client doesn't own must fail at the token endpoint, before any JWT is issued.");
 
@@ -61,7 +63,7 @@ public class OAuthScopeAuthorizationTests(AppHostFixture fixture) : IntegrationT
         deniedBody!.Error.Should().Be("invalid_scope",
             because: "RFC 6749 §5.2 — unauthorised scope is exactly this error code.");
 
-        // Same client, a scope it DOES have — proves the rejection is per-scope.
+        // act — phase 2: same client, a scope it DOES have (proves rejection is per-scope)
         var allowedResp = await AuthClient.PostAsync(
             "/oauth/token",
             new FormUrlEncodedContent(new Dictionary<string, string>
@@ -73,6 +75,7 @@ public class OAuthScopeAuthorizationTests(AppHostFixture fixture) : IntegrationT
                 ["scope"] = "inventory.read",
             }));
 
+        // assert — phase 2
         allowedResp.IsSuccessStatusCode.Should().BeTrue(
             because: "the invalid_scope denial above must be per-requested-scope, not a blanket block on the client.");
 
@@ -84,6 +87,7 @@ public class OAuthScopeAuthorizationTests(AppHostFixture fixture) : IntegrationT
     [Fact]
     public async Task PartialScopeAuthorisation_AllOrNothing_NoToken()
     {
+        // arrange
         // Scope grants are atomic: if one of the requested scopes is missing, the whole
         // request is rejected. There's no "give me what you can" partial-grant mode.
         var adminToken = await AuthenticateAsync(AdminEmail, AdminPassword);
@@ -105,6 +109,7 @@ public class OAuthScopeAuthorizationTests(AppHostFixture fixture) : IntegrationT
         var rawSecret = (await createResp.Content.ReadFromJsonAsync<ClientCreatedResponse>())!.ClientSecret;
         AuthClient.DefaultRequestHeaders.Authorization = null;
 
+        // act
         var resp = await AuthClient.PostAsync(
             "/oauth/token",
             new FormUrlEncodedContent(new Dictionary<string, string>
@@ -116,6 +121,7 @@ public class OAuthScopeAuthorizationTests(AppHostFixture fixture) : IntegrationT
                 ["scope"] = "inventory.read inventory.write",
             }));
 
+        // assert
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var body = await resp.Content.ReadFromJsonAsync<OAuthErrorResponse>();
         body!.Error.Should().Be("invalid_scope",

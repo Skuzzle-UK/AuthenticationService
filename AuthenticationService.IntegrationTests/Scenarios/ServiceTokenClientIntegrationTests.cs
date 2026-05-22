@@ -36,6 +36,7 @@ public class ServiceTokenClientIntegrationTests(AppHostFixture fixture) : Integr
     [Fact]
     public async Task TypedClient_TwoSequentialCalls_HitAuthServiceOnce_DownstreamSeesSameToken()
     {
+        // arrange
         var (clientId, clientSecret) = await CreateClientAsync();
 
         await using var downstream = await StartMockResourceAsync(_ => Results.Ok(new { ok = true }));
@@ -44,10 +45,12 @@ public class ServiceTokenClientIntegrationTests(AppHostFixture fixture) : Integr
         await using var sp = services.BuildServiceProvider();
         var factory = sp.GetRequiredService<IHttpClientFactory>();
 
+        // act
         var http = factory.CreateClient("downstream");
         var r1 = await http.GetAsync("/items");
         var r2 = await http.GetAsync("/items");
 
+        // assert
         r1.StatusCode.Should().Be(HttpStatusCode.OK);
         r2.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -66,6 +69,7 @@ public class ServiceTokenClientIntegrationTests(AppHostFixture fixture) : Integr
     [Fact]
     public async Task TypedClient_DownstreamFirst401InvalidToken_HandlerInvalidatesAndRetriesWithFreshToken()
     {
+        // arrange
         var (clientId, clientSecret) = await CreateClientAsync();
 
         // Stub returns 401+invalid_token on attempt 1, 200 on attempt 2.
@@ -77,10 +81,12 @@ public class ServiceTokenClientIntegrationTests(AppHostFixture fixture) : Integr
         await using var sp = services.BuildServiceProvider();
         var factory = sp.GetRequiredService<IHttpClientFactory>();
 
+        // act
         // Single call — handler does invalidate-and-retry internally; caller sees 200.
         var http = factory.CreateClient("downstream");
         var response = await http.GetAsync("/items");
 
+        // assert
         response.StatusCode.Should().Be(HttpStatusCode.OK,
             because: "an RFC 6750 invalid_token hint on a downstream 401 is exactly the case the handler is built to recover from.");
 

@@ -15,9 +15,11 @@ public class HttpClientBuilderExtensionsTests
     [Fact]
     public void AddServiceToken_EmptyAudience_Throws()
     {
+        // arrange
         var services = new ServiceCollection();
         var builder = services.AddHttpClient("test-client");
 
+        // act + assert
         var act = () => builder.AddServiceToken(audience: "  ", scopes: "any.scope");
 
         act.Should().Throw<ArgumentException>().WithMessage("*audience*");
@@ -26,9 +28,11 @@ public class HttpClientBuilderExtensionsTests
     [Fact]
     public void AddServiceToken_NoScopes_Throws()
     {
+        // arrange
         var services = new ServiceCollection();
         var builder = services.AddHttpClient("test-client");
 
+        // act + assert
         var act = () => builder.AddServiceToken(audience: "inventory-api");
 
         act.Should().Throw<ArgumentException>().WithMessage("*scope*");
@@ -37,6 +41,7 @@ public class HttpClientBuilderExtensionsTests
     [Fact]
     public void AddServiceToken_RegistersServiceTokenHandlerInTheTypedClientPipeline()
     {
+        // arrange
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(Substitute.For<IServiceTokenProvider>());
@@ -44,7 +49,7 @@ public class HttpClientBuilderExtensionsTests
 
         using var sp = services.BuildServiceProvider();
 
-        // IHttpMessageHandlerFactory builds the full chain on demand; framework wraps
+        // act — IHttpMessageHandlerFactory builds the full chain on demand; framework wraps
         // in LifetimeTrackingHttpMessageHandler so walk InnerHandler rather than match root.
         var handlerFactory = sp.GetRequiredService<IHttpMessageHandlerFactory>();
         using var handler = handlerFactory.CreateHandler("test-client");
@@ -62,6 +67,7 @@ public class HttpClientBuilderExtensionsTests
             current = dh.InnerHandler!;
         }
 
+        // assert
         found.Should().BeTrue(
             because: "AddServiceToken should attach ServiceTokenHandler to the typed client's pipeline; " +
                      "otherwise the Bearer header never gets stamped on outgoing calls.");

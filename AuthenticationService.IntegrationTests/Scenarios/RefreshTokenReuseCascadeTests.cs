@@ -21,6 +21,7 @@ public class RefreshTokenReuseCascadeTests(AppHostFixture fixture) : Integration
     [Fact]
     public async Task SecondRefreshWithConsumedToken_TriggersFullCascadeAndNotifiesUser()
     {
+        // arrange
         var user = await RegisterAndConfirmUserAsync();
         var firstToken = await LoginAsync(user);
 
@@ -36,10 +37,12 @@ public class RefreshTokenReuseCascadeTests(AppHostFixture fixture) : Integration
         AuthClient.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", firstToken.Value);
 
-        // First refresh consumes R1 — setup, not the assertion (covered by Scenario 2).
+        // act — phase 1: first refresh consumes R1 (setup, covered by Scenario 2)
         var firstRefresh = await AuthClient.PostAsJsonAsync(
             "/api/Authentication/refresh",
             new RefreshTokenDto { RefreshToken = firstToken.RefreshToken });
+
+        // assert — phase 1
         firstRefresh.IsSuccessStatusCode.Should().BeTrue(
             because: "the first refresh of an unconsumed token must succeed — this is setup, not the assertion.");
 
@@ -47,11 +50,12 @@ public class RefreshTokenReuseCascadeTests(AppHostFixture fixture) : Integration
         // registration-confirmation email.
         await SmtpClient.ClearAsync();
 
-        // Second refresh with the now-consumed token triggers the cascade.
+        // act — phase 2: second refresh with the now-consumed token triggers the cascade
         var secondRefresh = await AuthClient.PostAsJsonAsync(
             "/api/Authentication/refresh",
             new RefreshTokenDto { RefreshToken = firstToken.RefreshToken });
 
+        // assert — phase 2
         secondRefresh.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
             because: "reuse detection responds with a generic 401 — the same shape NotFound / Expired produce.");
 

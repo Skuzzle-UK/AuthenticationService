@@ -25,6 +25,7 @@ public class AdminForcePasswordResetTests(AppHostFixture fixture) : IntegrationT
     [Fact]
     public async Task AdminForcePasswordReset_EmailsResetLinkAndRevokesRefreshTokens()
     {
+        // arrange
         var user = await RegisterAndConfirmUserAsync();
         var preToken = await LoginAsync(user);
         // Clear inbox so the reset email is the only message after the admin fires —
@@ -40,10 +41,13 @@ public class AdminForcePasswordResetTests(AppHostFixture fixture) : IntegrationT
             targetUserId = dbUser.Id;
         }
 
+        // act — phase 1: admin force-password-reset
         AuthClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
         var resetResp = await AuthClient.PostAsJsonAsync<object?>(
             $"/api/Admin/users/{targetUserId}/force-password-reset",
             value: null);
+
+        // assert — phase 1
         resetResp.IsSuccessStatusCode.Should().BeTrue(
             because: "admin force-password-reset on an existing user must succeed.");
 
@@ -63,6 +67,7 @@ public class AdminForcePasswordResetTests(AppHostFixture fixture) : IntegrationT
         linkQuery["token"].ToString().Should().NotBeNullOrEmpty(
             because: "the reset link must carry the password-reset token as a query param.");
 
+        // act — phase 2: pre-reset refresh token attempt
         // Admin-unique contract: refresh-token families die immediately so the user
         // can't refresh past their current access-token expiry. Access tokens themselves
         // continue working until natural expiry (~5 min) — admin doesn't have the
@@ -71,6 +76,8 @@ public class AdminForcePasswordResetTests(AppHostFixture fixture) : IntegrationT
         var refreshResp = await AuthClient.PostAsJsonAsync(
             "/api/Authentication/refresh",
             new RefreshTokenDto { RefreshToken = preToken.RefreshToken });
+
+        // assert — phase 2
         refreshResp.IsSuccessStatusCode.Should().BeFalse(
             because: "force-password-reset revokes every refresh-token family — the user can't refresh past their current access-token expiry.");
     }

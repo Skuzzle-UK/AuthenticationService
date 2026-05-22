@@ -26,6 +26,7 @@ public class AdminInvitationFlowTests(AppHostFixture fixture) : IntegrationTestB
     [Fact]
     public async Task AdminInvitesUser_UserAccepts_Logs_In_LocksAndUnlocks()
     {
+        // arrange
         var adminToken = await AuthenticateAsync(AdminEmail, AdminPassword);
         adminToken.Should().NotBeNullOrEmpty(
             because: "the seeded admin account must be usable for admin operations against the live host.");
@@ -34,6 +35,7 @@ public class AdminInvitationFlowTests(AppHostFixture fixture) : IntegrationTestB
         var newUserName = UniqueUserName();
         AuthClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
 
+        // act — phase 1: admin creates user
         var createResp = await AuthClient.PostAsJsonAsync(
             "/api/Admin/users",
             new AdminCreateUserDto
@@ -44,6 +46,7 @@ public class AdminInvitationFlowTests(AppHostFixture fixture) : IntegrationTestB
                 LastName = "User",
             });
 
+        // assert — phase 1
         createResp.StatusCode.Should().Be(HttpStatusCode.Created,
             because: "admin-creates-user with a fresh email/username must succeed.");
 
@@ -77,6 +80,7 @@ public class AdminInvitationFlowTests(AppHostFixture fixture) : IntegrationTestB
 
         var userPassword = "InvitePassw0rd!";
 
+        // act — phase 2: user accepts invitation
         // Token is Base64URL-encoded in the link; pass through as-is — endpoint decodes.
         var acceptResp = await AuthClient.PostAsJsonAsync(
             "/api/Registration/accept-invitation",
@@ -87,6 +91,7 @@ public class AdminInvitationFlowTests(AppHostFixture fixture) : IntegrationTestB
                 NewPassword = userPassword,
             });
 
+        // assert — phase 2
         acceptResp.IsSuccessStatusCode.Should().BeTrue(
             because: "the invitation token + a valid password is the supported activation path.");
 
@@ -99,7 +104,10 @@ public class AdminInvitationFlowTests(AppHostFixture fixture) : IntegrationTestB
                 because: "the password supplied to accept-invitation must be hashed into the user row.");
         }
 
+        // act — phase 3: user logs in
         var userToken = await AuthenticateAsync(newEmail, userPassword);
+
+        // assert — phase 3
         userToken.Should().NotBeNullOrEmpty(
             because: "after invitation acceptance the user must be able to authenticate with their chosen password.");
 
@@ -110,23 +118,28 @@ public class AdminInvitationFlowTests(AppHostFixture fixture) : IntegrationTestB
             newUserId = (await db.Users.SingleAsync(u => u.Email == newEmail)).Id;
         }
 
+        // act — phase 4: admin locks user, user tries to log in
         var lockResp = await AuthClient.PostAsync($"/api/Admin/users/{newUserId}/lock", content: null);
-        lockResp.IsSuccessStatusCode.Should().BeTrue();
 
         AuthClient.DefaultRequestHeaders.Authorization = null;
         var lockedLoginResp = await AuthClient.PostAsJsonAsync(
             "/api/Authentication/authenticate",
             new AuthenticationDto { Email = newEmail, Password = userPassword });
 
+        // assert — phase 4
+        lockResp.IsSuccessStatusCode.Should().BeTrue();
         lockedLoginResp.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
             because: "after an admin lock the user's authentication attempts must be rejected.");
 
+        // act — phase 5: admin unlocks user, user tries to log in
         AuthClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
         var unlockResp = await AuthClient.PostAsync($"/api/Admin/users/{newUserId}/unlock", content: null);
-        unlockResp.IsSuccessStatusCode.Should().BeTrue();
 
         AuthClient.DefaultRequestHeaders.Authorization = null;
         var postUnlockToken = await AuthenticateAsync(newEmail, userPassword);
+
+        // assert — phase 5
+        unlockResp.IsSuccessStatusCode.Should().BeTrue();
         postUnlockToken.Should().NotBeNullOrEmpty(
             because: "after admin-unlock the user must regain the ability to authenticate.");
     }

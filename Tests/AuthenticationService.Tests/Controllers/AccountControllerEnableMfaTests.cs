@@ -27,14 +27,16 @@ public class AccountControllerEnableMfaTests
     [Fact]
     public async Task EnableMfa_OrphanToken_RevokesAndReturns401()
     {
-        // sub claim resolved via TokenService.GetUserId — that user no longer exists.
+        // arrange — sub claim resolved via TokenService.GetUserId, that user no longer exists.
         var (controller, deps) = BuildController();
         deps.TokenService.GetUserId(Arg.Any<string>()).Returns("ghost-user");
         deps.UserService.FindByIdAsync("ghost-user").Returns((User?)null);
         SetAuthorizationHeader(controller, "eyJ.access");
 
+        // act
         var result = await controller.EnableMfaAsync(new EnableMfaRequest { PreferredMfaProvider = MfaProviders.Email });
 
+        // assert
         result.Should().BeOfType<UnauthorizedObjectResult>();
         await deps.TokenService.Received(1).RevokeOrphanedTokenAsync("eyJ.access", Arg.Any<string>());
     }
@@ -42,7 +44,7 @@ public class AccountControllerEnableMfaTests
     [Fact]
     public async Task EnableMfa_NoAuthenticatorKeyOnFile_ResetsToGenerateOne()
     {
-        // First-time enrolment: GetAuthenticatorKey returns null then key after reset. Skipping reset would serve a null key in the QR.
+        // arrange — first-time enrolment: GetAuthenticatorKey returns null then key after reset. Skipping reset would serve a null key in the QR.
         var (controller, deps) = BuildController();
         var user = SeedUser(deps);
         deps.UserService.GetAuthenticatorKeyAsync(user)
@@ -50,37 +52,44 @@ public class AccountControllerEnableMfaTests
         deps.UserService.GetValidMfaProvidersAsync(user)
             .Returns((IList<string>)new List<string> { "Email" });
 
+        // act
         await controller.EnableMfaAsync(new EnableMfaRequest { PreferredMfaProvider = MfaProviders.Email });
 
+        // assert
         await deps.UserService.Received(1).ResetAuthenticatorKeyAsync(user);
     }
 
     [Fact]
     public async Task EnableMfa_ExistingKey_DoesNotResetIt()
     {
-        // Re-enrolment must not invalidate an already-paired authenticator app.
+        // arrange — re-enrolment must not invalidate an already-paired authenticator app.
         var (controller, deps) = BuildController();
         var user = SeedUser(deps);
         deps.UserService.GetAuthenticatorKeyAsync(user).Returns("EXISTING-KEY");
         deps.UserService.GetValidMfaProvidersAsync(user)
             .Returns((IList<string>)new List<string> { "Email" });
 
+        // act
         await controller.EnableMfaAsync(new EnableMfaRequest { PreferredMfaProvider = MfaProviders.Email });
 
+        // assert
         await deps.UserService.DidNotReceive().ResetAuthenticatorKeyAsync(Arg.Any<User>());
     }
 
     [Fact]
     public async Task EnableMfa_RequestedProviderNotInValidSet_Returns401()
     {
+        // arrange
         var (controller, deps) = BuildController();
         var user = SeedUser(deps);
         deps.UserService.GetAuthenticatorKeyAsync(user).Returns("KEY");
         deps.UserService.GetValidMfaProvidersAsync(user)
             .Returns((IList<string>)new List<string> { "Email" });
 
+        // act
         var result = await controller.EnableMfaAsync(new EnableMfaRequest { PreferredMfaProvider = MfaProviders.Authenticator });
 
+        // assert
         var unauthorized = result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
         unauthorized.Value.Should().BeOfType<AuthenticationResponse>()
             .Which.Errors!.Values.Should().Contain(ErrorMessages.InvalidMfaProvider);
@@ -90,14 +99,17 @@ public class AccountControllerEnableMfaTests
     [Fact]
     public async Task EnableMfa_EmailProvider_ReturnsResponseWithEmailProvider()
     {
+        // arrange
         var (controller, deps) = BuildController();
         var user = SeedUser(deps);
         deps.UserService.GetAuthenticatorKeyAsync(user).Returns("KEY");
         deps.UserService.GetValidMfaProvidersAsync(user)
             .Returns((IList<string>)new List<string> { "Email" });
 
+        // act
         var result = await controller.EnableMfaAsync(new EnableMfaRequest { PreferredMfaProvider = MfaProviders.Email });
 
+        // assert
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         var response = ok.Value.Should().BeOfType<EnableMfaResponse>().Subject;
         response.EnabledMfaProvider.Should().Be(MfaProviders.Email);
@@ -109,7 +121,7 @@ public class AccountControllerEnableMfaTests
     [Fact]
     public async Task EnableMfa_PhoneProviderButSmsNotConfigured_RollsBackMfaAnd400()
     {
-        // Must roll back the SetMfaEnabled it already called — otherwise user is left with MFA on but no working provider.
+        // arrange — must roll back the SetMfaEnabled it already called, otherwise user is left with MFA on but no working provider.
         var (controller, deps) = BuildController();
         var user = SeedUser(deps);
         deps.UserService.GetAuthenticatorKeyAsync(user).Returns("KEY");
@@ -118,8 +130,10 @@ public class AccountControllerEnableMfaTests
         deps.UserService.GetMfaEnabledAsync(user).Returns(false);
         deps.SmsService.IsConfigured.Returns(false);
 
+        // act
         var result = await controller.EnableMfaAsync(new EnableMfaRequest { PreferredMfaProvider = MfaProviders.Phone });
 
+        // assert
         var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
         bad.Value.Should().BeOfType<AuthenticationResponse>()
             .Which.Errors!.Values.Should().Contain(ErrorMessages.PhoneMfaNotConfigured);
@@ -134,6 +148,7 @@ public class AccountControllerEnableMfaTests
     [Fact]
     public async Task EnableMfa_PhoneProviderButPhoneUnconfirmed_RollsBackMfaAnd400()
     {
+        // arrange
         var (controller, deps) = BuildController();
         var user = SeedUser(deps);
         user.PhoneNumber = "+44 1234 567890";
@@ -144,8 +159,10 @@ public class AccountControllerEnableMfaTests
         deps.UserService.GetMfaEnabledAsync(user).Returns(false);
         deps.SmsService.IsConfigured.Returns(true);
 
+        // act
         var result = await controller.EnableMfaAsync(new EnableMfaRequest { PreferredMfaProvider = MfaProviders.Phone });
 
+        // assert
         var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
         bad.Value.Should().BeOfType<AuthenticationResponse>()
             .Which.Errors!.Values.Should().Contain(ErrorMessages.PhoneNumberNotConfirmed);
@@ -155,6 +172,7 @@ public class AccountControllerEnableMfaTests
     [Fact]
     public async Task EnableMfa_PhoneProviderHappy_ReturnsResponseWithPhone()
     {
+        // arrange
         var (controller, deps) = BuildController();
         var user = SeedUser(deps);
         user.PhoneNumber = "+44 1234 567890";
@@ -164,8 +182,10 @@ public class AccountControllerEnableMfaTests
             .Returns((IList<string>)new List<string> { "Phone" });
         deps.SmsService.IsConfigured.Returns(true);
 
+        // act
         var result = await controller.EnableMfaAsync(new EnableMfaRequest { PreferredMfaProvider = MfaProviders.Phone });
 
+        // assert
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         var response = ok.Value.Should().BeOfType<EnableMfaResponse>().Subject;
         response.EnabledMfaProvider.Should().Be(MfaProviders.Phone);
@@ -174,15 +194,17 @@ public class AccountControllerEnableMfaTests
     [Fact]
     public async Task EnableMfa_AuthenticatorProvider_ReturnsResponseWithQrCodeAndKey()
     {
-        // Response must carry BOTH the QR PNG and the raw base32 key (in case scanning fails).
+        // arrange — response must carry BOTH the QR PNG and the raw base32 key (in case scanning fails).
         var (controller, deps) = BuildController();
         var user = SeedUser(deps);
         deps.UserService.GetAuthenticatorKeyAsync(user).Returns("JBSWY3DPEHPK3PXP");
         deps.UserService.GetValidMfaProvidersAsync(user)
             .Returns((IList<string>)new List<string> { "Authenticator" });
 
+        // act
         var result = await controller.EnableMfaAsync(new EnableMfaRequest { PreferredMfaProvider = MfaProviders.Authenticator });
 
+        // assert
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         var response = ok.Value.Should().BeOfType<EnableMfaResponse>().Subject;
         response.EnabledMfaProvider.Should().Be(MfaProviders.Authenticator);
@@ -194,7 +216,7 @@ public class AccountControllerEnableMfaTests
     [Fact]
     public async Task EnableMfa_DtoProviderNull_DoesNotOverrideExistingPreferredProvider()
     {
-        // Null DTO provider: controller leaves user.PreferredMfaProvider alone and uses the existing value.
+        // arrange — null DTO provider: controller leaves user.PreferredMfaProvider alone and uses the existing value.
         // The valid-providers list is set to string.Empty (which is what null MfaProviders.ToString() returns) so the membership check passes.
         var (controller, deps) = BuildController();
         var user = SeedUser(deps);
@@ -203,8 +225,10 @@ public class AccountControllerEnableMfaTests
         deps.UserService.GetValidMfaProvidersAsync(user)
             .Returns((IList<string>)new List<string> { string.Empty });
 
+        // act
         var result = await controller.EnableMfaAsync(new EnableMfaRequest { PreferredMfaProvider = null });
 
+        // assert
         result.Should().BeOfType<OkObjectResult>();
         user.PreferredMfaProvider.Should().Be(MfaProviders.Email);
         await deps.UserService.DidNotReceive().UpdateAsync(Arg.Any<User>());

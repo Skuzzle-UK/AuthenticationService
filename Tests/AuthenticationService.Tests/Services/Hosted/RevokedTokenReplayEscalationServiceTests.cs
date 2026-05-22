@@ -36,10 +36,13 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
     [Fact]
     public async Task RunSweep_NoReplaysInWindow_NoOp()
     {
+        // arrange
         var (service, db, deps) = BuildService();
 
+        // act
         await service.RunSweepAsync(CancellationToken.None);
 
+        // assert
         await deps.EmailService.DidNotReceive().SendEmailAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
         await deps.TokenService.DidNotReceive().RevokeAllRefreshTokenFamiliesAsync(
@@ -49,14 +52,17 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
     [Fact]
     public async Task RunSweep_AttemptsAtWarnThreshold_StampsWarnedAtButDoesNotLock()
     {
+        // arrange
         var (service, db, deps) = BuildService(warnThreshold: 2, lockThreshold: 5);
         var revokedToken = new RevokedToken { TokenJti = "j1", UserId = "u1", ExpiresAt = DateTime.UtcNow.AddMinutes(10) };
         db.RevokedTokens.Add(revokedToken);
         SeedAttempts(db, "j1", count: 2);
         await db.SaveChangesAsync();
 
+        // act
         await service.RunSweepAsync(CancellationToken.None);
 
+        // assert
         db.ChangeTracker.Clear();
         var stamped = await db.RevokedTokens.SingleAsync();
         stamped.WarnedAt.Should().NotBeNull(because: "warn threshold met — stamp the row.");
@@ -67,7 +73,7 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
     [Fact]
     public async Task RunSweep_AlreadyWarned_DoesNotRefireOnNextSweep()
     {
-        // WarnedAt already populated — idempotent skip.
+        // arrange — WarnedAt already populated; idempotent skip.
         var (service, db, deps) = BuildService(warnThreshold: 2, lockThreshold: 5);
         var revokedToken = new RevokedToken
         {
@@ -81,8 +87,10 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
 
         var originalWarnedAt = revokedToken.WarnedAt.Value;
 
+        // act
         await service.RunSweepAsync(CancellationToken.None);
 
+        // assert
         db.ChangeTracker.Clear();
         (await db.RevokedTokens.SingleAsync()).WarnedAt
             .Should().BeCloseTo(originalWarnedAt, TimeSpan.FromSeconds(1));
@@ -91,6 +99,7 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
     [Fact]
     public async Task RunSweep_AttemptsAtLockThreshold_CascadesLockRevokeAndEmail()
     {
+        // arrange
         var (service, db, deps) = BuildService(warnThreshold: 2, lockThreshold: 5);
         var user = new User { Id = "u1", UserName = "alice", Email = "alice@example.com" };
         db.Users.Add(user);
@@ -101,8 +110,10 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
         deps.UserService.FindByIdAsync("u1").Returns(user);
         deps.UserService.GeneratePasswordResetTokenAsync(user).Returns("reset-tok");
 
+        // act
         await service.RunSweepAsync(CancellationToken.None);
 
+        // assert
         await deps.UserService.Received(1).SetLockoutEndDateAsync(user, LockoutDurations.Indefinite);
         await deps.TokenService.Received(1).RevokeAllRefreshTokenFamiliesAsync("u1", RevocationReasons.ReuseDetected);
         await deps.UserService.Received(1).UpdateSecurityStampAsync(user);
@@ -119,6 +130,7 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
     [Fact]
     public async Task RunSweep_AlreadyLocked_DoesNotRefireCascade()
     {
+        // arrange
         var (service, db, deps) = BuildService(warnThreshold: 2, lockThreshold: 5);
         db.RevokedTokens.Add(new RevokedToken
         {
@@ -130,8 +142,10 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
         SeedAttempts(db, "j1", count: 10);
         await db.SaveChangesAsync();
 
+        // act
         await service.RunSweepAsync(CancellationToken.None);
 
+        // assert
         await deps.UserService.DidNotReceive().SetLockoutEndDateAsync(Arg.Any<User>(), Arg.Any<DateTimeOffset?>());
         await deps.TokenService.DidNotReceive().RevokeAllRefreshTokenFamiliesAsync(Arg.Any<string>(), Arg.Any<string>());
         await deps.EmailService.DidNotReceive().SendEmailAsync(
@@ -141,7 +155,7 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
     [Fact]
     public async Task RunSweep_LockUserMissing_LogsAndSkipsCascade()
     {
-        // User behind the revoked token has been deleted — log and continue rather than crash.
+        // arrange — user behind the revoked token has been deleted; log and continue rather than crash.
         var (service, db, deps) = BuildService(warnThreshold: 2, lockThreshold: 5);
         db.RevokedTokens.Add(new RevokedToken { TokenJti = "j1", UserId = "ghost", ExpiresAt = DateTime.UtcNow.AddMinutes(10) });
         SeedAttempts(db, "j1", count: 5);
@@ -149,6 +163,7 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
 
         deps.UserService.FindByIdAsync("ghost").Returns((User?)null);
 
+        // act + assert
         var act = async () => await service.RunSweepAsync(CancellationToken.None);
 
         await act.Should().NotThrowAsync();
@@ -161,7 +176,7 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
     [Fact]
     public async Task RunSweep_EmailSendFails_LockCascadeStillCompletes()
     {
-        // Security action must apply even if SMTP is down — email is informational, failure is logged not propagated.
+        // arrange — security action must apply even if SMTP is down; email is informational, failure is logged not propagated.
         var (service, db, deps) = BuildService(warnThreshold: 2, lockThreshold: 5);
         var user = new User { Id = "u1", Email = "alice@example.com" };
         db.RevokedTokens.Add(new RevokedToken { TokenJti = "j1", UserId = "u1", ExpiresAt = DateTime.UtcNow.AddMinutes(10) });
@@ -174,6 +189,7 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
             .When(s => s.SendEmailAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()))
             .Do(_ => throw new InvalidOperationException("smtp down"));
 
+        // act + assert
         var act = async () => await service.RunSweepAsync(CancellationToken.None);
 
         await act.Should().NotThrowAsync();
@@ -184,11 +200,12 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
     [Fact]
     public async Task RunSweep_AuditRowsForUnknownJti_SkippedGracefully()
     {
-        // Audit rows for a jti with no matching RevokedToken row — shouldn't happen but must not crash.
+        // arrange — audit rows for a jti with no matching RevokedToken row; shouldn't happen but must not crash.
         var (service, db, deps) = BuildService(warnThreshold: 2, lockThreshold: 5);
         SeedAttempts(db, "orphan-jti", count: 5);
         await db.SaveChangesAsync();
 
+        // act + assert
         var act = async () => await service.RunSweepAsync(CancellationToken.None);
 
         await act.Should().NotThrowAsync();
@@ -255,6 +272,36 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
             TestMetricsFactory.Create());
 
         return (service, db, deps);
+    }
+
+    [Fact]
+    public async Task RunSweep_WhenBodyThrows_SwallowsAndDoesNotPropagate()
+    {
+        // arrange
+        var scopeFactory = Substitute.For<IServiceScopeFactory>();
+        scopeFactory.CreateScope().Returns<IServiceScope>(_ => throw new InvalidOperationException("kaboom"));
+
+        var settings = Options.Create(new ThresholdEscalationSettings
+        {
+            Enabled = true,
+            SweepIntervalInMinutes = 1,
+            WindowInMinutes = 5,
+            WarnThreshold = 2,
+            LockThreshold = 5,
+        });
+        var publicUrl = Options.Create(new PublicUrlSettings { BaseUrl = "https://auth.test" });
+
+        var service = new RevokedTokenReplayEscalationService(
+            NullLogger<RevokedTokenReplayEscalationService>.Instance,
+            scopeFactory,
+            settings,
+            publicUrl,
+            TestMetricsFactory.Create());
+
+        // act + assert
+        var act = async () => await service.RunSweepAsync(CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
     }
 
     private sealed class EscalationDeps

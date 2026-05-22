@@ -29,13 +29,16 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task ListUsersAsync_AppliesSearchAndPagination_ReturnsExpectedSlice()
     {
+        // arrange
         var (svc, db, _) = BuildService();
         await SeedUserAsync(db, "alice", "alice@example.com");
         await SeedUserAsync(db, "bob", "bob@example.com");
         await SeedUserAsync(db, "charlie", "charlie@example.com");
 
+        // act
         var result = await svc.ListUsersAsync(new AdminListFilter { Search = "ali" }, CancellationToken.None);
 
+        // assert
         result.TotalCount.Should().Be(1);
         result.Results.Should().ContainSingle(r => r.UserName == "alice");
     }
@@ -43,7 +46,7 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task ListUsersAsync_LockedOnly_FiltersToLockedAccounts()
     {
-        // Three users: locked indefinitely (surface), locked-but-expired (skip), never locked (skip).
+        // arrange — three users: locked indefinitely (surface), locked-but-expired (skip), never locked (skip).
         // Identity uses far-future LockoutEnd sentinel for "permanently locked" rather than null-means-locked.
         var (svc, db, _) = BuildService();
         var locked = await SeedUserAsync(db, "locked", "locked@example.com");
@@ -53,8 +56,10 @@ public class AdminServiceTests : IDisposable
         await SeedUserAsync(db, "active", "active@example.com");
         await db.SaveChangesAsync();
 
+        // act
         var result = await svc.ListUsersAsync(new AdminListFilter { LockedOnly = true }, CancellationToken.None);
 
+        // assert
         result.TotalCount.Should().Be(1);
         result.Results.Should().ContainSingle();
         result.Results[0].UserName.Should().Be("locked");
@@ -65,16 +70,19 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task ListUsersAsync_PageSizeClampedToMax()
     {
+        // arrange
         var (svc, db, _) = BuildService();
         for (var i = 0; i < 5; i++)
         {
             await SeedUserAsync(db, $"u{i}", $"u{i}@example.com");
         }
 
+        // act
         var result = await svc.ListUsersAsync(
             new AdminListFilter { PageSize = AdminListFilter.MaxPageSize + 500 },
             CancellationToken.None);
 
+        // assert
         result.PageSize.Should().Be(AdminListFilter.MaxPageSize,
             because: "PageSize must be clamped to the max so a client can't request unbounded pages");
     }
@@ -82,17 +90,21 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task GetUserDetailAsync_UnknownUser_ReturnsNull()
     {
+        // arrange
         var (svc, _, deps) = BuildService();
         deps.UserManager.FindByIdAsync("ghost").Returns((User?)null);
 
+        // act
         var result = await svc.GetUserDetailAsync("ghost", CancellationToken.None);
 
+        // assert
         result.Should().BeNull();
     }
 
     [Fact]
     public async Task GetUserDetailAsync_KnownUser_PopulatesRolesAndActiveSessions()
     {
+        // arrange
         var (svc, db, deps) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         deps.UserManager.FindByIdAsync(user.Id).Returns(user);
@@ -104,8 +116,10 @@ public class AdminServiceTests : IDisposable
             new RefreshToken { Id = Guid.NewGuid(), UserId = user.Id, TokenHash = "h2", FamilyId = Guid.NewGuid(), CreatedAt = DateTime.UtcNow.AddMinutes(-5), ExpiresAt = DateTime.UtcNow.AddDays(1), ConsumedAt = DateTime.UtcNow.AddMinutes(-1) });
         await db.SaveChangesAsync();
 
+        // act
         var result = await svc.GetUserDetailAsync(user.Id, CancellationToken.None);
 
+        // assert
         result.Should().NotBeNull();
         result!.Roles.Should().Contain("DefaultUser");
         result.ActiveRefreshTokenFamilies.Should().Be(1,
@@ -119,14 +133,17 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task CreateUserAsync_AdminRoleRequested_ReturnsValidationFailed()
     {
+        // arrange
         var (svc, _, _) = BuildService();
 
+        // act
         var result = await svc.CreateUserAsync(
             new AdminCreateUserDto { Email = "x@example.com", UserName = "x", FirstName = "X", LastName = "Y", Roles = new List<string> { RolesConstants.Admin } },
             AdminId,
             "10.0.0.1",
             CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<AdminCreateUserResult.ValidationFailed>(
             because: "the Admin role can only be assigned via the DB seed, not via this endpoint");
     }
@@ -134,37 +151,44 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task CreateUserAsync_UnknownRoleRequested_ReturnsUnknownRole()
     {
+        // arrange
         var (svc, _, deps) = BuildService();
         deps.RoleManager.RoleExistsAsync("Wizard").Returns(false);
 
+        // act
         var result = await svc.CreateUserAsync(
             new AdminCreateUserDto { Email = "x@example.com", UserName = "x", FirstName = "X", LastName = "Y", Roles = new List<string> { "Wizard" } },
             AdminId,
             "10.0.0.1",
             CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<AdminCreateUserResult.UnknownRole>().Which.RoleName.Should().Be("Wizard");
     }
 
     [Fact]
     public async Task CreateUserAsync_DuplicateEmail_ReturnsConflict()
     {
+        // arrange
         var (svc, _, deps) = BuildService();
         deps.RoleManager.RoleExistsAsync(RolesConstants.DefaultUser).Returns(true);
         deps.UserManager.FindByEmailAsync("dup@example.com").Returns(new User());
 
+        // act
         var result = await svc.CreateUserAsync(
             new AdminCreateUserDto { Email = "dup@example.com", UserName = "dup", FirstName = "X", LastName = "Y" },
             AdminId,
             "10.0.0.1",
             CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<AdminCreateUserResult.Conflict>();
     }
 
     [Fact]
     public async Task CreateUserAsync_HappyPath_CreatesUserAddsRolesSendsEmail()
     {
+        // arrange
         var (svc, _, deps) = BuildService();
         deps.RoleManager.RoleExistsAsync(RolesConstants.DefaultUser).Returns(true);
         deps.UserManager.FindByEmailAsync(Arg.Any<string>()).Returns((User?)null);
@@ -178,12 +202,14 @@ public class AdminServiceTests : IDisposable
         deps.UserManager.AddToRolesAsync(Arg.Any<User>(), Arg.Any<IEnumerable<string>>()).Returns(IdentityResult.Success);
         deps.UserManager.GeneratePasswordResetTokenAsync(Arg.Any<User>()).Returns("reset-token");
 
+        // act
         var result = await svc.CreateUserAsync(
             new AdminCreateUserDto { Email = "alice@example.com", UserName = "alice", FirstName = "A", LastName = "B" },
             AdminId,
             "10.0.0.1",
             CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<AdminCreateUserResult.Success>().Which.UserId.Should().Be("new-id");
         await deps.EmailService.Received(1).SendEmailAsync(
             "alice@example.com",
@@ -194,6 +220,7 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task CreateUserAsync_AddToRolesFails_DeletesUserToRollBack()
     {
+        // arrange
         var (svc, _, deps) = BuildService();
         deps.RoleManager.RoleExistsAsync(RolesConstants.DefaultUser).Returns(true);
         deps.UserManager.FindByEmailAsync(Arg.Any<string>()).Returns((User?)null);
@@ -202,12 +229,14 @@ public class AdminServiceTests : IDisposable
         deps.UserManager.AddToRolesAsync(Arg.Any<User>(), Arg.Any<IEnumerable<string>>())
             .Returns(IdentityResult.Failed(new IdentityError { Code = "boom", Description = "no" }));
 
+        // act
         var result = await svc.CreateUserAsync(
             new AdminCreateUserDto { Email = "x@example.com", UserName = "x", FirstName = "X", LastName = "Y" },
             AdminId,
             "10.0.0.1",
             CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<AdminCreateUserResult.IdentityFailed>();
         await deps.UserManager.Received(1).DeleteAsync(Arg.Any<User>());
     }
@@ -219,46 +248,58 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task ResendInvitationAsync_UserNotFound_ReturnsNotFound()
     {
+        // arrange
         var (svc, _, deps) = BuildService();
         deps.UserManager.FindByIdAsync(TargetId).Returns((User?)null);
 
+        // act
         var result = await svc.ResendInvitationAsync(TargetId, AdminId, "10.0.0.1", CancellationToken.None);
 
+        // assert
         result.Should().Be(AdminInvitationResendResult.UserNotFound);
     }
 
     [Fact]
     public async Task ResendInvitationAsync_UserAlreadyConfirmed_ReturnsAlreadyActive()
     {
+        // arrange
         var (svc, _, deps) = BuildService();
         deps.UserManager.FindByIdAsync(TargetId).Returns(new User { Id = TargetId, EmailConfirmed = true, PasswordHash = null });
 
+        // act
         var result = await svc.ResendInvitationAsync(TargetId, AdminId, "10.0.0.1", CancellationToken.None);
 
+        // assert
         result.Should().Be(AdminInvitationResendResult.UserAlreadyActive);
     }
 
     [Fact]
     public async Task ResendInvitationAsync_UserHasPasswordHash_ReturnsAlreadyActive()
     {
+        // arrange
         var (svc, _, deps) = BuildService();
         deps.UserManager.FindByIdAsync(TargetId).Returns(new User { Id = TargetId, EmailConfirmed = false, PasswordHash = "hash" });
 
+        // act
         var result = await svc.ResendInvitationAsync(TargetId, AdminId, "10.0.0.1", CancellationToken.None);
 
+        // assert
         result.Should().Be(AdminInvitationResendResult.UserAlreadyActive);
     }
 
     [Fact]
     public async Task ResendInvitationAsync_PendingInvitation_ResendsEmail()
     {
+        // arrange
         var (svc, _, deps) = BuildService();
         var user = new User { Id = TargetId, Email = "alice@example.com", EmailConfirmed = false, PasswordHash = null };
         deps.UserManager.FindByIdAsync(TargetId).Returns(user);
         deps.UserManager.GeneratePasswordResetTokenAsync(user).Returns("token");
 
+        // act
         var result = await svc.ResendInvitationAsync(TargetId, AdminId, "10.0.0.1", CancellationToken.None);
 
+        // assert
         result.Should().Be(AdminInvitationResendResult.Resent);
         await deps.EmailService.Received(1).SendEmailAsync(
             "alice@example.com",
@@ -273,23 +314,29 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task LockUserAsync_NotFound_ReturnsNull()
     {
+        // arrange
         var (svc, _, deps) = BuildService();
         deps.UserManager.FindByIdAsync(TargetId).Returns((User?)null);
 
+        // act
         var result = await svc.LockUserAsync(TargetId, AdminId, "10.0.0.1", CancellationToken.None);
 
+        // assert
         result.Should().BeNull();
     }
 
     [Fact]
     public async Task LockUserAsync_HappyPath_SetsIndefiniteLockoutAndReturnsInfo()
     {
+        // arrange
         var (svc, _, deps) = BuildService();
         var user = new User { Id = TargetId };
         deps.UserManager.FindByIdAsync(TargetId).Returns(user);
 
+        // act
         var result = await svc.LockUserAsync(TargetId, AdminId, "10.0.0.1", CancellationToken.None);
 
+        // assert
         result.Should().NotBeNull();
         await deps.UserManager.Received(1).SetLockoutEnabledAsync(user, true);
         await deps.UserManager.Received(1).SetLockoutEndDateAsync(user, LockoutDurations.Indefinite);
@@ -298,12 +345,15 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task UnlockUserAsync_HappyPath_ClearsLockoutAndCounter()
     {
+        // arrange
         var (svc, _, deps) = BuildService();
         var user = new User { Id = TargetId, LockoutEnd = DateTimeOffset.UtcNow.AddDays(1), AccessFailedCount = 3 };
         deps.UserManager.FindByIdAsync(TargetId).Returns(user);
 
+        // act
         var result = await svc.UnlockUserAsync(TargetId, AdminId, "10.0.0.1", CancellationToken.None);
 
+        // assert
         result.Should().NotBeNull();
         user.LockoutEnd.Should().BeNull();
         user.AccessFailedCount.Should().Be(0);
@@ -313,12 +363,15 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task RevokeSessionsAsync_HappyPath_DelegatesToInvalidateUserTokens()
     {
+        // arrange
         var (svc, _, deps) = BuildService();
         var user = new User { Id = TargetId };
         deps.UserManager.FindByIdAsync(TargetId).Returns(user);
 
+        // act
         var result = await svc.RevokeSessionsAsync(TargetId, AdminId, "10.0.0.1", CancellationToken.None);
 
+        // assert
         result.Should().BeTrue();
         await deps.UserService.Received(1).InvalidateUserTokensAsync(user, "10.0.0.1", RevocationReasons.AdminRevokedSessions);
     }
@@ -326,12 +379,15 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task ResetMfaAsync_HappyPath_DisablesMfaResetsKeyAndRevokesSessions()
     {
+        // arrange
         var (svc, _, deps) = BuildService();
         var user = new User { Id = TargetId };
         deps.UserManager.FindByIdAsync(TargetId).Returns(user);
 
+        // act
         var result = await svc.ResetMfaAsync(TargetId, AdminId, "10.0.0.1", CancellationToken.None);
 
+        // assert
         result.Should().BeTrue();
         await deps.UserManager.Received(1).SetTwoFactorEnabledAsync(user, false);
         await deps.UserManager.Received(1).ResetAuthenticatorKeyAsync(user);
@@ -341,13 +397,16 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task ForcePasswordResetAsync_HappyPath_SendsResetEmailAndRevokesRefreshTokens()
     {
+        // arrange
         var (svc, _, deps) = BuildService();
         var user = new User { Id = TargetId, Email = "alice@example.com" };
         deps.UserManager.FindByIdAsync(TargetId).Returns(user);
         deps.UserManager.GeneratePasswordResetTokenAsync(user).Returns("token");
 
+        // act
         var result = await svc.ForcePasswordResetAsync(TargetId, AdminId, "10.0.0.1", callbackUri: null, CancellationToken.None);
 
+        // assert
         result.Should().BeTrue();
         await deps.EmailService.Received(1).SendEmailAsync(
             "alice@example.com",
@@ -368,16 +427,20 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task GetAuditAsync_UnknownUser_ReturnsNull()
     {
+        // arrange
         var (svc, _, _) = BuildService();
 
+        // act
         var result = await svc.GetAuditAsync(new AdminAuditFilter { UserId = "ghost" }, CancellationToken.None);
 
+        // assert
         result.Should().BeNull();
     }
 
     [Fact]
     public async Task GetAuditAsync_FiltersByUserAndOrdersDescending()
     {
+        // arrange
         var (svc, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         db.SecurityEvents.AddRange(
@@ -386,8 +449,10 @@ public class AdminServiceTests : IDisposable
             new SecurityEvent { UserId = "other", EventId = 1001, EventName = "LoginSucceeded", Level = "Information", Timestamp = DateTime.UtcNow });
         await db.SaveChangesAsync();
 
+        // act
         var result = await svc.GetAuditAsync(new AdminAuditFilter { UserId = user.Id }, CancellationToken.None);
 
+        // assert
         result.Should().NotBeNull();
         result!.TotalCount.Should().Be(2);
         result.Results.Select(r => r.EventId).Should().Equal(new[] { 1002, 1001 },
@@ -397,6 +462,7 @@ public class AdminServiceTests : IDisposable
     [Fact]
     public async Task GetAuditAsync_PropertiesJsonExpandedIntoFields()
     {
+        // arrange
         var (svc, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         db.SecurityEvents.Add(new SecurityEvent
@@ -410,8 +476,10 @@ public class AdminServiceTests : IDisposable
         });
         await db.SaveChangesAsync();
 
+        // act
         var result = await svc.GetAuditAsync(new AdminAuditFilter { UserId = user.Id }, CancellationToken.None);
 
+        // assert
         result!.Results.Should().ContainSingle();
         result.Results[0].Fields.Should().Contain(new KeyValuePair<string, string?>("FamilyId", "abc-123"));
         result.Results[0].Fields.Should().Contain(new KeyValuePair<string, string?>("Reason", "reuse"));

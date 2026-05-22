@@ -20,12 +20,15 @@ public class ServiceCollectionExtensionsTests
     [Fact]
     public void AddAuthenticationServiceJwt_BindsOptionsFromConfiguration()
     {
+        // arrange
         var services = new ServiceCollection();
         var config = BuildConfig(authority: "https://auth.example.com", audience: "platform-api", issuer: "https://auth.example.com", requireHttps: "true");
 
+        // act
         services.AddAuthenticationServiceJwt(config);
         using var sp = services.BuildServiceProvider();
 
+        // assert
         var options = sp.GetRequiredService<IOptions<AuthenticationServiceOptions>>().Value;
         options.Authority.Should().Be("https://auth.example.com");
         options.Audience.Should().Be("platform-api");
@@ -36,13 +39,15 @@ public class ServiceCollectionExtensionsTests
     [Fact]
     public void AddAuthenticationServiceJwt_RegistersJwtBearerAsDefaultScheme()
     {
+        // arrange
         var services = new ServiceCollection();
         services.AddAuthenticationServiceJwt(BuildConfig());
 
+        // act
         using var sp = services.BuildServiceProvider();
         var authOptions = sp.GetRequiredService<IOptions<Microsoft.AspNetCore.Authentication.AuthenticationOptions>>().Value;
 
-        // Both authenticate + challenge default to JwtBearer — otherwise a 401 could
+        // assert — both authenticate + challenge default to JwtBearer; otherwise a 401 could
         // fall through to a scheme the consumer never registered.
         authOptions.DefaultAuthenticateScheme.Should().Be(JwtBearerDefaults.AuthenticationScheme);
         authOptions.DefaultChallengeScheme.Should().Be(JwtBearerDefaults.AuthenticationScheme);
@@ -51,6 +56,7 @@ public class ServiceCollectionExtensionsTests
     [Fact]
     public void AddAuthenticationServiceJwt_ConfiguresJwtBearerWithExpectedTokenValidation()
     {
+        // arrange
         var services = new ServiceCollection();
         services.AddAuthenticationServiceJwt(BuildConfig(
             authority: "https://auth.example.com",
@@ -59,9 +65,11 @@ public class ServiceCollectionExtensionsTests
             requireHttps: "true"));
         using var sp = services.BuildServiceProvider();
 
+        // act
         var jwtOptions = sp.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>()
             .Get(JwtBearerDefaults.AuthenticationScheme);
 
+        // assert
         jwtOptions.Authority.Should().Be("https://auth.example.com");
         jwtOptions.Audience.Should().Be("platform-api");
         jwtOptions.RequireHttpsMetadata.Should().BeTrue();
@@ -85,24 +93,29 @@ public class ServiceCollectionExtensionsTests
     [Fact]
     public void AddAuthenticationServiceJwt_RequireHttpsMetadataFalse_PropagatesToJwtBearer()
     {
-        // Development sometimes runs auth on plain HTTP — the override must survive binding.
+        // arrange — development sometimes runs auth on plain HTTP; the override must survive binding.
         var services = new ServiceCollection();
         services.AddAuthenticationServiceJwt(BuildConfig(requireHttps: "false"));
         using var sp = services.BuildServiceProvider();
 
+        // act
         var jwtOptions = sp.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>()
             .Get(JwtBearerDefaults.AuthenticationScheme);
 
+        // assert
         jwtOptions.RequireHttpsMetadata.Should().BeFalse();
     }
 
     [Fact]
     public void AddAuthenticationServiceJwt_ReturnsServiceCollectionForChaining()
     {
+        // arrange
         var services = new ServiceCollection();
 
+        // act
         var returned = services.AddAuthenticationServiceJwt(BuildConfig());
 
+        // assert
         returned.Should().BeSameAs(services);
     }
 

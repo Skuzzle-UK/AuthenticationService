@@ -17,6 +17,7 @@ public class HttpContextLogEnricherTests
     [Fact]
     public void Enrich_WithUserAgentHeader_AddsUserAgentProperty()
     {
+        // arrange
         var context = new DefaultHttpContext();
         context.Request.Headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0)";
         var accessor = Substitute.For<IHttpContextAccessor>();
@@ -24,8 +25,10 @@ public class HttpContextLogEnricherTests
         var enricher = new HttpContextLogEnricher(accessor);
         var logEvent = MakeEmptyLogEvent();
 
+        // act
         enricher.Enrich(logEvent, new LogEventPropertyFactory());
 
+        // assert
         logEvent.Properties.Should().ContainKey("UserAgent");
         ((ScalarValue)logEvent.Properties["UserAgent"]).Value
             .Should().Be("Mozilla/5.0 (Windows NT 10.0)");
@@ -34,27 +37,30 @@ public class HttpContextLogEnricherTests
     [Fact]
     public void Enrich_WithEmptyUserAgent_DoesNotAddProperty()
     {
-        // Empty UA must skip rather than emit "UserAgent": "" — would pollute the log index.
+        // arrange — empty UA must skip rather than emit "UserAgent": "", would pollute the log index.
         var context = new DefaultHttpContext();
         var accessor = Substitute.For<IHttpContextAccessor>();
         accessor.HttpContext.Returns(context);
         var enricher = new HttpContextLogEnricher(accessor);
         var logEvent = MakeEmptyLogEvent();
 
+        // act
         enricher.Enrich(logEvent, new LogEventPropertyFactory());
 
+        // assert
         logEvent.Properties.Should().NotContainKey("UserAgent");
     }
 
     [Fact]
     public void Enrich_NoHttpContext_DoesNotThrowOrAddProperties()
     {
-        // Background-worker path — throwing would crash the worker on every log line.
+        // arrange — background-worker path, throwing would crash the worker on every log line.
         var accessor = Substitute.For<IHttpContextAccessor>();
         accessor.HttpContext.Returns((HttpContext?)null);
         var enricher = new HttpContextLogEnricher(accessor);
         var logEvent = MakeEmptyLogEvent();
 
+        // act + assert
         var act = () => enricher.Enrich(logEvent, new LogEventPropertyFactory());
 
         act.Should().NotThrow();
@@ -64,7 +70,7 @@ public class HttpContextLogEnricherTests
     [Fact]
     public void Enrich_PropertyAlreadyExistsOnLogEvent_DoesNotOverwrite()
     {
-        // AddPropertyIfAbsent semantics — switching to overwrite would mask caller-attached values.
+        // arrange — AddPropertyIfAbsent semantics, switching to overwrite would mask caller-attached values.
         var context = new DefaultHttpContext();
         context.Request.Headers["User-Agent"] = "from-request";
         var accessor = Substitute.For<IHttpContextAccessor>();
@@ -73,8 +79,10 @@ public class HttpContextLogEnricherTests
         var logEvent = MakeEmptyLogEvent();
         logEvent.AddPropertyIfAbsent(new LogEventProperty("UserAgent", new ScalarValue("from-scope")));
 
+        // act
         enricher.Enrich(logEvent, new LogEventPropertyFactory());
 
+        // assert
         ((ScalarValue)logEvent.Properties["UserAgent"]).Value.Should().Be("from-scope");
     }
 

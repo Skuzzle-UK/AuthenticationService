@@ -63,26 +63,37 @@ public class DataRetentionCleanupService : BackgroundService
     // Internal so tests can drive cleanup without the timer loop.
     internal async Task RunCleanupAsync(CancellationToken stoppingToken)
     {
-        using var scope = _serviceScopeFactory.CreateScope();
+        try
+        {
+            using var scope = _serviceScopeFactory.CreateScope();
 
-        var context = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
-        var now = DateTime.UtcNow;
+            var context = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+            var now = DateTime.UtcNow;
 
-        // ExecuteDeleteAsync — server-side delete, no entity load.
-        await context.RevokedTokenAccessAttempts
-            .Where(x => x.CreatedAt.AddDays(_settings.RevokedReplayTTLInDays) < now)
-            .ExecuteDeleteAsync(stoppingToken);
+            // ExecuteDeleteAsync — server-side delete, no entity load.
+            await context.RevokedTokenAccessAttempts
+                .Where(x => x.CreatedAt.AddDays(_settings.RevokedReplayTTLInDays) < now)
+                .ExecuteDeleteAsync(stoppingToken);
 
-        await context.RevokedTokens
-            .Where(x => x.ExpiresAt < now)
-            .ExecuteDeleteAsync(stoppingToken);
+            await context.RevokedTokens
+                .Where(x => x.ExpiresAt < now)
+                .ExecuteDeleteAsync(stoppingToken);
 
-        await context.RefreshTokens
-            .Where(x => x.ExpiresAt < now)
-            .ExecuteDeleteAsync(stoppingToken);
+            await context.RefreshTokens
+                .Where(x => x.ExpiresAt < now)
+                .ExecuteDeleteAsync(stoppingToken);
 
-        await context.SecurityEvents
-            .Where(x => x.Timestamp.AddDays(_settings.SecurityEventTTLInDays) < now)
-            .ExecuteDeleteAsync(stoppingToken);
+            await context.SecurityEvents
+                .Where(x => x.Timestamp.AddDays(_settings.SecurityEventTTLInDays) < now)
+                .ExecuteDeleteAsync(stoppingToken);
+        }
+        catch (Exception ex)
+        {
+            // Don't tear down the timer on a transient DB error — try again next interval.
+            _logger.LogWarning(
+                ex,
+                "Data retention cleanup failed: {ErrorMsg}. Will retry on next sweep.",
+                ex.Message);
+        }
     }
 }

@@ -73,11 +73,14 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task CreateTokenAsync_HappyPath_ReturnsBearerWithExpectedShape()
     {
+        // arrange
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
 
+        // act
         var token = await service.CreateTokenAsync(user, ["DefaultUser"], familyId: null, ipAddress: "10.0.0.1");
 
+        // assert
         token.Type.Should().Be(AuthSchemeConstants.Bearer);
         token.Value.Should().NotBeNullOrWhiteSpace();
         token.Expires.Should().BeAfter(DateTime.UtcNow);
@@ -88,13 +91,15 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task CreateTokenAsync_StampsExpectedClaims()
     {
-        // Verify the claim payload is exactly what JwtBearer in every microservice reads.
+        // arrange — verify the claim payload is exactly what JwtBearer in every microservice reads.
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         var familyId = Guid.NewGuid();
 
+        // act
         var token = await service.CreateTokenAsync(user, ["Admin", "DefaultUser"], familyId);
 
+        // assert
         var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token.Value);
         jwt.Claims.First(c => c.Type == ClaimConstants.Sub).Value.Should().Be(user.Id);
         jwt.Claims.First(c => c.Type == ClaimConstants.Sid).Value.Should().Be(familyId.ToString());
@@ -110,12 +115,14 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task CreateTokenAsync_PersistsRefreshTokenAsHashNotRaw()
     {
-        // Raw refresh token must never be in the DB — a DB compromise must not hand attackers every active session.
+        // arrange — raw refresh token must never be in the DB; a DB compromise must not hand attackers every active session.
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
 
+        // act
         var token = await service.CreateTokenAsync(user, ["DefaultUser"]);
 
+        // assert
         var stored = await db.RefreshTokens.SingleAsync();
         stored.TokenHash.Should().NotBe(token.RefreshToken!,
             because: "stored value must be the hash, not the raw token.");
@@ -127,12 +134,15 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task CreateTokenAsync_NoFamilyIdSupplied_GeneratesNewOne()
     {
+        // arrange
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
 
+        // act
         var token1 = await service.CreateTokenAsync(user, ["DefaultUser"]);
         var token2 = await service.CreateTokenAsync(user, ["DefaultUser"]);
 
+        // assert
         var sid1 = ReadClaim(token1.Value, ClaimConstants.Sid);
         var sid2 = ReadClaim(token2.Value, ClaimConstants.Sid);
         sid1.Should().NotBe(sid2);
@@ -141,13 +151,15 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task CreateTokenAsync_FamilyIdSupplied_PreservesIt()
     {
-        // Refresh-rotation passes the existing FamilyId so subsequent tokens stay in the same session.
+        // arrange — refresh-rotation passes the existing FamilyId so subsequent tokens stay in the same session.
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         var family = Guid.NewGuid();
 
+        // act
         var token = await service.CreateTokenAsync(user, ["DefaultUser"], family);
 
+        // assert
         ReadClaim(token.Value, ClaimConstants.Sid).Should().Be(family.ToString());
     }
 
@@ -156,12 +168,15 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task RotateRefreshTokenAsync_HappyPath_ReturnsSuccessAndConsumesOldToken()
     {
+        // arrange
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         var initial = await service.CreateTokenAsync(user, ["DefaultUser"]);
 
+        // act
         var result = await service.RotateRefreshTokenAsync(initial.Value, initial.RefreshToken!, ipAddress: "10.0.0.1");
 
+        // assert
         result.Should().BeOfType<RefreshResult.Success>();
         var newToken = ((RefreshResult.Success)result).Token;
         newToken.Value.Should().NotBe(initial.Value);
@@ -189,22 +204,25 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task RotateRefreshTokenAsync_UnknownRefreshToken_ReturnsNotFound()
     {
+        // arrange
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         var initial = await service.CreateTokenAsync(user, ["DefaultUser"]);
 
+        // act
         var result = await service.RotateRefreshTokenAsync(initial.Value, "garbage-not-a-real-refresh-token", ipAddress: "10.0.0.1");
 
-        // Generic 401 — don't tip off the attacker which part was wrong.
+        // assert — generic 401: don't tip off the attacker which part was wrong.
         result.Should().BeOfType<RefreshResult.NotFound>();
     }
 
     [Fact]
     public async Task RotateRefreshTokenAsync_GarbageAccessToken_Throws()
     {
-        // GetUserId calls ReadJwtToken which throws on non-JWT input — pinned so callers know to wrap with try/catch.
+        // arrange — GetUserId calls ReadJwtToken which throws on non-JWT input; pinned so callers know to wrap with try/catch.
         var (service, _, _) = BuildService();
 
+        // act + assert
         var act = async () => await service.RotateRefreshTokenAsync("not-a-jwt", "any", "10.0.0.1");
 
         await act.Should().ThrowAsync<Microsoft.IdentityModel.Tokens.SecurityTokenMalformedException>();
@@ -213,6 +231,7 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task RotateRefreshTokenAsync_RefreshTokenExpired_ReturnsExpired()
     {
+        // arrange
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         var initial = await service.CreateTokenAsync(user, ["DefaultUser"]);
@@ -221,22 +240,26 @@ public class JWTServiceTests : IDisposable
         stored.ExpiresAt = DateTime.UtcNow.AddDays(-1);
         await db.SaveChangesAsync();
 
+        // act
         var result = await service.RotateRefreshTokenAsync(initial.Value, initial.RefreshToken!, "10.0.0.1");
 
+        // assert
         result.Should().BeOfType<RefreshResult.Expired>();
     }
 
     [Fact]
     public async Task RotateRefreshTokenAsync_AlreadyConsumedToken_TriggersReuseCascade()
     {
-        // Server treats reuse as theft: every active family for the user is revoked + stamp rotated.
+        // arrange — server treats reuse as theft: every active family for the user is revoked + stamp rotated.
         var (service, db, userManager) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         var initial = await service.CreateTokenAsync(user, ["DefaultUser"]);
         await service.RotateRefreshTokenAsync(initial.Value, initial.RefreshToken!, "10.0.0.1");
 
+        // act
         var result = await service.RotateRefreshTokenAsync(initial.Value, initial.RefreshToken!, "10.0.0.1");
 
+        // assert
         result.Should().BeOfType<RefreshResult.Reused>();
         db.ChangeTracker.Clear();
         var rows = await db.RefreshTokens.ToListAsync();
@@ -249,13 +272,16 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task RotateRefreshTokenAsync_UnknownUser_ReturnsNotFound()
     {
+        // arrange
         var (service, db, userManager) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         var initial = await service.CreateTokenAsync(user, ["DefaultUser"]);
         userManager.FindByIdAsync(user.Id).Returns((User?)null);
 
+        // act
         var result = await service.RotateRefreshTokenAsync(initial.Value, initial.RefreshToken!, "10.0.0.1");
 
+        // assert
         result.Should().BeOfType<RefreshResult.NotFound>();
     }
 
@@ -264,20 +290,22 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task ValidateExpiredTokenAsync_ValidlySigned_ReturnsTrue()
     {
-        // Lifetime check disabled — that's the whole purpose of ValidateExpiredTokenAsync (used during refresh).
+        // arrange — lifetime check disabled: that's the whole purpose of ValidateExpiredTokenAsync (used during refresh).
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         var initial = await service.CreateTokenAsync(user, ["DefaultUser"]);
 
+        // act
         var result = await service.ValidateExpiredTokenAsync(initial.Value);
 
+        // assert
         result.Should().BeTrue();
     }
 
     [Fact]
     public async Task ValidateExpiredTokenAsync_TokenSignedByDifferentKey_ReturnsFalse()
     {
-        // Sign with a different EcdsaKeyProvider — validator should reject because the kid doesn't match.
+        // arrange — sign with a different EcdsaKeyProvider; validator should reject because the kid doesn't match.
         var (service, _, _) = BuildService();
         using var otherKeyDir = new TempDir();
         using var otherEc = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -304,19 +332,23 @@ public class JWTServiceTests : IDisposable
             signingCredentials: otherProvider.SigningCredentials);
         var foreignToken = new JwtSecurityTokenHandler().WriteToken(jwt);
 
+        // act
         var result = await service.ValidateExpiredTokenAsync(foreignToken);
 
+        // assert
         result.Should().BeFalse();
     }
 
     [Fact]
     public async Task ValidateExpiredTokenAsync_GarbageInput_ReturnsFalse()
     {
-        // Anything not a JWT should fail validation rather than throw.
+        // arrange — anything not a JWT should fail validation rather than throw.
         var (service, _, _) = BuildService();
 
+        // act
         var result = await service.ValidateExpiredTokenAsync("definitely-not-a-jwt");
 
+        // assert
         result.Should().BeFalse();
     }
 
@@ -325,12 +357,15 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task RevokeTokenAsync_AddsRowToRevokedTokens()
     {
+        // arrange
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         var token = await service.CreateTokenAsync(user, ["DefaultUser"]);
 
+        // act
         await service.RevokeTokenAsync(token.Value, "10.0.0.1", RevocationReasons.Logout);
 
+        // assert
         var stored = await db.RevokedTokens.SingleAsync();
         stored.UserId.Should().Be(user.Id);
         stored.RevokedFromIp.Should().Be("10.0.0.1");
@@ -342,13 +377,16 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task GetRevokedTokenAsync_ReturnsRowByJti()
     {
+        // arrange
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         var token = await service.CreateTokenAsync(user, ["DefaultUser"]);
         await service.RevokeTokenAsync(token.Value, "10.0.0.1", RevocationReasons.Logout);
 
+        // act
         var found = await service.GetRevokedTokenAsync(token.Value);
 
+        // assert
         found.Should().NotBeNull();
         found!.RevocationReason.Should().Be(RevocationReasons.Logout);
     }
@@ -356,24 +394,30 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task GetRevokedTokenAsync_NonRevokedToken_ReturnsNull()
     {
+        // arrange
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         var token = await service.CreateTokenAsync(user, ["DefaultUser"]);
 
+        // act
         var found = await service.GetRevokedTokenAsync(token.Value);
 
+        // assert
         found.Should().BeNull();
     }
 
     [Fact]
     public async Task RevokeOrphanedTokenAsync_RevokesWithUserNotFoundReason()
     {
+        // arrange
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         var token = await service.CreateTokenAsync(user, ["DefaultUser"]);
 
+        // act
         await service.RevokeOrphanedTokenAsync(token.Value, "10.0.0.1");
 
+        // assert
         var stored = await db.RevokedTokens.SingleAsync();
         stored.RevocationReason.Should().Be(RevocationReasons.UserNotFound);
     }
@@ -383,6 +427,7 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task RecordRevokedReplayAsync_StillLiveToken_RecordsMediumSeverity()
     {
+        // arrange
         var (service, db, _) = BuildService();
         var revoked = new RevokedToken
         {
@@ -391,8 +436,10 @@ public class JWTServiceTests : IDisposable
             ExpiresAt = DateTime.UtcNow.AddMinutes(5),
         };
 
+        // act
         await service.RecordRevokedReplayAsync(revoked, "10.0.0.1", "TestAgent");
 
+        // assert
         var attempt = await db.RevokedTokenAccessAttempts.SingleAsync();
         attempt.Severity.Should().Be(Severity.Medium,
             because: "still-live revoked token: only the deny-list is stopping it. Higher severity.");
@@ -403,7 +450,7 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task RecordRevokedReplayAsync_NaturallyExpiredToken_RecordsLowSeverity()
     {
-        // Naturally expired: JwtBearer would reject independently — our deny-list catch is incidental.
+        // arrange — naturally expired: JwtBearer would reject independently; our deny-list catch is incidental.
         var (service, db, _) = BuildService();
         var revoked = new RevokedToken
         {
@@ -412,8 +459,10 @@ public class JWTServiceTests : IDisposable
             ExpiresAt = DateTime.UtcNow.AddMinutes(-5),
         };
 
+        // act
         await service.RecordRevokedReplayAsync(revoked, "10.0.0.1", "ua");
 
+        // assert
         var attempt = await db.RevokedTokenAccessAttempts.SingleAsync();
         attempt.Severity.Should().Be(Severity.Low);
     }
@@ -421,36 +470,43 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task RecordRevokedReplayAsync_NullExpiresAt_TreatedAsStillLive()
     {
-        // Defensive: can't prove expiry → treat as still-live (Medium).
+        // arrange — defensive: can't prove expiry → treat as still-live (Medium).
         var (service, db, _) = BuildService();
         var revoked = new RevokedToken { TokenJti = "j", UserId = "u", ExpiresAt = null };
 
+        // act
         await service.RecordRevokedReplayAsync(revoked, "10.0.0.1", "ua");
 
+        // assert
         (await db.RevokedTokenAccessAttempts.SingleAsync()).Severity.Should().Be(Severity.Medium);
     }
 
     [Fact]
     public async Task RecordRevokedReplayAsync_NullUserAgent_StoresNull()
     {
+        // arrange
         var (service, db, _) = BuildService();
         var revoked = new RevokedToken { TokenJti = "j", UserId = "u", ExpiresAt = DateTime.UtcNow.AddMinutes(5) };
 
+        // act
         await service.RecordRevokedReplayAsync(revoked, "10.0.0.1", null);
 
+        // assert
         (await db.RevokedTokenAccessAttempts.SingleAsync()).UserAgent.Should().BeNull();
     }
 
     [Fact]
     public async Task RecordRevokedReplayAsync_OversizedUserAgent_TruncatedTo512Chars()
     {
-        // Defensive cap against an attacker sending a huge UA header to bloat the audit table.
+        // arrange — defensive cap against an attacker sending a huge UA header to bloat the audit table.
         var (service, db, _) = BuildService();
         var revoked = new RevokedToken { TokenJti = "j", UserId = "u", ExpiresAt = DateTime.UtcNow.AddMinutes(5) };
         var oversized = new string('A', 5000);
 
+        // act
         await service.RecordRevokedReplayAsync(revoked, "10.0.0.1", oversized);
 
+        // assert
         var attempt = await db.RevokedTokenAccessAttempts.SingleAsync();
         attempt.UserAgent!.Length.Should().Be(512);
     }
@@ -460,7 +516,7 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task RevokeAllRefreshTokenFamiliesAsync_OnlyAffectsActiveRows()
     {
-        // Consumed row's ConsumedAt + RevocationReason must remain untouched by a later revoke-all.
+        // arrange — consumed row's ConsumedAt + RevocationReason must remain untouched by a later revoke-all.
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         await service.CreateTokenAsync(user, ["DefaultUser"]);
@@ -479,8 +535,10 @@ public class JWTServiceTests : IDisposable
         });
         await db.SaveChangesAsync();
 
+        // act
         await service.RevokeAllRefreshTokenFamiliesAsync(user.Id, RevocationReasons.LogoutAll);
 
+        // assert
         db.ChangeTracker.Clear();
         var rows = await db.RefreshTokens.ToListAsync();
         rows.Where(r => r.RevocationReason == RevocationReasons.LogoutAll).Should().HaveCount(2);
@@ -493,6 +551,7 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task RevokeFamilyAsync_OnlyAffectsNamedFamily()
     {
+        // arrange
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         var firstFamily = Guid.NewGuid();
@@ -500,8 +559,10 @@ public class JWTServiceTests : IDisposable
         await service.CreateTokenAsync(user, ["DefaultUser"], firstFamily);
         await service.CreateTokenAsync(user, ["DefaultUser"], secondFamily);
 
+        // act
         await service.RevokeFamilyAsync(firstFamily, RevocationReasons.Logout);
 
+        // assert
         db.ChangeTracker.Clear();
         var rows = await db.RefreshTokens.ToListAsync();
         rows.Single(r => r.FamilyId == firstFamily).ConsumedAt.Should().NotBeNull();
@@ -515,21 +576,25 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task GetUserId_TokenWithSubClaim_ReturnsSubValue()
     {
+        // arrange
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         var token = await service.CreateTokenAsync(user, ["DefaultUser"]);
 
+        // act
         var userId = service.GetUserId(token.Value);
 
+        // assert
         userId.Should().Be(user.Id);
     }
 
     [Fact]
     public void GetUserId_GarbageToken_Throws()
     {
-        // ReadJwtToken throws on non-JWT input — pinned so callers know to wrap.
+        // arrange — ReadJwtToken throws on non-JWT input; pinned so callers know to wrap.
         var (service, _, _) = BuildService();
 
+        // act + assert
         var act = () => service.GetUserId("not-a-jwt");
 
         act.Should().Throw<Exception>();
@@ -538,12 +603,15 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task GetExpiryDateTime_TokenWithExpClaim_ReturnsUtcExpiry()
     {
+        // arrange
         var (service, db, _) = BuildService();
         var user = await SeedUserAsync(db, "alice", "alice@example.com");
         var token = await service.CreateTokenAsync(user, ["DefaultUser"]);
 
+        // act
         var expiry = service.GetExpiryDateTime(token.Value);
 
+        // assert
         expiry.Should().NotBeNull();
         expiry!.Value.Should().BeCloseTo(DateTime.UtcNow.AddMinutes(_settings.ExpiryInMinutes), TimeSpan.FromMinutes(1));
         expiry.Value.Kind.Should().Be(DateTimeKind.Utc);
@@ -552,8 +620,10 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public void GetExpiryDateTime_GarbageToken_Throws()
     {
+        // arrange
         var (service, _, _) = BuildService();
 
+        // act + assert
         var act = () => service.GetExpiryDateTime("not-a-jwt");
 
         act.Should().Throw<Microsoft.IdentityModel.Tokens.SecurityTokenMalformedException>();
@@ -564,14 +634,16 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task CreateServiceToken_HappyPath_EmitsExpectedClaimShape()
     {
-        // Pins the contract consumers rely on to distinguish service tokens from user tokens.
+        // arrange — pins the contract consumers rely on to distinguish service tokens from user tokens.
         var (service, _, _) = BuildService();
 
+        // act
         var token = await service.CreateServiceTokenAsync(
             clientId: "inventory-api",
             audience: "orders-api",
             scopes: new[] { "orders.read", "orders.write" });
 
+        // assert
         var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token.Value);
         ReadClaim(token.Value, ClaimConstants.Sub).Should().Be("inventory-api",
             because: "sub on a service token is the client_id, not a user id.");
@@ -586,11 +658,13 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task CreateServiceToken_OmitsUserClaims_SoConsumersCanDistinguishTokenKind()
     {
-        // Load-bearing — consumers write `if (user.HasClaim("email")) ...` to detect user vs service tokens.
+        // arrange — load-bearing: consumers write `if (user.HasClaim("email")) ...` to detect user vs service tokens.
         var (service, _, _) = BuildService();
 
+        // act
         var token = await service.CreateServiceTokenAsync("a-client", "an-aud", new[] { "a.scope" });
 
+        // assert
         var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token.Value);
         jwt.Claims.Should().NotContain(c => c.Type == ClaimConstants.Email,
             because: "email is a user-only claim.");
@@ -605,10 +679,13 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task CreateServiceToken_NoRefreshHalf()
     {
+        // arrange
         var (service, _, _) = BuildService();
 
+        // act
         var token = await service.CreateServiceTokenAsync("c", "a", new[] { "s" });
 
+        // assert
         token.RefreshToken.Should().BeNull(
             because: "service tokens have no refresh half — the client re-requests when the access token expires.");
         token.RefreshTokenExpiresAt.Should().BeNull();
@@ -617,11 +694,13 @@ public class JWTServiceTests : IDisposable
     [Fact]
     public async Task CreateServiceToken_ExpiryFollowsConfiguredLifetime()
     {
-        // Default ClientCredentialsSettings.TokenLifetimeInHours = 12.
+        // arrange — default ClientCredentialsSettings.TokenLifetimeInHours = 12.
         var (service, _, _) = BuildService();
 
+        // act
         var token = await service.CreateServiceTokenAsync("c", "a", new[] { "s" });
 
+        // assert
         token.Expires.Should().NotBeNull();
         token.Expires!.Value.Should().BeCloseTo(DateTime.UtcNow.AddHours(12), TimeSpan.FromSeconds(5));
     }

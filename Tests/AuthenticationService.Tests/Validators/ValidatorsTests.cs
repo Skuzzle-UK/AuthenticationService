@@ -19,12 +19,15 @@ public class ValidatorsTests
     [Fact]
     public async Task CustomPasswordValidator_PasswordMatchesUsername_ReturnsSameUserPassError()
     {
+        // arrange
         var user = new User { UserName = "alice", Email = "alice@example.com" };
         var manager = StubUserManager(userName: "alice", email: "alice@example.com");
         var validator = new CustomPasswordValidator<User>();
 
+        // act
         var result = await validator.ValidateAsync(manager, user, "alice");
 
+        // assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().ContainSingle(e =>
             e.Code == "SameUserPass" && e.Description.Contains("Username and Password can not be the same"));
@@ -33,12 +36,15 @@ public class ValidatorsTests
     [Fact]
     public async Task CustomPasswordValidator_PasswordMatchesUsernameCaseInsensitive_StillFails()
     {
+        // arrange
         var user = new User { UserName = "alice", Email = "alice@example.com" };
         var manager = StubUserManager(userName: "alice", email: "alice@example.com");
         var validator = new CustomPasswordValidator<User>();
 
+        // act
         var result = await validator.ValidateAsync(manager, user, "ALICE");
 
+        // assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().ContainSingle(e => e.Code == "SameUserPass");
     }
@@ -46,12 +52,15 @@ public class ValidatorsTests
     [Fact]
     public async Task CustomPasswordValidator_PasswordMatchesEmail_ReturnsSameEmailPassError()
     {
+        // arrange
         var user = new User { UserName = "alice", Email = "alice@example.com" };
         var manager = StubUserManager(userName: "alice", email: "alice@example.com");
         var validator = new CustomPasswordValidator<User>();
 
+        // act
         var result = await validator.ValidateAsync(manager, user, "alice@example.com");
 
+        // assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().ContainSingle(e =>
             e.Code == "SameEmailPass" && e.Description.Contains("Email and Password can not be the same"));
@@ -60,12 +69,15 @@ public class ValidatorsTests
     [Fact]
     public async Task CustomPasswordValidator_PasswordDifferentFromUsernameAndEmail_Succeeds()
     {
+        // arrange
         var user = new User { UserName = "alice", Email = "alice@example.com" };
         var manager = StubUserManager(userName: "alice", email: "alice@example.com");
         var validator = new CustomPasswordValidator<User>();
 
+        // act
         var result = await validator.ValidateAsync(manager, user, "Sup3rSecur3!");
 
+        // assert
         result.Succeeded.Should().BeTrue();
     }
 
@@ -74,12 +86,15 @@ public class ValidatorsTests
     [Fact]
     public async Task ReservedUserNameValidator_ReservedName_FailsWithReservedUserNameError()
     {
+        // arrange
         var settings = MakeIdentitySettings(["administrator", "root", "support"]);
         var validator = new ReservedUserNameValidator(settings);
         var user = new User { UserName = "administrator" };
 
+        // act
         var result = await validator.ValidateAsync(StubUserManager(), user);
 
+        // assert
         result.Succeeded.Should().BeFalse();
         result.Errors.Should().ContainSingle(e =>
             e.Code == "ReservedUserName"
@@ -89,63 +104,75 @@ public class ValidatorsTests
     [Fact]
     public async Task ReservedUserNameValidator_ReservedNameDifferentCasing_StillFails()
     {
-        // HashSet is OrdinalIgnoreCase so attacker can't bypass the deny-list by changing case.
+        // arrange — HashSet is OrdinalIgnoreCase so attacker can't bypass the deny-list by changing case.
         var settings = MakeIdentitySettings(["administrator"]);
         var validator = new ReservedUserNameValidator(settings);
         var user = new User { UserName = "Administrator" };
 
+        // act
         var result = await validator.ValidateAsync(StubUserManager(), user);
 
+        // assert
         result.Succeeded.Should().BeFalse();
     }
 
     [Fact]
     public async Task ReservedUserNameValidator_ReservedNameWithSurroundingWhitespace_StillFails()
     {
-        // Validator trims defensively in case AllowedUserNameCharacters admits leading whitespace.
+        // arrange — validator trims defensively in case AllowedUserNameCharacters admits leading whitespace.
         var settings = MakeIdentitySettings(["root"]);
         var validator = new ReservedUserNameValidator(settings);
         var user = new User { UserName = "  root  " };
 
+        // act
         var result = await validator.ValidateAsync(StubUserManager(), user);
 
+        // assert
         result.Succeeded.Should().BeFalse();
     }
 
     [Fact]
     public async Task ReservedUserNameValidator_NonReservedName_Succeeds()
     {
+        // arrange
         var settings = MakeIdentitySettings(["administrator", "root"]);
         var validator = new ReservedUserNameValidator(settings);
         var user = new User { UserName = "alice" };
 
+        // act
         var result = await validator.ValidateAsync(StubUserManager(), user);
 
+        // assert
         result.Succeeded.Should().BeTrue();
     }
 
     [Fact]
     public async Task ReservedUserNameValidator_NullOrWhitespaceUserName_TreatedAsNotReserved()
     {
-        // Missing username isn't this validator's concern — Identity's own rules produce a more useful error.
+        // arrange — missing username isn't this validator's concern, Identity's own rules produce a more useful error.
         var settings = MakeIdentitySettings(["root"]);
         var validator = new ReservedUserNameValidator(settings);
         var user = new User { UserName = null };
 
+        // act
         var result = await validator.ValidateAsync(StubUserManager(), user);
 
+        // assert
         result.Succeeded.Should().BeTrue();
     }
 
     [Fact]
     public async Task ReservedUserNameValidator_EmptyDenyList_NeverFails()
     {
+        // arrange
         var settings = MakeIdentitySettings([]);
         var validator = new ReservedUserNameValidator(settings);
         var user = new User { UserName = "administrator" };
 
+        // act
         var result = await validator.ValidateAsync(StubUserManager(), user);
 
+        // assert
         result.Succeeded.Should().BeTrue();
     }
 
@@ -154,7 +181,7 @@ public class ValidatorsTests
     [Fact]
     public void AdminAccountSeedSettingsValidator_NamedInstance_SkipsValidation()
     {
-        // Only acts on the default-named options instance so future named-options consumers can opt out.
+        // arrange — only acts on the default-named options instance so future named-options consumers can opt out.
         var environment = StubEnvironment("Production");
         var validator = new AdminAccountSeedSettingsValidator(environment);
         var settings = new AdminAccountSeedSettings
@@ -164,14 +191,17 @@ public class ValidatorsTests
             FirstName = "A",
         };
 
+        // act
         var result = validator.Validate(name: "namedInstance", settings);
 
+        // assert
         result.Skipped.Should().BeTrue();
     }
 
     [Fact]
     public void AdminAccountSeedSettingsValidator_DevelopmentEnvironment_AllowsDevDefault()
     {
+        // arrange
         var environment = StubEnvironment("Development");
         var validator = new AdminAccountSeedSettingsValidator(environment);
         var settings = new AdminAccountSeedSettings
@@ -181,15 +211,17 @@ public class ValidatorsTests
             FirstName = "A",
         };
 
+        // act
         var result = validator.Validate(name: Options.DefaultName, settings);
 
+        // assert
         result.Succeeded.Should().BeTrue();
     }
 
     [Fact]
     public void AdminAccountSeedSettingsValidator_NonDevelopmentWithDevDefaultPassword_FailsWithExplicitMessage()
     {
-        // Catches the realistic deploy mistake: copy appsettings.Development.json into prod without overriding the password.
+        // arrange — catches the realistic deploy mistake: copy appsettings.Development.json into prod without overriding the password.
         var environment = StubEnvironment("Production");
         var validator = new AdminAccountSeedSettingsValidator(environment);
         var settings = new AdminAccountSeedSettings
@@ -199,8 +231,10 @@ public class ValidatorsTests
             FirstName = "A",
         };
 
+        // act
         var result = validator.Validate(name: Options.DefaultName, settings);
 
+        // assert
         result.Failed.Should().BeTrue();
         result.FailureMessage.Should().Contain("development default")
             .And.Contain("AdminAccountSeedSettings__Password",
@@ -210,6 +244,7 @@ public class ValidatorsTests
     [Fact]
     public void AdminAccountSeedSettingsValidator_NonDevelopmentWithCustomPassword_Succeeds()
     {
+        // arrange
         var environment = StubEnvironment("Production");
         var validator = new AdminAccountSeedSettingsValidator(environment);
         var settings = new AdminAccountSeedSettings
@@ -219,8 +254,10 @@ public class ValidatorsTests
             FirstName = "A",
         };
 
+        // act
         var result = validator.Validate(name: Options.DefaultName, settings);
 
+        // assert
         result.Succeeded.Should().BeTrue();
     }
 
@@ -230,7 +267,7 @@ public class ValidatorsTests
     [InlineData("CustomEnv")]
     public void AdminAccountSeedSettingsValidator_AnyNonDevelopmentEnvironment_AppliesRule(string envName)
     {
-        // Only literal "Development" gets the bypass — every other env triggers the dev-default check.
+        // arrange — only literal "Development" gets the bypass, every other env triggers the dev-default check.
         var environment = StubEnvironment(envName);
         var validator = new AdminAccountSeedSettingsValidator(environment);
         var settings = new AdminAccountSeedSettings
@@ -240,8 +277,10 @@ public class ValidatorsTests
             FirstName = "A",
         };
 
+        // act
         var result = validator.Validate(name: Options.DefaultName, settings);
 
+        // assert
         result.Failed.Should().BeTrue();
     }
 

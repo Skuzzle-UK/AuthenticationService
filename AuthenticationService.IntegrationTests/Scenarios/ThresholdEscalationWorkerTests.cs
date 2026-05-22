@@ -30,6 +30,7 @@ public class ThresholdEscalationWorkerTests(AppHostFixture fixture) : Integratio
     [Fact]
     public async Task RunSweep_OnRealMySql_StampsLockedAtAndFiresCascade()
     {
+        // arrange
         var user = await RegisterAndConfirmUserAsync();
 
         // Seed: one revoked-token row + 5 access-attempt rows pointing at it (5 = the
@@ -105,8 +106,10 @@ public class ThresholdEscalationWorkerTests(AppHostFixture fixture) : Integratio
             publicUrl,
             CreateAuthMetrics());
 
+        // act
         await worker.RunSweepAsync(CancellationToken.None);
 
+        // assert
         // Load-bearing assertion: the GroupBy + ToDictionary + tracked-entity SaveChanges
         // pattern survives the MySql.EntityFrameworkCore translation.
         await using (var assertDb = await CreateDbContextAsync())

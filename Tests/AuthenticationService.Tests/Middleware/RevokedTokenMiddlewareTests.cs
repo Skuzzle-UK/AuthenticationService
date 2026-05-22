@@ -20,11 +20,14 @@ public class RevokedTokenMiddlewareTests
     [Fact]
     public async Task NoAuthorizationHeader_PassesThroughToNext()
     {
+        // arrange
         var (middleware, tokenService, nextCalled) = BuildMiddleware();
         var context = new DefaultHttpContext();
 
+        // act
         await middleware.InvokeAsync(context);
 
+        // assert
         nextCalled().Should().BeTrue();
         await tokenService.DidNotReceive().GetRevokedTokenAsync(Arg.Any<string>());
         context.Response.StatusCode.Should().Be(StatusCodes.Status200OK,
@@ -34,13 +37,15 @@ public class RevokedTokenMiddlewareTests
     [Fact]
     public async Task BearerHeaderEmptyAfterStrip_PassesThroughToNext()
     {
-        // Header literally "Bearer " — after stripping prefix nothing left; treat as no token.
+        // arrange — header literally "Bearer ", after stripping prefix nothing left, treat as no token.
         var (middleware, tokenService, nextCalled) = BuildMiddleware();
         var context = new DefaultHttpContext();
         context.Request.Headers.Authorization = AuthSchemeConstants.BearerPrefix;
 
+        // act
         await middleware.InvokeAsync(context);
 
+        // assert
         nextCalled().Should().BeTrue();
         await tokenService.DidNotReceive().GetRevokedTokenAsync(Arg.Any<string>());
     }
@@ -48,13 +53,16 @@ public class RevokedTokenMiddlewareTests
     [Fact]
     public async Task NotRevokedToken_PassesThroughToNext()
     {
+        // arrange
         var (middleware, tokenService, nextCalled) = BuildMiddleware();
         tokenService.GetRevokedTokenAsync("eyJ.abc").Returns((RevokedToken?)null);
         var context = new DefaultHttpContext();
         context.Request.Headers.Authorization = AuthSchemeConstants.BearerPrefix + "eyJ.abc";
 
+        // act
         await middleware.InvokeAsync(context);
 
+        // assert
         nextCalled().Should().BeTrue();
         await tokenService.Received(1).GetRevokedTokenAsync("eyJ.abc");
         await tokenService.DidNotReceive().RecordRevokedReplayAsync(
@@ -64,6 +72,7 @@ public class RevokedTokenMiddlewareTests
     [Fact]
     public async Task RevokedToken_ShortCircuitsWith401AndRecordsReplay()
     {
+        // arrange
         var (middleware, tokenService, nextCalled) = BuildMiddleware();
         var revoked = new RevokedToken { TokenJti = "j", UserId = "u" };
         tokenService.GetRevokedTokenAsync("eyJ.abc").Returns(revoked);
@@ -74,8 +83,10 @@ public class RevokedTokenMiddlewareTests
         context.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("10.0.0.5");
         context.Response.Body = new MemoryStream();
 
+        // act
         await middleware.InvokeAsync(context);
 
+        // assert
         nextCalled().Should().BeFalse(because: "middleware short-circuits on revoked tokens — controller must not run.");
         context.Response.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
         await tokenService.Received(1).RecordRevokedReplayAsync(revoked, "10.0.0.5", "TestAgent/1.0");
@@ -85,6 +96,7 @@ public class RevokedTokenMiddlewareTests
     [Fact]
     public async Task RevokedToken_NoUserAgentHeader_RecordsReplayWithEmptyAgent()
     {
+        // arrange
         var (middleware, tokenService, _) = BuildMiddleware();
         var revoked = new RevokedToken { TokenJti = "j", UserId = "u" };
         tokenService.GetRevokedTokenAsync("eyJ.x").Returns(revoked);
@@ -94,20 +106,23 @@ public class RevokedTokenMiddlewareTests
         context.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("10.0.0.5");
         context.Response.Body = new MemoryStream();
 
+        // act
         await middleware.InvokeAsync(context);
 
+        // assert
         await tokenService.Received(1).RecordRevokedReplayAsync(revoked, "10.0.0.5", "");
     }
 
     [Fact]
     public async Task NonBearerAuthorizationHeader_PassesThroughToNext_AndDoesNotJwtParse()
     {
-        // /oauth/token uses Basic auth per RFC 6749 §2.3.1. Previously a blanket .Replace("Bearer ", "") left
+        // arrange — /oauth/token uses Basic auth per RFC 6749 §2.3.1. Previously a blanket .Replace("Bearer ", "") left
         // the Basic header intact and 500'd on JwtSecurityTokenHandler — middleware now recognises non-Bearer schemes.
         var (middleware, tokenService, nextCalled) = BuildMiddleware();
         var context = new DefaultHttpContext();
         context.Request.Headers.Authorization = "Basic dGVzdC1jbGllbnQ6dGVzdC1zZWNyZXQ=";
 
+        // act + assert
         var act = async () => await middleware.InvokeAsync(context);
 
         await act.Should().NotThrowAsync(
@@ -121,7 +136,7 @@ public class RevokedTokenMiddlewareTests
     [Fact]
     public async Task BearerHeaderWithMalformedJwt_PassesThroughToNext_RatherThan500()
     {
-        // "Bearer " followed by garbage previously caused ReadJwtToken to throw → 500. Middleware now catches and lets JwtBearer 401.
+        // arrange — "Bearer " followed by garbage previously caused ReadJwtToken to throw → 500. Middleware now catches and lets JwtBearer 401.
         var (middleware, tokenService, nextCalled) = BuildMiddleware();
         tokenService
             .GetRevokedTokenAsync("not-a-jwt")
@@ -130,6 +145,7 @@ public class RevokedTokenMiddlewareTests
         var context = new DefaultHttpContext();
         context.Request.Headers.Authorization = AuthSchemeConstants.BearerPrefix + "not-a-jwt";
 
+        // act + assert
         var act = async () => await middleware.InvokeAsync(context);
 
         await act.Should().NotThrowAsync();
@@ -141,7 +157,7 @@ public class RevokedTokenMiddlewareTests
     [Fact]
     public async Task RevokedToken_NoRemoteIp_RecordsEmptyIpRatherThanThrow()
     {
-        // RemoteIpAddress can be null in test scenarios / behind some proxies — record empty rather than crash.
+        // arrange — RemoteIpAddress can be null in test scenarios / behind some proxies, record empty rather than crash.
         var (middleware, tokenService, _) = BuildMiddleware();
         var revoked = new RevokedToken { TokenJti = "j", UserId = "u" };
         tokenService.GetRevokedTokenAsync("eyJ.x").Returns(revoked);
@@ -150,6 +166,7 @@ public class RevokedTokenMiddlewareTests
         context.Request.Headers.Authorization = AuthSchemeConstants.BearerPrefix + "eyJ.x";
         context.Response.Body = new MemoryStream();
 
+        // act + assert
         var act = async () => await middleware.InvokeAsync(context);
 
         await act.Should().NotThrowAsync();

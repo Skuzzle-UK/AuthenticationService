@@ -13,13 +13,16 @@ public class SecurityHeadersMiddlewareTests
     [Fact]
     public async Task InvokeAsync_AddsAllExpectedSecurityHeaders()
     {
+        // arrange
         var nextCalled = false;
         RequestDelegate next = _ => { nextCalled = true; return Task.CompletedTask; };
         var middleware = new SecurityHeadersMiddleware(next);
         var context = new DefaultHttpContext();
 
+        // act
         await middleware.InvokeAsync(context);
 
+        // assert
         var headers = context.Response.Headers;
         nextCalled.Should().BeTrue(because: "middleware always passes through; it's purely additive.");
 
@@ -50,13 +53,14 @@ public class SecurityHeadersMiddlewareTests
     [Fact]
     public async Task InvokeAsync_PassesThroughEvenWhenHeadersAlreadyExist()
     {
-        // Pinned that the IHeaderDictionary indexer overwrites — a switch to .Add would throw on duplicate.
+        // arrange — pinned that the IHeaderDictionary indexer overwrites, a switch to .Add would throw on duplicate.
         var nextCalled = false;
         RequestDelegate next = _ => { nextCalled = true; return Task.CompletedTask; };
         var middleware = new SecurityHeadersMiddleware(next);
         var context = new DefaultHttpContext();
         context.Response.Headers.XFrameOptions = "SAMEORIGIN";
 
+        // act + assert
         var act = async () => await middleware.InvokeAsync(context);
 
         await act.Should().NotThrowAsync();

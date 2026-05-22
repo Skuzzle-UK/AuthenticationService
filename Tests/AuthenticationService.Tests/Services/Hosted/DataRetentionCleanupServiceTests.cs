@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using NSubstitute;
 
 namespace AuthenticationService.Tests.Services.Hosted;
 
@@ -31,7 +32,7 @@ public class DataRetentionCleanupServiceTests : IDisposable
     [Fact]
     public async Task RunCleanup_DeletesAuditRowsPastTTL_KeepsRecentOnes()
     {
-        // TTL = 90 days. Three rows: 100 days (delete), 30 days (keep), 1 hour (keep).
+        // arrange — TTL = 90 days. Three rows: 100 days (delete), 30 days (keep), 1 hour (keep).
         var (service, db) = BuildService(retentionTtlDays: 90);
         var seedUser = new User { Id = "u1", UserName = "alice", Email = "a@b.c", NormalizedEmail = "A@B.C", NormalizedUserName = "ALICE" };
         db.Users.Add(seedUser);
@@ -41,8 +42,10 @@ public class DataRetentionCleanupServiceTests : IDisposable
             new RevokedTokenAccessAttempt { TokenJti = "j3", UserId = "u1", IpAddress = "1.1.1.1", CreatedAt = DateTime.UtcNow.AddHours(-1) });
         await db.SaveChangesAsync();
 
+        // act
         await service.RunCleanupAsync(CancellationToken.None);
 
+        // assert
         db.ChangeTracker.Clear();
         var remaining = await db.RevokedTokenAccessAttempts.OrderBy(x => x.CreatedAt).ToListAsync();
         remaining.Should().HaveCount(2);
@@ -52,14 +55,17 @@ public class DataRetentionCleanupServiceTests : IDisposable
     [Fact]
     public async Task RunCleanup_DeletesExpiredRevokedTokens_KeepsLiveOnes()
     {
+        // arrange
         var (service, db) = BuildService();
         db.RevokedTokens.AddRange(
             new RevokedToken { TokenJti = "expired", UserId = "u1", ExpiresAt = DateTime.UtcNow.AddMinutes(-1) },
             new RevokedToken { TokenJti = "live", UserId = "u1", ExpiresAt = DateTime.UtcNow.AddMinutes(5) });
         await db.SaveChangesAsync();
 
+        // act
         await service.RunCleanupAsync(CancellationToken.None);
 
+        // assert
         db.ChangeTracker.Clear();
         (await db.RevokedTokens.Select(t => t.TokenJti).ToListAsync())
             .Should().BeEquivalentTo(new[] { "live" });
@@ -68,6 +74,7 @@ public class DataRetentionCleanupServiceTests : IDisposable
     [Fact]
     public async Task RunCleanup_DeletesExpiredRefreshTokens()
     {
+        // arrange
         var (service, db) = BuildService();
         db.Users.Add(new User { Id = "u1", UserName = "u", Email = "u@u", NormalizedEmail = "U@U", NormalizedUserName = "U" });
         db.RefreshTokens.AddRange(
@@ -85,8 +92,10 @@ public class DataRetentionCleanupServiceTests : IDisposable
             });
         await db.SaveChangesAsync();
 
+        // act
         await service.RunCleanupAsync(CancellationToken.None);
 
+        // assert
         db.ChangeTracker.Clear();
         (await db.RefreshTokens.Select(t => t.TokenHash).ToListAsync())
             .Should().BeEquivalentTo(new[] { "hash-live" });
@@ -95,8 +104,28 @@ public class DataRetentionCleanupServiceTests : IDisposable
     [Fact]
     public async Task RunCleanup_EmptyDatabase_NoOpNoException()
     {
+        // arrange
         var (service, _) = BuildService();
 
+        // act + assert
+        var act = async () => await service.RunCleanupAsync(CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task RunCleanup_WhenBodyThrows_SwallowsAndDoesNotPropagate()
+    {
+        // arrange
+        var scopeFactory = Substitute.For<IServiceScopeFactory>();
+        scopeFactory.CreateScope().Returns<IServiceScope>(_ => throw new InvalidOperationException("kaboom"));
+
+        var service = new DataRetentionCleanupService(
+            NullLogger<DataRetentionCleanupService>.Instance,
+            scopeFactory,
+            Options.Create(new DataRetentionSettings { CleanupIntervalInHours = 12, RevokedReplayTTLInDays = 90 }));
+
+        // act + assert
         var act = async () => await service.RunCleanupAsync(CancellationToken.None);
 
         await act.Should().NotThrowAsync();

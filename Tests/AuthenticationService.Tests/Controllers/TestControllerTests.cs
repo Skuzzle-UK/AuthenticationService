@@ -13,20 +13,26 @@ public class TestControllerTests
     [Fact]
     public void TestAdminOnly_ReturnsOkWithExpectedBody()
     {
+        // arrange
         var controller = new TestController();
 
+        // act
         var result = controller.TestAdminOnlyAsync();
 
+        // assert
         result.Should().BeOfType<OkObjectResult>().Which.Value.Should().Be("Test succeeded");
     }
 
     [Fact]
     public void TestAllAuthenticatedUsers_ReturnsOkWithExpectedBody()
     {
+        // arrange
         var controller = new TestController();
 
+        // act
         var result = controller.TestAllAuthenticatedUsersAsync();
 
+        // assert
         result.Should().BeOfType<OkObjectResult>().Which.Value.Should().Be("Test succeeded");
     }
 }

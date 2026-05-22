@@ -12,19 +12,22 @@ public class SmsServiceTests
     [Fact]
     public void IsConfigured_DefaultImplementation_ReturnsFalse()
     {
+        // arrange
         var sms = new SmsService();
 
+        // act + assert
         sms.IsConfigured.Should().BeFalse();
     }
 
     [Fact]
     public async Task SendAsync_DefaultImplementation_ThrowsNotSupported()
     {
+        // arrange
         var sms = new SmsService();
 
+        // act + assert — explicit failure: a silent no-op would mask MFA not being delivered in production.
         var act = async () => await sms.SendAsync("+1234567890", "test message");
 
-        // Explicit failure — a silent no-op would mask MFA not being delivered in production.
         await act.Should().ThrowAsync<NotSupportedException>()
             .WithMessage("*not configured*");
     }

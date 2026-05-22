@@ -30,10 +30,12 @@ public class AdminControllerTests
     [Fact]
     public async Task ListUsersAsync_PassesQueryParamsThroughToFilter()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.AdminService.ListUsersAsync(Arg.Any<AdminListFilter>(), Arg.Any<CancellationToken>())
             .Returns(new PagedResponse<UserSummaryDto>());
 
+        // act
         var result = await controller.ListUsersAsync(
             page: 3,
             pageSize: 50,
@@ -41,6 +43,7 @@ public class AdminControllerTests
             lockedOnly: true,
             unconfirmedOnly: false);
 
+        // assert
         result.Should().BeOfType<OkObjectResult>();
         await deps.AdminService.Received(1).ListUsersAsync(
             Arg.Is<AdminListFilter>(f =>
@@ -55,23 +58,29 @@ public class AdminControllerTests
     [Fact]
     public async Task GetUserAsync_ServiceReturnsDetail_ReturnsOkWithBody()
     {
+        // arrange
         var (controller, deps) = BuildController();
         var detail = new UserDetailDto { Id = OtherUserId };
         deps.AdminService.GetUserDetailAsync(OtherUserId, Arg.Any<CancellationToken>()).Returns(detail);
 
+        // act
         var result = await controller.GetUserAsync(OtherUserId, CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<OkObjectResult>().Which.Value.Should().BeSameAs(detail);
     }
 
     [Fact]
     public async Task GetUserAsync_ServiceReturnsNull_Returns404()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.AdminService.GetUserDetailAsync(OtherUserId, Arg.Any<CancellationToken>()).Returns((UserDetailDto?)null);
 
+        // act
         var result = await controller.GetUserAsync(OtherUserId, CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<NotFoundResult>();
     }
 
@@ -88,8 +97,10 @@ public class AdminControllerTests
     [InlineData("resend-invitation")]
     public async Task DestructiveEndpoints_RejectSelfTarget(string action)
     {
+        // arrange
         var (controller, deps) = BuildController();
 
+        // act
         IActionResult result = action switch
         {
             "lock" => await controller.LockUserAsync(AdminId, CancellationToken.None),
@@ -101,6 +112,7 @@ public class AdminControllerTests
             _ => throw new InvalidOperationException(action)
         };
 
+        // assert
         result.Should().BeOfType<BadRequestObjectResult>(
             because: "destructive operations on the current admin must be blocked before reaching the service");
         await deps.AdminService.DidNotReceiveWithAnyArgs().LockUserAsync(default!, default!, default!, default);
@@ -114,13 +126,15 @@ public class AdminControllerTests
     [Fact]
     public async Task GetUserAsync_AllowsSelfTarget()
     {
-        // List / detail / audit are non-destructive — admins can audit their own activity.
+        // arrange — list / detail / audit are non-destructive, admins can audit their own activity.
         var (controller, deps) = BuildController();
         deps.AdminService.GetUserDetailAsync(AdminId, Arg.Any<CancellationToken>())
             .Returns(new UserDetailDto { Id = AdminId });
 
+        // act
         var result = await controller.GetUserAsync(AdminId, CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<OkObjectResult>();
     }
 
@@ -131,36 +145,45 @@ public class AdminControllerTests
     [Fact]
     public async Task LockUserAsync_NotFound_Returns404()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.AdminService.LockUserAsync(OtherUserId, AdminId, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns((LockoutInfoDto?)null);
 
+        // act
         var result = await controller.LockUserAsync(OtherUserId, CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<NotFoundResult>();
     }
 
     [Fact]
     public async Task LockUserAsync_HappyPath_ReturnsOkWithLockoutInfo()
     {
+        // arrange
         var (controller, deps) = BuildController();
         var info = new LockoutInfoDto { IsLocked = true };
         deps.AdminService.LockUserAsync(OtherUserId, AdminId, Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(info);
 
+        // act
         var result = await controller.LockUserAsync(OtherUserId, CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<OkObjectResult>().Which.Value.Should().BeSameAs(info);
     }
 
     [Fact]
     public async Task UnlockUserAsync_HappyPath_ReturnsOkWithLockoutInfo()
     {
+        // arrange
         var (controller, deps) = BuildController();
         var info = new LockoutInfoDto { IsLocked = false };
         deps.AdminService.UnlockUserAsync(OtherUserId, AdminId, Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(info);
 
+        // act
         var result = await controller.UnlockUserAsync(OtherUserId, CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<OkObjectResult>();
     }
 
@@ -171,12 +194,15 @@ public class AdminControllerTests
     [Fact]
     public async Task CreateUserAsync_Success_Returns201WithLocation()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.AdminService.CreateUserAsync(Arg.Any<AdminCreateUserDto>(), AdminId, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AdminCreateUserResult.Success("new-user-id"));
 
+        // act
         var result = await controller.CreateUserAsync(new AdminCreateUserDto(), CancellationToken.None);
 
+        // assert
         var created = result.Should().BeOfType<CreatedResult>().Subject;
         created.Location.Should().Be("/api/Admin/users/new-user-id");
     }
@@ -184,12 +210,15 @@ public class AdminControllerTests
     [Fact]
     public async Task CreateUserAsync_ValidationFailed_Returns400WithErrors()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.AdminService.CreateUserAsync(Arg.Any<AdminCreateUserDto>(), AdminId, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AdminCreateUserResult.ValidationFailed(new Dictionary<string, string> { ["roles"] = "bad" }));
 
+        // act
         var result = await controller.CreateUserAsync(new AdminCreateUserDto(), CancellationToken.None);
 
+        // assert
         var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
         bad.Value.Should().BeOfType<ApiResponse>().Which.Errors.Should().ContainKey("roles");
     }
@@ -197,12 +226,15 @@ public class AdminControllerTests
     [Fact]
     public async Task CreateUserAsync_UnknownRole_Returns400WithRoleError()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.AdminService.CreateUserAsync(Arg.Any<AdminCreateUserDto>(), AdminId, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AdminCreateUserResult.UnknownRole("Wizard"));
 
+        // act
         var result = await controller.CreateUserAsync(new AdminCreateUserDto(), CancellationToken.None);
 
+        // assert
         var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
         bad.Value.Should().BeOfType<ApiResponse>().Which.Errors.Should().ContainKey("roles");
     }
@@ -210,12 +242,15 @@ public class AdminControllerTests
     [Fact]
     public async Task CreateUserAsync_Conflict_Returns409()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.AdminService.CreateUserAsync(Arg.Any<AdminCreateUserDto>(), AdminId, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AdminCreateUserResult.Conflict("email taken"));
 
+        // act
         var result = await controller.CreateUserAsync(new AdminCreateUserDto(), CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<ConflictObjectResult>();
     }
 
@@ -226,50 +261,62 @@ public class AdminControllerTests
     [Fact]
     public async Task ResendInvitationAsync_UserAlreadyActive_Returns409()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.AdminService.ResendInvitationAsync(OtherUserId, AdminId, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(AdminInvitationResendResult.UserAlreadyActive);
 
+        // act
         var result = await controller.ResendInvitationAsync(OtherUserId, CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<ConflictObjectResult>();
     }
 
     [Fact]
     public async Task ResendInvitationAsync_UserNotFound_Returns404()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.AdminService.ResendInvitationAsync(OtherUserId, AdminId, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(AdminInvitationResendResult.UserNotFound);
 
+        // act
         var result = await controller.ResendInvitationAsync(OtherUserId, CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<NotFoundResult>();
     }
 
     [Fact]
     public async Task RevokeSessionsAsync_HappyPath_ReturnsOk()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.AdminService.RevokeSessionsAsync(OtherUserId, AdminId, Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
 
+        // act
         var result = await controller.RevokeSessionsAsync(OtherUserId, CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<OkObjectResult>();
     }
 
     [Fact]
     public async Task ForcePasswordResetAsync_CallbackUriPassesThrough()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.AdminService.ForcePasswordResetAsync(OtherUserId, AdminId, Arg.Any<string>(), "https://override.test", Arg.Any<CancellationToken>())
             .Returns(true);
 
+        // act
         var result = await controller.ForcePasswordResetAsync(
             OtherUserId,
             new AdminController.ForcePasswordResetRequest { CallbackUri = "https://override.test" },
             CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<OkObjectResult>();
         await deps.AdminService.Received(1).ForcePasswordResetAsync(
             OtherUserId, AdminId, Arg.Any<string>(), "https://override.test", Arg.Any<CancellationToken>());
@@ -278,12 +325,15 @@ public class AdminControllerTests
     [Fact]
     public async Task GetAuditAsync_PassesFilterThroughAndReturnsResult()
     {
+        // arrange
         var (controller, deps) = BuildController();
         var paged = new PagedResponse<AuditEntryDto>();
         deps.AdminService.GetAuditAsync(Arg.Any<AdminAuditFilter>(), Arg.Any<CancellationToken>()).Returns(paged);
 
+        // act
         var result = await controller.GetAuditAsync(OtherUserId, page: 2, pageSize: 25, since: null, eventId: 1001);
 
+        // assert
         result.Should().BeOfType<OkObjectResult>().Which.Value.Should().BeSameAs(paged);
         await deps.AdminService.Received(1).GetAuditAsync(
             Arg.Is<AdminAuditFilter>(f =>
@@ -297,12 +347,15 @@ public class AdminControllerTests
     [Fact]
     public async Task GetAuditAsync_NotFound_Returns404()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.AdminService.GetAuditAsync(Arg.Any<AdminAuditFilter>(), Arg.Any<CancellationToken>())
             .Returns((PagedResponse<AuditEntryDto>?)null);
 
+        // act
         var result = await controller.GetAuditAsync(OtherUserId);
 
+        // assert
         result.Should().BeOfType<NotFoundResult>();
     }
 
@@ -313,6 +366,7 @@ public class AdminControllerTests
     [Fact]
     public async Task CreateClientAsync_HappyPath_Returns201WithPlaintextSecret()
     {
+        // arrange
         var (controller, deps) = BuildController();
         // NSubstitute requires uniform specifiers when any argument of a given type uses Arg.Any.
         deps.ClientService.CreateAsync(
@@ -325,9 +379,11 @@ public class AdminControllerTests
                 ClientSecretHash = "hash",
             });
 
+        // act
         var result = await controller.CreateClientAsync(
             new AdminCreateClientDto { Id = "c", Name = "Test" }, CancellationToken.None);
 
+        // assert
         var created = result.Should().BeOfType<CreatedResult>().Subject;
         var body = created.Value.Should().BeOfType<ClientCreatedResponse>().Subject;
         body.Id.Should().Be("c");
@@ -338,35 +394,44 @@ public class AdminControllerTests
     [Fact]
     public async Task CreateClientAsync_MissingId_Returns400()
     {
+        // arrange
         var (controller, _) = BuildController();
 
+        // act
         var result = await controller.CreateClientAsync(
             new AdminCreateClientDto { Id = null, Name = "Test" }, CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]
     public async Task RotateClientSecretAsync_UnknownClient_Returns404()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.ClientService.RotateSecretAsync("ghost", Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns((AuthenticationService.Entities.Client?)null);
 
+        // act
         var result = await controller.RotateClientSecretAsync("ghost", CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<NotFoundResult>();
     }
 
     [Fact]
     public async Task RotateClientSecretAsync_HappyPath_ReturnsNewSecret()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.ClientService.RotateSecretAsync("c", Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AuthenticationService.Entities.Client { Id = "c", Name = "T", ClientSecretHash = "h" });
 
+        // act
         var result = await controller.RotateClientSecretAsync("c", CancellationToken.None);
 
+        // assert
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         var body = ok.Value.Should().BeOfType<ClientCreatedResponse>().Subject;
         body.ClientSecret.Should().NotBeNullOrEmpty(
@@ -376,34 +441,43 @@ public class AdminControllerTests
     [Fact]
     public async Task DisableClientAsync_ChangedFlag_ReturnsOk()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.ClientService.DisableAsync("c", Arg.Any<CancellationToken>()).Returns(true);
 
+        // act
         var result = await controller.DisableClientAsync("c", CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<OkObjectResult>();
     }
 
     [Fact]
     public async Task AddClientScopeAsync_ValidationFailure_Returns400()
     {
+        // arrange
         var (controller, _) = BuildController();
 
+        // act
         var result = await controller.AddClientScopeAsync(
             "c", new AdminClientScopeDto { Audience = null, Scope = null }, CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]
     public async Task AddClientScopeAsync_HappyPath_DelegatesAndReturnsOk()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.ClientService.AddScopeAsync("c", "aud", "scope", Arg.Any<CancellationToken>()).Returns(true);
 
+        // act
         var result = await controller.AddClientScopeAsync(
             "c", new AdminClientScopeDto { Audience = "aud", Scope = "scope" }, CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<OkObjectResult>();
         await deps.ClientService.Received(1).AddScopeAsync("c", "aud", "scope", Arg.Any<CancellationToken>());
     }
@@ -411,26 +485,32 @@ public class AdminControllerTests
     [Fact]
     public async Task RemoveClientScopeAsync_NotPresent_Returns404()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.ClientService.RemoveScopeAsync(
                 "c", "aud", "scope", Arg.Any<CancellationToken>())
             .Returns(false);
 
+        // act
         var result = await controller.RemoveClientScopeAsync("c", "aud", "scope", CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<NotFoundResult>();
     }
 
     [Fact]
     public async Task RemoveClientScopeAsync_HappyPath_ReturnsOk()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.ClientService.RemoveScopeAsync(
                 "c", "aud", "scope", Arg.Any<CancellationToken>())
             .Returns(true);
 
+        // act
         var result = await controller.RemoveClientScopeAsync("c", "aud", "scope", CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<OkObjectResult>();
     }
 

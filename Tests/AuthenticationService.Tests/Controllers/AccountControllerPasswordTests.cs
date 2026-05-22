@@ -30,13 +30,15 @@ public class AccountControllerPasswordTests
     [Fact]
     public async Task ForgotPassword_UnknownEmail_Returns400Generic()
     {
-        // Returns 400 generic to avoid leaking registration state. (Returning 200 would be an alternative
+        // arrange — returns 400 generic to avoid leaking registration state. (Returning 200 would be an alternative
         // shape for the same intent — pinned because direction matters for security review.)
         var (controller, deps) = BuildController();
         deps.UserService.FindByEmailAsync("ghost@example.com").Returns((User?)null);
 
+        // act
         var result = await controller.ForgotPasswordAsync(new ForgotPasswordDto { Email = "ghost@example.com" });
 
+        // assert
         result.Should().BeOfType<BadRequestObjectResult>();
         await deps.EmailService.DidNotReceive().SendEmailAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
@@ -45,14 +47,16 @@ public class AccountControllerPasswordTests
     [Fact]
     public async Task ForgotPassword_EmailUnconfirmed_Returns400()
     {
-        // Don't send reset link to unverified address — attacker could pre-register a victim's email and intercept.
+        // arrange — don't send reset link to unverified address, attacker could pre-register a victim's email and intercept.
         var (controller, deps) = BuildController();
         var user = new User { Id = "u1", Email = "alice@example.com" };
         deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
         deps.UserService.IsEmailConfirmedAsync(user).Returns(false);
 
+        // act
         var result = await controller.ForgotPasswordAsync(new ForgotPasswordDto { Email = "alice@example.com" });
 
+        // assert
         result.Should().BeOfType<BadRequestObjectResult>();
         await deps.EmailService.DidNotReceive().SendEmailAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
@@ -61,19 +65,21 @@ public class AccountControllerPasswordTests
     [Fact]
     public async Task ForgotPassword_HappyPath_SendsResetEmailWithSuppliedCallback()
     {
-        // DTO carries an explicit ResetPasswordUri (consumer's own UI) — link must point at that, not the bundled page.
+        // arrange — DTO carries an explicit ResetPasswordUri (consumer's own UI), link must point at that, not the bundled page.
         var (controller, deps) = BuildController();
         var user = new User { Id = "u1", Email = "alice@example.com" };
         deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
         deps.UserService.IsEmailConfirmedAsync(user).Returns(true);
         deps.UserService.GeneratePasswordResetTokenAsync(user).Returns("reset-token");
 
+        // act
         var result = await controller.ForgotPasswordAsync(new ForgotPasswordDto
         {
             Email = "alice@example.com",
             ResetPasswordUri = "https://app.example.com/reset",
         });
 
+        // assert
         result.Should().BeOfType<OkObjectResult>();
         await deps.EmailService.Received(1).SendEmailAsync(
             "alice@example.com",
@@ -84,19 +90,21 @@ public class AccountControllerPasswordTests
     [Fact]
     public async Task ForgotPassword_NoCallbackUri_FallsBackToBundledResetPage()
     {
-        // Falls back to PublicUrlSettings.BaseUrl + bundled ResetPassword page.
+        // arrange — falls back to PublicUrlSettings.BaseUrl + bundled ResetPassword page.
         var (controller, deps) = BuildController();
         var user = new User { Id = "u1", Email = "alice@example.com" };
         deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
         deps.UserService.IsEmailConfirmedAsync(user).Returns(true);
         deps.UserService.GeneratePasswordResetTokenAsync(user).Returns("reset-token");
 
+        // act
         await controller.ForgotPasswordAsync(new ForgotPasswordDto
         {
             Email = "alice@example.com",
             ResetPasswordUri = null,
         });
 
+        // assert
         await deps.EmailService.Received(1).SendEmailAsync(
             "alice@example.com",
             EmailSubjects.PasswordReset,
@@ -109,9 +117,11 @@ public class AccountControllerPasswordTests
     [Fact]
     public async Task ResetForgottenPassword_UnknownOrUnconfirmedEmail_Returns400()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.UserService.FindByEmailAsync(Arg.Any<string>()).Returns((User?)null);
 
+        // act
         var result = await controller.ResetForgottenPasswordAsync(new ResetForgottenPasswordDto
         {
             Email = "ghost@example.com",
@@ -119,6 +129,7 @@ public class AccountControllerPasswordTests
             NewPassword = "p",
         });
 
+        // assert
         result.Should().BeOfType<BadRequestObjectResult>();
         await deps.UserService.DidNotReceive()
             .ResetPasswordAsync(Arg.Any<User>(), Arg.Any<string>(), Arg.Any<string>());
@@ -127,6 +138,7 @@ public class AccountControllerPasswordTests
     [Fact]
     public async Task ResetForgottenPassword_IdentityRejectsToken_Returns400WithErrors()
     {
+        // arrange
         var (controller, deps) = BuildController();
         var user = new User { Id = "u1", Email = "alice@example.com" };
         deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
@@ -134,6 +146,7 @@ public class AccountControllerPasswordTests
         deps.UserService.ResetPasswordAsync(user, "decoded-tok", "newpass").Returns(
             IdentityResult.Failed(new IdentityError { Code = "InvalidToken", Description = "Bad token." }));
 
+        // act
         var result = await controller.ResetForgottenPasswordAsync(new ResetForgottenPasswordDto
         {
             Email = "alice@example.com",
@@ -141,6 +154,7 @@ public class AccountControllerPasswordTests
             NewPassword = "newpass",
         });
 
+        // assert
         var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
         bad.Value.Should().BeOfType<ApiResponse>()
             .Which.Errors.Should().ContainKey("InvalidToken");
@@ -149,7 +163,7 @@ public class AccountControllerPasswordTests
     [Fact]
     public async Task ResetForgottenPassword_HappyPath_InvalidatesTokensClearsLockoutAndNotifies()
     {
-        // Reset doubles as account recovery — clears active lockout, invalidates all sessions, sends "wasn't me" panic-button email.
+        // arrange — reset doubles as account recovery, clears active lockout, invalidates all sessions, sends "wasn't me" panic-button email.
         var (controller, deps) = BuildController();
         var user = new User
         {
@@ -162,6 +176,7 @@ public class AccountControllerPasswordTests
         deps.UserService.GenerateUserTokenAsync(user, Arg.Any<string>(), TokenPurposes.Lockout)
             .Returns("lockout-token");
 
+        // act
         var result = await controller.ResetForgottenPasswordAsync(new ResetForgottenPasswordDto
         {
             Email = "alice@example.com",
@@ -169,6 +184,7 @@ public class AccountControllerPasswordTests
             NewPassword = "newpass",
         });
 
+        // assert
         result.Should().BeOfType<OkObjectResult>();
         await deps.UserService.Received(1).InvalidateUserTokensAsync(
             user, Arg.Any<string>(), RevocationReasons.PasswordReset);
@@ -185,25 +201,31 @@ public class AccountControllerPasswordTests
     [Fact]
     public async Task ChangePassword_MissingSubClaim_Returns401()
     {
+        // arrange
         var (controller, _) = BuildController(subClaim: null);
 
+        // act
         var result = await controller.ChangePasswordAsync(new ChangePasswordDto
         {
             OldPassword = "old", NewPassword = "new",
         });
 
+        // assert
         result.Should().BeOfType<UnauthorizedObjectResult>();
     }
 
     [Fact]
     public async Task ChangePassword_OrphanToken_RevokesAndReturns401()
     {
+        // arrange
         var (controller, deps) = BuildController(subClaim: "deleted-user");
         deps.UserService.FindByIdAsync("deleted-user").Returns((User?)null);
         SetAuthorizationHeader(controller, "eyJ.access");
 
+        // act
         var result = await controller.ChangePasswordAsync(new ChangePasswordDto());
 
+        // assert
         result.Should().BeOfType<UnauthorizedObjectResult>();
         await deps.TokenService.Received(1).RevokeOrphanedTokenAsync("eyJ.access", Arg.Any<string>());
     }
@@ -211,7 +233,7 @@ public class AccountControllerPasswordTests
     [Fact]
     public async Task ChangePassword_UnconfirmedEmail_Returns400WithoutRevokingToken()
     {
-        // Anomalous (login gates on email confirmed) but token NOT revoked here — comment in source notes
+        // arrange — anomalous (login gates on email confirmed) but token NOT revoked here, comment in source notes
         // future flows might legitimately put a user in this state.
         var (controller, deps) = BuildController(subClaim: "u1");
         var user = new User { Id = "u1", Email = "alice@example.com" };
@@ -219,11 +241,13 @@ public class AccountControllerPasswordTests
         deps.UserService.IsEmailConfirmedAsync(user).Returns(false);
         SetAuthorizationHeader(controller, "eyJ.access");
 
+        // act
         var result = await controller.ChangePasswordAsync(new ChangePasswordDto
         {
             OldPassword = "old", NewPassword = "new",
         });
 
+        // assert
         result.Should().BeOfType<BadRequestObjectResult>();
         await deps.TokenService.DidNotReceive().RevokeOrphanedTokenAsync(Arg.Any<string>(), Arg.Any<string>());
     }
@@ -231,23 +255,27 @@ public class AccountControllerPasswordTests
     [Fact]
     public async Task ChangePassword_LockedAccount_Returns401()
     {
+        // arrange
         var (controller, deps) = BuildController(subClaim: "u1");
         var user = new User { Id = "u1", Email = "alice@example.com" };
         deps.UserService.FindByIdAsync("u1").Returns(user);
         deps.UserService.IsEmailConfirmedAsync(user).Returns(true);
         deps.UserService.IsLockedOutAsync(user).Returns(true);
 
+        // act
         var result = await controller.ChangePasswordAsync(new ChangePasswordDto
         {
             OldPassword = "old", NewPassword = "new",
         });
 
+        // assert
         result.Should().BeOfType<UnauthorizedObjectResult>();
     }
 
     [Fact]
     public async Task ChangePassword_IdentityError_Returns400WithErrors()
     {
+        // arrange
         var (controller, deps) = BuildController(subClaim: "u1");
         var user = new User { Id = "u1", Email = "alice@example.com" };
         deps.UserService.FindByIdAsync("u1").Returns(user);
@@ -256,11 +284,13 @@ public class AccountControllerPasswordTests
         deps.UserService.ChangePasswordAsync(user, "wrong-old", "new").Returns(
             IdentityResult.Failed(new IdentityError { Code = "PasswordMismatch", Description = "Wrong password." }));
 
+        // act
         var result = await controller.ChangePasswordAsync(new ChangePasswordDto
         {
             OldPassword = "wrong-old", NewPassword = "new",
         });
 
+        // assert
         var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
         bad.Value.Should().BeOfType<ApiResponse>()
             .Which.Errors.Should().ContainKey("PasswordMismatch");
@@ -269,6 +299,7 @@ public class AccountControllerPasswordTests
     [Fact]
     public async Task ChangePassword_HappyPath_InvalidatesEmailsClearsLockoutAndResets()
     {
+        // arrange
         var (controller, deps) = BuildController(subClaim: "u1");
         var user = new User
         {
@@ -283,11 +314,13 @@ public class AccountControllerPasswordTests
             .Returns("lockout-tok");
         SetAuthorizationHeader(controller, "eyJ.access");
 
+        // act
         var result = await controller.ChangePasswordAsync(new ChangePasswordDto
         {
             OldPassword = "old", NewPassword = "new",
         });
 
+        // assert
         result.Should().BeOfType<OkObjectResult>();
         await deps.UserService.Received(1).InvalidateUserTokensAsync(
             user, Arg.Any<string>(), RevocationReasons.PasswordChange, "eyJ.access");
@@ -302,28 +335,34 @@ public class AccountControllerPasswordTests
     [Fact]
     public async Task LockAccount_UnknownEmail_Returns400()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.UserService.FindByEmailAsync(Arg.Any<string>()).Returns((User?)null);
 
+        // act
         var result = await controller.LockAccountAsync(new LockAccountDto { Email = "ghost@example.com", Token = "tok" });
 
+        // assert
         result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]
     public async Task LockAccount_InvalidToken_Returns401()
     {
+        // arrange
         var (controller, deps) = BuildController();
         var user = new User { Id = "u1", Email = "alice@example.com" };
         deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
         deps.UserService.VerifyUserTokenAsync(user, Arg.Any<string>(), TokenPurposes.Lockout, "bad-tok")
             .Returns(false);
 
+        // act
         var result = await controller.LockAccountAsync(new LockAccountDto
         {
             Email = "alice@example.com", Token = "bad-tok",
         });
 
+        // assert
         result.Should().BeOfType<UnauthorizedObjectResult>();
         await deps.UserService.DidNotReceive().SetLockoutEnabledAsync(Arg.Any<User>(), Arg.Any<bool>());
     }
@@ -331,6 +370,7 @@ public class AccountControllerPasswordTests
     [Fact]
     public async Task LockAccount_HappyPath_InvalidatesLocksIndefinitelyAndSendsResetEmail()
     {
+        // arrange
         var (controller, deps) = BuildController();
         var user = new User { Id = "u1", Email = "alice@example.com" };
         deps.UserService.FindByEmailAsync("alice@example.com").Returns(user);
@@ -338,11 +378,13 @@ public class AccountControllerPasswordTests
             .Returns(true);
         deps.UserService.GeneratePasswordResetTokenAsync(user).Returns("reset-token");
 
+        // act
         var result = await controller.LockAccountAsync(new LockAccountDto
         {
             Email = "alice@example.com", Token = "valid-tok",
         });
 
+        // assert
         result.Should().BeOfType<OkObjectResult>();
         await deps.UserService.Received(1).InvalidateUserTokensAsync(
             user, Arg.Any<string>(), RevocationReasons.AccountLock);

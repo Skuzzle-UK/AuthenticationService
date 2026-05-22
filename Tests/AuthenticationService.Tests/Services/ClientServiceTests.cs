@@ -17,33 +17,41 @@ public class ClientServiceTests : IDisposable
     [Fact]
     public async Task FindActiveAsync_UnknownClient_ReturnsNull()
     {
+        // arrange
         var (svc, _) = BuildService();
 
+        // act
         var result = await svc.FindActiveAsync("ghost", CancellationToken.None);
 
+        // assert
         result.Should().BeNull();
     }
 
     [Fact]
     public async Task FindActiveAsync_DisabledClient_ReturnsNullSameAsUnknown()
     {
-        // Token endpoint can't reveal whether a client id exists when disabled — only that auth failed.
+        // arrange — token endpoint can't reveal whether a client id exists when disabled; only that auth failed.
         var (svc, db) = BuildService();
         await SeedClientAsync(db, id: "disabled", isDisabled: true);
 
+        // act
         var result = await svc.FindActiveAsync("disabled", CancellationToken.None);
 
+        // assert
         result.Should().BeNull();
     }
 
     [Fact]
     public async Task FindActiveAsync_ActiveClient_ReturnsRow()
     {
+        // arrange
         var (svc, db) = BuildService();
         await SeedClientAsync(db, id: "active", isDisabled: false);
 
+        // act
         var result = await svc.FindActiveAsync("active", CancellationToken.None);
 
+        // assert
         result.Should().NotBeNull();
         result!.Id.Should().Be("active");
     }
@@ -51,31 +59,37 @@ public class ClientServiceTests : IDisposable
     [Fact]
     public async Task VerifySecret_RoundTrip_AcceptsHashedSecret()
     {
+        // arrange
         var (svc, _) = BuildService();
         var hasher = new PasswordHasher<Client>();
         var client = new Client { Id = "c", Name = "Test", ClientSecretHash = "" };
         client.ClientSecretHash = hasher.HashPassword(client, "the-secret");
 
+        // act + assert
         svc.VerifySecret(client, "the-secret").Should().BeTrue();
     }
 
     [Fact]
     public async Task VerifySecret_WrongSecret_Rejects()
     {
+        // arrange
         var (svc, _) = BuildService();
         var hasher = new PasswordHasher<Client>();
         var client = new Client { Id = "c", Name = "Test", ClientSecretHash = "" };
         client.ClientSecretHash = hasher.HashPassword(client, "the-secret");
 
+        // act + assert
         svc.VerifySecret(client, "different-secret").Should().BeFalse();
     }
 
     [Fact]
     public async Task HasScopeAsync_TupleExists_ReturnsTrue()
     {
+        // arrange
         var (svc, db) = BuildService();
         await SeedClientAsync(db, id: "c", scopes: [("inventory-api", "inventory.read")]);
 
+        // act + assert
         (await svc.HasScopeAsync("c", "inventory-api", "inventory.read", CancellationToken.None))
             .Should().BeTrue();
     }
@@ -83,10 +97,11 @@ public class ClientServiceTests : IDisposable
     [Fact]
     public async Task HasScopeAsync_DifferentAudience_ReturnsFalse()
     {
-        // Audience + scope checked as a tuple — (inventory-api, inventory.read) doesn't grant (orders-api, inventory.read).
+        // arrange — audience + scope checked as a tuple: (inventory-api, inventory.read) doesn't grant (orders-api, inventory.read).
         var (svc, db) = BuildService();
         await SeedClientAsync(db, id: "c", scopes: [("inventory-api", "inventory.read")]);
 
+        // act + assert
         (await svc.HasScopeAsync("c", "orders-api", "inventory.read", CancellationToken.None))
             .Should().BeFalse();
     }
@@ -94,11 +109,14 @@ public class ClientServiceTests : IDisposable
     [Fact]
     public async Task TouchLastUsedAsync_StampsTimestamp()
     {
+        // arrange
         var (svc, db) = BuildService();
         await SeedClientAsync(db, id: "c");
 
+        // act
         await svc.TouchLastUsedAsync("c", CancellationToken.None);
 
+        // assert
         var refreshed = await db.Clients.AsNoTracking().FirstAsync(c => c.Id == "c");
         refreshed.LastUsedAt.Should().NotBeNull(
             because: "TouchLastUsedAsync exists to stamp LastUsedAt after a successful token issue.");
@@ -107,8 +125,10 @@ public class ClientServiceTests : IDisposable
     [Fact]
     public async Task CreateAsync_HashesSecretAndAddsScopes()
     {
+        // arrange
         var (svc, db) = BuildService();
 
+        // act
         var client = await svc.CreateAsync(
             clientId: "new-client",
             name: "New",
@@ -117,6 +137,7 @@ public class ClientServiceTests : IDisposable
             scopes: new[] { ("inventory-api", "inventory.read"), ("orders-api", "orders.write") },
             CancellationToken.None);
 
+        // assert
         client.ClientSecretHash.Should().NotBe("raw-secret-value",
             because: "the plaintext secret must never be persisted; only its hash.");
         svc.VerifySecret(client, "raw-secret-value").Should().BeTrue(
@@ -131,21 +152,27 @@ public class ClientServiceTests : IDisposable
     [Fact]
     public async Task RotateSecretAsync_UnknownClient_ReturnsNull()
     {
+        // arrange
         var (svc, _) = BuildService();
 
+        // act
         var result = await svc.RotateSecretAsync("ghost", "any-new-secret", CancellationToken.None);
 
+        // assert
         result.Should().BeNull();
     }
 
     [Fact]
     public async Task RotateSecretAsync_HappyPath_OverwritesHashAndOldSecretStopsWorking()
     {
+        // arrange
         var (svc, db) = BuildService();
         await SeedClientAsync(db, id: "c", rawSecret: "old-secret");
 
+        // act
         var rotated = await svc.RotateSecretAsync("c", "new-secret", CancellationToken.None);
 
+        // assert
         rotated.Should().NotBeNull();
         svc.VerifySecret(rotated!, "new-secret").Should().BeTrue();
         svc.VerifySecret(rotated!, "old-secret").Should().BeFalse(
@@ -155,9 +182,11 @@ public class ClientServiceTests : IDisposable
     [Fact]
     public async Task DisableAsync_FlipsFlag_AndIsIdempotent()
     {
+        // arrange
         var (svc, db) = BuildService();
         await SeedClientAsync(db, id: "c", isDisabled: false);
 
+        // act + assert
         (await svc.DisableAsync("c", CancellationToken.None)).Should().BeTrue(
             because: "first call disables the client.");
         (await svc.DisableAsync("c", CancellationToken.None)).Should().BeFalse(
@@ -170,11 +199,14 @@ public class ClientServiceTests : IDisposable
     [Fact]
     public async Task AddScopeAsync_NewTuple_AddsRowReturnsTrue()
     {
+        // arrange
         var (svc, db) = BuildService();
         await SeedClientAsync(db, id: "c");
 
+        // act
         var added = await svc.AddScopeAsync("c", "inventory-api", "inventory.read", CancellationToken.None);
 
+        // assert
         added.Should().BeTrue();
         (await db.ClientScopes.AnyAsync(s => s.ClientId == "c" && s.Scope == "inventory.read"))
             .Should().BeTrue();
@@ -183,12 +215,14 @@ public class ClientServiceTests : IDisposable
     [Fact]
     public async Task AddScopeAsync_DuplicateTuple_NoOpReturnsFalse()
     {
-        // Unique index on (ClientId, Audience, Scope) would throw — service preempts with an existence check.
+        // arrange — unique index on (ClientId, Audience, Scope) would throw; service preempts with an existence check.
         var (svc, db) = BuildService();
         await SeedClientAsync(db, id: "c", scopes: [("inventory-api", "inventory.read")]);
 
+        // act
         var added = await svc.AddScopeAsync("c", "inventory-api", "inventory.read", CancellationToken.None);
 
+        // assert
         added.Should().BeFalse();
         (await db.ClientScopes.CountAsync(s => s.ClientId == "c")).Should().Be(1,
             because: "duplicate adds must not create a second row.");
@@ -197,11 +231,14 @@ public class ClientServiceTests : IDisposable
     [Fact]
     public async Task RemoveScopeAsync_ExistingTuple_DeletesReturnsTrue()
     {
+        // arrange
         var (svc, db) = BuildService();
         await SeedClientAsync(db, id: "c", scopes: [("inventory-api", "inventory.read")]);
 
+        // act
         var removed = await svc.RemoveScopeAsync("c", "inventory-api", "inventory.read", CancellationToken.None);
 
+        // assert
         removed.Should().BeTrue();
         (await db.ClientScopes.AnyAsync(s => s.ClientId == "c")).Should().BeFalse();
     }
@@ -209,10 +246,13 @@ public class ClientServiceTests : IDisposable
     [Fact]
     public async Task RemoveScopeAsync_NonExistentTuple_ReturnsFalse()
     {
+        // arrange
         var (svc, _) = BuildService();
 
+        // act
         var removed = await svc.RemoveScopeAsync("ghost", "audience", "scope", CancellationToken.None);
 
+        // assert
         removed.Should().BeFalse();
     }
 

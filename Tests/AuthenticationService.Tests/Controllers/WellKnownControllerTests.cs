@@ -49,11 +49,13 @@ public class WellKnownControllerTests : IDisposable
     [Fact]
     public void Jwks_ReturnsCachedJwksDocumentFromKeyProvider()
     {
-        // Pinned by reference equality — a regression that rebuilds per call would slip through value equality.
+        // arrange — pinned by reference equality, a regression that rebuilds per call would slip through value equality.
         var controller = MakeController();
 
+        // act
         var result = controller.Jwks();
 
+        // assert
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         ok.Value.Should().BeSameAs(_keyProvider.JwksDocument);
     }
@@ -61,11 +63,13 @@ public class WellKnownControllerTests : IDisposable
     [Fact]
     public void OpenIdConfiguration_BuildsDiscoveryDocFromConfiguredPublicUrlAndJwtSettings()
     {
-        // Host part comes from PublicUrlSettings rather than the request — defends against host-header attacks.
+        // arrange — host part comes from PublicUrlSettings rather than the request, defends against host-header attacks.
         var controller = MakeController();
 
+        // act
         var result = controller.OpenIdConfiguration();
 
+        // assert
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         var body = ok.Value!;
         var type = body.GetType();

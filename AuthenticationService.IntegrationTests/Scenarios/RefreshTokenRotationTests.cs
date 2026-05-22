@@ -20,16 +20,20 @@ public class RefreshTokenRotationTests(AppHostFixture fixture) : IntegrationTest
     [Fact]
     public async Task Refresh_RotatesPair_AndMarksOldRefreshConsumedInDatabase()
     {
+        // arrange
         var user = await RegisterAndConfirmUserAsync();
         var firstToken = await LoginAsync(user);
 
         AuthClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             scheme: "Bearer",
             parameter: firstToken.Value);
+
+        // act
         var refreshResponse = await AuthClient.PostAsJsonAsync(
             "/api/Authentication/refresh",
             new RefreshTokenDto { RefreshToken = firstToken.RefreshToken });
 
+        // assert
         refreshResponse.IsSuccessStatusCode.Should().BeTrue(
             because: "an unconsumed refresh token paired with a still-signature-valid access token rotates cleanly.");
         var refreshed = await refreshResponse.Content.ReadFromJsonAsync<AuthenticationResponse>();

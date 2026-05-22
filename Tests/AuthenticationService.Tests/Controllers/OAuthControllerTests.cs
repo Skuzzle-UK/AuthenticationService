@@ -34,22 +34,27 @@ public class OAuthControllerTests
     [Fact]
     public async Task TokenAsync_HttpsRequiredButHttp_ReturnsInvalidRequest()
     {
+        // arrange
         var (controller, _) = BuildController(requireHttps: true, isHttps: false);
 
+        // act
         var result = await controller.TokenAsync(MakeRequest(), CancellationToken.None);
 
+        // assert
         AssertError(result, HttpStatusCode.BadRequest, "invalid_request");
     }
 
     [Fact]
     public async Task TokenAsync_HttpsDisabledInConfig_AllowsHttpThrough()
     {
-        // Integration-test mode flips RequireHttps off.
+        // arrange — integration-test mode flips RequireHttps off.
         var (controller, deps) = BuildController(requireHttps: false, isHttps: false);
         StubHappyPath(deps);
 
+        // act
         var result = await controller.TokenAsync(MakeRequest(), CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<OkObjectResult>();
     }
 
@@ -58,11 +63,14 @@ public class OAuthControllerTests
     [Fact]
     public async Task TokenAsync_UnknownGrantType_ReturnsUnsupportedGrantType()
     {
+        // arrange
         var (controller, _) = BuildController();
 
+        // act
         var result = await controller.TokenAsync(
             MakeRequest(grantType: "password"), CancellationToken.None);
 
+        // assert
         AssertError(result, HttpStatusCode.BadRequest, "unsupported_grant_type");
     }
 
@@ -71,61 +79,76 @@ public class OAuthControllerTests
     [Fact]
     public async Task TokenAsync_NoCredentialsAnywhere_ReturnsInvalidRequest()
     {
+        // arrange
         var (controller, _) = BuildController();
 
+        // act
         var result = await controller.TokenAsync(
             MakeRequest(clientId: null, clientSecret: null), CancellationToken.None);
 
+        // assert
         AssertError(result, HttpStatusCode.BadRequest, "invalid_request");
     }
 
     [Fact]
     public async Task TokenAsync_MalformedBasicHeader_ReturnsInvalidRequest()
     {
+        // arrange
         var (controller, _) = BuildController();
         controller.ControllerContext.HttpContext.Request.Headers[HeaderNames.Authorization] = "Basic !!!not-base64!!!";
 
+        // act
         var result = await controller.TokenAsync(
             MakeRequest(clientId: null, clientSecret: null), CancellationToken.None);
 
+        // assert
         AssertError(result, HttpStatusCode.BadRequest, "invalid_request");
     }
 
     [Fact]
     public async Task TokenAsync_NonBasicAuthScheme_ReturnsInvalidRequest()
     {
+        // arrange
         var (controller, _) = BuildController();
         controller.ControllerContext.HttpContext.Request.Headers[HeaderNames.Authorization] = "Bearer some-token";
 
+        // act
         var result = await controller.TokenAsync(
             MakeRequest(clientId: null, clientSecret: null), CancellationToken.None);
 
+        // assert
         AssertError(result, HttpStatusCode.BadRequest, "invalid_request");
     }
 
     [Fact]
     public async Task TokenAsync_HeaderAndBodyDisagree_ReturnsInvalidRequest()
     {
+        // arrange
         var (controller, _) = BuildController();
         SetBasicAuthHeader(controller, ClientId, ClientSecret);
 
+        // act
         var result = await controller.TokenAsync(
             MakeRequest(clientId: "different-client", clientSecret: ClientSecret),
             CancellationToken.None);
 
+        // assert
         AssertError(result, HttpStatusCode.BadRequest, "invalid_request");
     }
 
     [Fact]
     public async Task TokenAsync_BasicAuthHeaderOnly_HappyPath_Returns200()
     {
+        // arrange
         var (controller, deps) = BuildController();
         SetBasicAuthHeader(controller, ClientId, ClientSecret);
         StubHappyPath(deps);
 
+        // act
         var result = await controller.TokenAsync(
             MakeRequest(clientId: null, clientSecret: null), CancellationToken.None);
 
+        // assert
         result.Should().BeOfType<OkObjectResult>();
     }
 
@@ -134,11 +157,14 @@ public class OAuthControllerTests
     [Fact]
     public async Task TokenAsync_UnknownClient_Returns401InvalidClient()
     {
+        // arrange
         var (controller, deps) = BuildController();
         deps.ClientService.FindActiveAsync(ClientId, Arg.Any<CancellationToken>()).Returns((Client?)null);
 
+        // act
         var result = await controller.TokenAsync(MakeRequest(), CancellationToken.None);
 
+        // assert
         AssertError(result, HttpStatusCode.Unauthorized, "invalid_client");
         controller.Response.Headers[HeaderNames.WWWAuthenticate].ToString()
             .Should().StartWith("Basic",
@@ -148,13 +174,16 @@ public class OAuthControllerTests
     [Fact]
     public async Task TokenAsync_BadSecret_Returns401InvalidClient()
     {
+        // arrange
         var (controller, deps) = BuildController();
         var client = new Client { Id = ClientId, Name = "T", ClientSecretHash = "any" };
         deps.ClientService.FindActiveAsync(ClientId, Arg.Any<CancellationToken>()).Returns(client);
         deps.ClientService.VerifySecret(client, ClientSecret).Returns(false);
 
+        // act
         var result = await controller.TokenAsync(MakeRequest(), CancellationToken.None);
 
+        // assert
         AssertError(result, HttpStatusCode.Unauthorized, "invalid_client");
     }
 
@@ -163,30 +192,37 @@ public class OAuthControllerTests
     [Fact]
     public async Task TokenAsync_MissingAudience_ReturnsInvalidRequest()
     {
+        // arrange
         var (controller, deps) = BuildController();
         StubHappyPath(deps);
 
+        // act
         var result = await controller.TokenAsync(
             MakeRequest(audience: null), CancellationToken.None);
 
+        // assert
         AssertError(result, HttpStatusCode.BadRequest, "invalid_request");
     }
 
     [Fact]
     public async Task TokenAsync_MissingScope_ReturnsInvalidRequest()
     {
+        // arrange
         var (controller, deps) = BuildController();
         StubHappyPath(deps);
 
+        // act
         var result = await controller.TokenAsync(
             MakeRequest(scope: null), CancellationToken.None);
 
+        // assert
         AssertError(result, HttpStatusCode.BadRequest, "invalid_request");
     }
 
     [Fact]
     public async Task TokenAsync_UnauthorisedScope_ReturnsInvalidScope()
     {
+        // arrange
         var (controller, deps) = BuildController();
         var client = new Client { Id = ClientId, Name = "T", ClientSecretHash = "any" };
         deps.ClientService.FindActiveAsync(ClientId, Arg.Any<CancellationToken>()).Returns(client);
@@ -194,16 +230,18 @@ public class OAuthControllerTests
         deps.ClientService.HasScopeAsync(ClientId, Audience, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(false);
 
+        // act
         var result = await controller.TokenAsync(
             MakeRequest(scope: "inventory.read inventory.write"), CancellationToken.None);
 
+        // assert
         AssertError(result, HttpStatusCode.BadRequest, "invalid_scope");
     }
 
     [Fact]
     public async Task TokenAsync_OneScopeAuthorisedOneNot_ReturnsInvalidScope()
     {
-        // No partial grants — all or nothing.
+        // arrange — no partial grants, all or nothing.
         var (controller, deps) = BuildController();
         var client = new Client { Id = ClientId, Name = "T", ClientSecretHash = "any" };
         deps.ClientService.FindActiveAsync(ClientId, Arg.Any<CancellationToken>()).Returns(client);
@@ -213,9 +251,11 @@ public class OAuthControllerTests
         deps.ClientService.HasScopeAsync(ClientId, Audience, "inventory.write", Arg.Any<CancellationToken>())
             .Returns(false);
 
+        // act
         var result = await controller.TokenAsync(
             MakeRequest(scope: "inventory.read inventory.write"), CancellationToken.None);
 
+        // assert
         AssertError(result, HttpStatusCode.BadRequest, "invalid_scope");
         await deps.TokenService.DidNotReceiveWithAnyArgs().CreateServiceTokenAsync(default!, default!, default!);
     }
@@ -225,11 +265,14 @@ public class OAuthControllerTests
     [Fact]
     public async Task TokenAsync_HappyPath_ReturnsTokenAndStampsLastUsed()
     {
+        // arrange
         var (controller, deps) = BuildController();
         StubHappyPath(deps);
 
+        // act
         var result = await controller.TokenAsync(MakeRequest(), CancellationToken.None);
 
+        // assert
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         var body = ok.Value.Should().BeOfType<OAuthTokenResponse>().Subject;
         body.AccessToken.Should().Be("issued-jwt");
@@ -243,13 +286,15 @@ public class OAuthControllerTests
     [Fact]
     public async Task TokenAsync_HappyPath_DeduplicatesScopes()
     {
-        // Duplicated scopes in request collapse before authorisation — token + response carry each distinct scope once.
+        // arrange — duplicated scopes in request collapse before authorisation, token + response carry each distinct scope once.
         var (controller, deps) = BuildController();
         StubHappyPath(deps);
 
+        // act
         var result = await controller.TokenAsync(
             MakeRequest(scope: "inventory.read inventory.read"), CancellationToken.None);
 
+        // assert
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         var body = ok.Value.Should().BeOfType<OAuthTokenResponse>().Subject;
         body.Scope.Should().Be("inventory.read",

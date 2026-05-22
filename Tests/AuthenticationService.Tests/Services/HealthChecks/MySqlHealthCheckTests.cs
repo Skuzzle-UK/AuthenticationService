@@ -28,11 +28,14 @@ public class MySqlHealthCheckTests : IDisposable
     [Fact]
     public async Task CheckHealth_OpenSucceeds_ReturnsHealthy()
     {
+        // arrange
         var (db, _) = BuildDbContext();
         var check = new MySqlHealthCheck(db);
 
+        // act
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
+        // assert
         result.Status.Should().Be(HealthStatus.Healthy);
         result.Description.Should().Be("MySQL reachable.");
     }
@@ -40,29 +43,33 @@ public class MySqlHealthCheckTests : IDisposable
     [Fact]
     public async Task CheckHealth_OuterCancellationTokenAlreadyCancelled_ReturnsUnhealthy()
     {
-        // Pre-cancelled token must surface as Unhealthy rather than propagating —
+        // arrange — pre-cancelled token must surface as Unhealthy rather than propagating;
         // otherwise the probe pipeline crashes.
         var (db, _) = BuildDbContext();
         var check = new MySqlHealthCheck(db);
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
+        // act
         var result = await check.CheckHealthAsync(new HealthCheckContext(), cts.Token);
 
+        // assert
         result.Status.Should().Be(HealthStatus.Unhealthy);
     }
 
     [Fact]
     public async Task CheckHealth_ConnectionAlreadyOpen_ReturnsHealthyWithoutClosing()
     {
-        // Pre-open the connection (simulating "earlier operation in this scope left it open").
+        // arrange — pre-open the connection (simulating "earlier operation in this scope left it open").
         // The check should report Healthy AND must not close the still-in-use connection.
         var (db, connection) = BuildDbContext();
         await connection.OpenAsync();
         var check = new MySqlHealthCheck(db);
 
+        // act
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
+        // assert
         result.Status.Should().Be(HealthStatus.Healthy);
         connection.State.Should().Be(System.Data.ConnectionState.Open);
     }
