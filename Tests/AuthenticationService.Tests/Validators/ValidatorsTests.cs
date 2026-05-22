@@ -284,6 +284,100 @@ public class ValidatorsTests
         result.Failed.Should().BeTrue();
     }
 
+    // ─── ForwardedHeadersSettingsValidator ──────────────────────────────────────────────
+
+    [Fact]
+    public void ForwardedHeadersSettingsValidator_NamedInstance_SkipsValidation()
+    {
+        // arrange
+        var validator = new ForwardedHeadersSettingsValidator(StubEnvironment("Production"));
+        var settings = new ForwardedHeadersSettings();
+
+        // act
+        var result = validator.Validate(name: "namedInstance", settings);
+
+        // assert
+        result.Skipped.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ForwardedHeadersSettingsValidator_Development_AllowsEmptyLists()
+    {
+        // arrange — local dev with no proxy in front is normal.
+        var validator = new ForwardedHeadersSettingsValidator(StubEnvironment("Development"));
+        var settings = new ForwardedHeadersSettings();
+
+        // act
+        var result = validator.Validate(name: Options.DefaultName, settings);
+
+        // assert
+        result.Succeeded.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ForwardedHeadersSettingsValidator_NonDevelopmentBothEmpty_FailsWithExplicitMessage()
+    {
+        // arrange — the silent-failure case: deployed behind a proxy, lists empty,
+        // X-Forwarded-For ignored, audit logs and rate limiting both blind to client IP.
+        var validator = new ForwardedHeadersSettingsValidator(StubEnvironment("Production"));
+        var settings = new ForwardedHeadersSettings();
+
+        // act
+        var result = validator.Validate(name: Options.DefaultName, settings);
+
+        // assert
+        result.Failed.Should().BeTrue();
+        result.FailureMessage.Should()
+            .Contain("KnownNetworks", because: "operators need the exact setting name to fix it.")
+            .And.Contain("KnownProxies")
+            .And.Contain("rate-limit", because: "the consequence trips even non-security-minded operators.");
+    }
+
+    [Fact]
+    public void ForwardedHeadersSettingsValidator_NonDevelopmentKnownNetworksPopulated_Succeeds()
+    {
+        // arrange — a single CIDR is enough to make the middleware honour the header.
+        var validator = new ForwardedHeadersSettingsValidator(StubEnvironment("Production"));
+        var settings = new ForwardedHeadersSettings { KnownNetworks = { "10.0.0.0/8" } };
+
+        // act
+        var result = validator.Validate(name: Options.DefaultName, settings);
+
+        // assert
+        result.Succeeded.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ForwardedHeadersSettingsValidator_NonDevelopmentKnownProxiesPopulated_Succeeds()
+    {
+        // arrange — KnownProxies alone is also a valid configuration.
+        var validator = new ForwardedHeadersSettingsValidator(StubEnvironment("Production"));
+        var settings = new ForwardedHeadersSettings { KnownProxies = { "203.0.113.10" } };
+
+        // act
+        var result = validator.Validate(name: Options.DefaultName, settings);
+
+        // assert
+        result.Succeeded.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("Staging")]
+    [InlineData("Production")]
+    [InlineData("custom-env-name")]
+    public void ForwardedHeadersSettingsValidator_AnyNonDevelopmentEnv_TreatsEmptyAsError(string envName)
+    {
+        // arrange
+        var validator = new ForwardedHeadersSettingsValidator(StubEnvironment(envName));
+        var settings = new ForwardedHeadersSettings();
+
+        // act
+        var result = validator.Validate(name: Options.DefaultName, settings);
+
+        // assert
+        result.Failed.Should().BeTrue();
+    }
+
     // ─── helpers ────────────────────────────────────────────────────────────────────────
 
     private static UserManager<User> StubUserManager(string? userName = null, string? email = null)

@@ -112,15 +112,17 @@ Shared core: `RuntimeDbSeeders.ResetAdministratorCoreAsync` — clears lockout, 
 
 ---
 
-#### M2. ForwardedHeaders behind a proxy can silently fail
+#### ~~M2. ForwardedHeaders behind a proxy can silently fail~~ ✅ DONE (2026-05-21)
 
-**What's wrong:** Behind a load balancer or reverse proxy, the service relies on `ForwardedHeadersSettings.KnownNetworks` (or `KnownProxies`) being populated so the `X-Forwarded-For` header is trusted. If those lists are empty, the middleware ignores the header and every request looks like it came from the LB itself.
+**What was wrong:** Both `ForwardedHeadersSettings.KnownNetworks` and `KnownProxies` defaulted to empty. Behind a proxy that meant `X-Forwarded-For` was ignored, audit logs recorded the LB IP, and the rate limiter bucketed the entire cluster's traffic under one IP. Silent at runtime — nothing failed, nothing logged.
 
-**Why it matters:** Audit logs record the LB IP instead of the real client. Rate limiting partitions by LB IP, so a single bucket caps the entire cluster's traffic. Both consequences are silent — nothing fails, nothing logs an error.
+**What we shipped:** New `ForwardedHeadersSettingsValidator : IValidateOptions<ForwardedHeadersSettings>` mirroring the existing `AdminAccountSeedSettingsValidator` pattern. Outside Development, when **both** lists are empty, startup fails with an `OptionsValidationException` whose message names both setting paths, mentions the rate-limit collapse consequence (so non-security-minded operators take it seriously), and points at the three config sources (appsettings / env var / secret store).
 
-**Where to fix:** `AuthenticationService/Extensions/HostExtensions.cs:340-358`.
+Registered in `HostExtensions.AddValidators`. `ValidateOnStart()` on the existing `AddOptions<ForwardedHeadersSettings>().ValidateDataAnnotations().ValidateOnStart()` registration picks up `IValidateOptions<T>` validators automatically, so no other wiring needed.
 
-**How to fix:** When the env is not Development AND both `KnownNetworks` and `KnownProxies` are empty, emit a startup warning (or, more conservatively, a startup error). Saves a real-world incident later. ~30 min.
+**Why strict-fail rather than warn:** the "deployed without a proxy at all" case is rare in real production; the "deployed behind a proxy but forgot to populate the lists" case is much more common. Fail-loud matches how the seed admin password already behaves.
+
+**Tests:** 8 new tests in `ValidatorsTests.cs` covering named-instance skip, Development allows-empty, non-Development empty-fails with the right message keywords, populated `KnownNetworks` succeeds, populated `KnownProxies` succeeds, and a `[Theory]` over Staging / Production / custom-env-name to confirm "anything non-Development" triggers. Full suite: 470 passing.
 
 ---
 
@@ -362,7 +364,7 @@ template needed.)
 
 ## Recommended next-up order
 
-1. **Finish [Tier 0](#tier-0--pre-cutover-hardening-must-clear-before-first-prod-deploy)** — all 5 blockers + M3–M9 (except M1, M2) are done; 3 medium-priority items left (M1, M2, M10). Once those land, the service is genuinely production-ready (not just feature-complete).
+1. **Finish [Tier 0](#tier-0--pre-cutover-hardening-must-clear-before-first-prod-deploy)** — all 5 blockers + M2–M9 are done; 2 medium-priority items left (M1, M10). Once those land, the service is genuinely production-ready (not just feature-complete).
 2. **Pick the secret store + write the signing-key backup runbook** (Tier 0 / M10). Without this the disaster-recovery story for crypto material is incomplete.
 3. **External IdP / SSO** — no plan yet. Wait until there's a concrete need (which
    provider, what claim mapping, what account-linking semantics).
@@ -379,4 +381,4 @@ coverage (560+ unit + 15 integration, zero skipped), CI workflow, audit pipeline
 surface, service-identity story, observability stack, and consumer client libraries
 worthy of a production-grade microservice **on paper**.
 
-The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. **All five blockers (B1–B5) plus M3–M9 (settings validation, MySQL health-check timeout, worker survive-on-throw, trace IDs in console logs, doc-truth fixes) are now closed (2026-05-21).** Three medium-severity items remain (M1, M2, M10) but none block shipping — they're "do in the first sprint after prod" items. Once those land, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.
+The Tier 0 audit found 5 blockers and 10 medium-severity issues — mostly small code-quality and doc-drift items that didn't surface during feature development. **All five blockers (B1–B5) plus M2–M9 (forwarded-headers strict, settings validation, MySQL health-check timeout, worker survive-on-throw, trace IDs in console logs, doc-truth fixes) are now closed (2026-05-21).** Two medium-severity items remain (M1, M10) but neither blocks shipping — they're "do in the first sprint after prod" items. Once those land, the remaining roadmap items (SSO, bulk import, Pomelo migration) are all "build when real demand arrives" and don't block adopting the auth service into a new microservice.
