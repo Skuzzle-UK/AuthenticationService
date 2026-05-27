@@ -35,6 +35,22 @@ How things work, and why:
 
 - [Deployment](operations/deployment.md)
 - [Observability](operations/observability.md) (including SIEM contract)
-- [Key rotation](operations/key-rotation.md) (including disaster recovery)
-- [Runbook](operations/runbook.md) (skeleton, fills in as operationally exercised)
-- [Local Backstage via Aspire](operations/local-backstage.md) (catalog + TechDocs preview)
+- [Key rotation](operations/key-rotation.md) — routine + emergency rotation flow
+- [Signing-key backup and restore](operations/signing-key-backup-and-restore.md) — secret-store-agnostic disaster-recovery runbook
+- [Admin account recovery](operations/admin-recovery.md) — three break-glass paths if the seeded admin loses access
+- [Runbook](operations/runbook.md) — decision tree + common procedures + "I can't log in" triage
+- [Local Backstage via Aspire](operations/local-backstage.md) — catalog + TechDocs preview
+
+## Reference
+
+- [Configuration](reference/configuration.md) — every config key, default, and validator rule
+- [Endpoints](reference/endpoints.md) — every HTTP route with auth requirement and purpose
+- [Constants](reference/constants.md) — wire-contract values pinned by tests (claim names, security event IDs, policy names)
+
+## Plan docs (settled history)
+
+These captured the design decisions for the work that shipped. Kept around as ADR-style references — the design-rationale tables are the closest thing the codebase has to formal Architecture Decision Records.
+
+- [Admin endpoints plan](admin-endpoints-plan.md) — Phase 0 shipped: admin user-management surface + invitation flow
+- [Service-to-service auth plan](service-to-service-auth-plan.md) — Phase 1 shipped: OAuth client-credentials, scope model
+- [Service-token client helper plan](service-token-client-plan.md) — consumer-side typed-client + 401-retry handler
