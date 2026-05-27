@@ -1,4 +1,3 @@
-#pragma warning disable CS8618 // Uninitialised non-nullable — properties bound by the Options pipeline at startup.
 using System.ComponentModel.DataAnnotations;
 
 namespace AuthenticationService.Settings;
