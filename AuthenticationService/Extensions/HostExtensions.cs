@@ -1,4 +1,5 @@
-﻿using AuthenticationService.Entities;
+﻿using AuthenticationService.Constants;
+using AuthenticationService.Entities;
 using AuthenticationService.Logging;
 using AuthenticationService.Observability;
 using AuthenticationService.Services;
@@ -116,6 +117,11 @@ public static class HostExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<DatabaseSettings>()
+            .Bind(context.Configuration.GetSection(nameof(DatabaseSettings)))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         return services;
     }
 
@@ -129,6 +135,7 @@ public static class HostExtensions
         services.AddSingleton<IValidateOptions<AdminAccountSeedSettings>, AdminAccountSeedSettingsValidator>();
         services.AddSingleton<IValidateOptions<ForwardedHeadersSettings>, ForwardedHeadersSettingsValidator>();
         services.AddSingleton<IValidateOptions<DataProtectionSettings>, DataProtectionSettingsValidator>();
+        services.AddSingleton<IValidateOptions<DatabaseSettings>, DatabaseSettingsValidator>();
 
         return services;
     }
@@ -179,18 +186,45 @@ public static class HostExtensions
             .AddHostedService<UserGaugeRefreshService>();
     }
 
-    public static IServiceCollection AddDatabase(this IServiceCollection services, HostBuilderContext context) =>
-        services
-            .AddDbContext<DatabaseContext>(opt =>
+    public static IServiceCollection AddDatabase(this IServiceCollection services, HostBuilderContext context)
+    {
+        var dbSettings = context.Configuration
+            .GetSection(nameof(DatabaseSettings))
+            .Get<DatabaseSettings>() ?? new DatabaseSettings();
+
+        var connectionString = context.Configuration.GetConnectionString(dbSettings.Provider);
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException(
+                $"ConnectionStrings:{dbSettings.Provider} must be configured because " +
+                $"DatabaseSettings:Provider is '{dbSettings.Provider}'. Supply via " +
+                $"appsettings.json, env var (ConnectionStrings__{dbSettings.Provider}=...), or secret store.");
+        }
+
+        return services.AddDbContext<DatabaseContext>(opt =>
+        {
+            switch (dbSettings.Provider)
             {
-                opt.UseMySQL(
-                    context.Configuration.GetConnectionString("MySQL")!,
-                    mysql =>
+                case DatabaseProviders.MySql:
+                    opt.UseMySQL(connectionString, mysql =>
                     {
                         // See Storage/MySqlRetryingExecutionStrategy.cs for rationale.
+                        // MySQL-only: SQL Server / PostgreSQL ship their own EnableRetryOnFailure
                         mysql.ExecutionStrategy(deps => new MySqlRetryingExecutionStrategy(deps));
                     });
-            });
+                    break;
+
+                // TODO: add SqlServer and PostgreSQL case branches here.
+                // Keeping the default-throw catches anyone configuring
+                // a Provider value that bypassed the validator (e.g. via reflection-based
+                // options injection in tests).
+                default:
+                    throw new NotImplementedException(
+                        $"DatabaseSettings:Provider '{dbSettings.Provider}' is not yet supported. " +
+                        $"Supported: {string.Join(", ", DatabaseProviders.Supported)}.");
+            }
+        });
+    }
 
     public static IServiceCollection AddRedis(this IServiceCollection services, HostBuilderContext context)
     {

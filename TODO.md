@@ -5,9 +5,9 @@ doc is forward-looking. Tiered by impact for an enterprise, multi-replica, share
 deployment; pick from the top and work down.
 
 > **Status as of 2026-05-21:** all Tier 0 blockers (B1–B5), all 10 medium-priority items
-> (M1–M10), and all 8 nice-to-haves are closed. The service is production-ready. Only
-> long-running deferred items remain (Pomelo migration blocked on Pomelo 10; SSO and
-> bulk-import flagged for "build when demand arrives").
+> (M1–M10), and all 8 nice-to-haves are closed. The service is production-ready against
+> MySQL. **Multi-provider DB Phase 1 (provider-selection seam) shipped.** Phase 2
+> (SQL Server) and Phase 3 (PostgreSQL) are the next active work items.
 
 ---
 
@@ -33,6 +33,114 @@ All shipped (2026-05-21):
 - ✅ CSP `'unsafe-inline'` removed from both `script-src` and `style-src`. The three Razor pages (`ResetPassword`, `LockAccount`, `AcceptInvitation`) now load JS from external files under `wwwroot/js/`, receiving server-side state via `data-*` attributes. New `SecurityHeadersMiddlewareTests` assertion locks in the no-`unsafe-inline` contract as a regression guard.
 - ✅ `Dockerfile` now has a `HEALTHCHECK` directive (`curl --fail http://localhost:8080/livez || exit 1`) for `docker run` smoke tests + Docker Desktop's UI status. `curl` is installed in the base stage explicitly (the aspnet:10.0 image doesn't include it). K8s ignores this and uses `/livez` / `/readyz` probes directly.
 - ✅ `Dockerfile` pre-restore COPY now includes `AuthenticationService.ServiceDefaults` — restore-layer cache is no longer invalidated by unrelated changes.
+
+---
+
+## Planned engineering — multi-provider database support
+
+Today the service is hard-wired to MySQL via Oracle's `MySql.EntityFrameworkCore`.
+Targeting **MySQL + SQL Server + PostgreSQL** so consumer platforms can pick whichever
+their organisation already runs. Pomelo migration (Tier 4 below) is independent of this
+work — it'll just swap one MySQL provider for another whenever it lands.
+
+Three-phase plan. Each phase ships independently and leaves the codebase in a working
+state. Total effort: ~2.5 days for a focused dev.
+
+### ~~Phase 1 — Provider-selection seam~~ ✅ DONE (2026-05-21)
+
+**What we shipped:**
+
+- ✅ **`DatabaseSettings` + `DatabaseSettingsValidator`** in `Settings/` and `Validators/` — `Provider` is `[Required]` and restricted to `DatabaseProviders.Supported` (currently `[ "MySQL" ]`). Mirrors the M1/M2 validator pattern. 9 new tests in `ValidatorsTests.cs` cover named-instance skip, supported provider success, blank/null/whitespace fail, unknown-typo fail, and the "reserved-but-not-yet-wired" case (`PostgreSQL` is in `DatabaseProviders` constants but not in `Supported` — pre-emptively fails so setting `Provider=PostgreSQL` before Phase 3 doesn't silently break startup).
+- ✅ **`HostExtensions.AddDatabase` dispatches on `settings.Provider`** via a `switch`. The `MySQL` case keeps the existing `opt.UseMySQL(...)` + `MySqlRetryingExecutionStrategy` wiring. Default case throws `NotImplementedException` with the supported-set message (defensive — the validator catches this earlier under normal startup).
+- ✅ **Connection string lookup** now uses the active provider name: `ConnectionStrings:{Provider}`. Back-compat preserved because `Provider=MySQL` → `ConnectionStrings:MySQL` (the existing key). Clear `InvalidOperationException` if missing, naming the exact env var to set.
+- ✅ **`DatabaseProviders` constants class** + `DatabaseProviderExtensions.IsMySql()` for runtime workaround branching. `IsMySql()` matches via substring on `ProviderName` so both Oracle's `MySql.EntityFrameworkCore` and Pomelo's `Pomelo.EntityFrameworkCore.MySql` resolve true — the eventual Pomelo swap doesn't have to revisit workaround sites.
+- ✅ **DateOnly converter in `DatabaseContext.OnModelCreating`** now gated behind `Database.IsMySql()`. SQL Server and PostgreSQL have native `DateOnly` support; the converter would be a wasteful round-trip. SQLite tests (which the unit suite uses) also skip the converter and pass — EF Core 10's SQLite provider handles `DateOnly` natively.
+- ✅ **`appsettings.json`** has an explicit `DatabaseSettings:Provider = "MySQL"` block with explanatory comments pointing at the multi-provider plan.
+
+**Deferred to Phase 2 (deliberately):**
+
+- The `LockoutDurations.Indefinite` sentinel stays at its current value. The MySQL-DATETIME(6)-conservative value works fine on SQL Server / PostgreSQL too (it's just smaller than their max). Phase 2 can revisit if a non-MySQL deployment needs a different sentinel — for now a code comment explains the constraint origin.
+- The per-jti loop in `RevokedTokenReplayEscalationService.RunSweepAsync` stays. Restructuring it to add a batched `Contains` path with an `IsMySql()` switch would be dead code until Phase 2 wires SQL Server. Phase 2's checklist owns the refactor when the alternative provider is live.
+
+**Tests:** 492 passing (was 483, +9 for the new validator suite).
+
+### Phase 2 — Add SQL Server
+
+- [ ] **Add `Microsoft.EntityFrameworkCore.SqlServer` package** (10.0.x).
+- [ ] **Set up a per-provider migrations folder.** Create `Migrations.SqlServer/`, add
+      a design-time factory or env-var switch so `dotnet ef migrations add` against
+      `--provider sql-server` lands the right SQL into the right folder. Configure
+      `b.MigrationsAssembly("AuthenticationService")` + per-provider folder selection
+      in `AddDatabase`.
+- [ ] **Generate the initial migration** against a real SQL Server (Aspire-spun container
+      or a local instance). `dotnet ef migrations add Initial --context DatabaseContext
+      --output-dir Migrations.SqlServer`.
+- [ ] **Validator update:** add `SqlServer` to the allowed `Provider` values.
+- [ ] **`ConnectionStrings:SqlServer`** documented + plumbed; pulled by the `SqlServer`
+      branch in `AddDatabase`.
+- [ ] **Built-in retry strategy** via `opt.UseSqlServer(connStr, sql => sql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(30), errorNumbersToAdd: null))`
+      — matches the MySQL retry budget (5 × 30s).
+- [ ] **Aspire AppHost** optional `AddSqlServer()` resource, gated by a launch profile
+      or env var so local dev can pick MySQL or SQL Server.
+- [ ] **Integration tests:** parameterise `AppHostFixture` to choose the DB resource
+      based on env var `INTEGRATION_DB_PROVIDER=SqlServer`. CI matrix runs the suite
+      against MySQL by default; SQL Server matrix entry runs the same scenarios.
+- [ ] **End-to-end smoke:** deploy with `Database:Provider=SqlServer` →
+      `RunMigrationsAtStartup=true` → first request hits a freshly-created schema →
+      login + JWKS round-trip succeeds.
+- [ ] **Docs:** add SQL Server sections to `docs/operations/deployment.md`,
+      `docs/reference/configuration.md`, and a new "supported providers" note in
+      `docs/architecture.md`.
+
+**Effort:** ~1 day.
+
+### Phase 3 — Add PostgreSQL
+
+Same shape as Phase 2 with the Npgsql provider.
+
+- [ ] **`Npgsql.EntityFrameworkCore.PostgreSQL`** package (10.0.x).
+- [ ] **`Migrations.Postgres/` folder** with initial migration generated against a real
+      PostgreSQL instance (Aspire `AddPostgres()`).
+- [ ] **Validator update:** add `PostgreSQL` to the allowed `Provider` values.
+- [ ] **`ConnectionStrings:PostgreSQL`** documented + plumbed.
+- [ ] **Built-in retry strategy** via `opt.UseNpgsql(connStr, npg => npg.EnableRetryOnFailure(5, TimeSpan.FromSeconds(30), errorCodesToAdd: null))`.
+- [ ] **Npgsql gotchas to verify during this phase:**
+  - `LegacyTimestampBehavior` AppContext switch — Npgsql 6+ defaults to strict
+    `timestamp with time zone` handling. Confirm `DateTime` / `DateTimeOffset` columns
+    round-trip cleanly; turn the switch on (or, better, fix any UTC-vs-local
+    inconsistencies the strict mode surfaces).
+  - Case-insensitive `NormalizedEmail` / `NormalizedUserName` lookups — Identity stores
+    the upper-cased form already, so plain equality works on the normalised column. No
+    `citext` extension needed unless we later add case-insensitive lookups against
+    non-normalised columns.
+  - Connection-pooling defaults differ from MySQL's — confirm `Maximum Pool Size` in
+    the connection string is appropriate for the deployment.
+- [ ] **Aspire AppHost** `AddPostgres()` resource alongside the MySQL / SQL Server ones.
+- [ ] **Integration tests:** add `INTEGRATION_DB_PROVIDER=PostgreSQL` matrix entry.
+- [ ] **End-to-end smoke + docs**, same shape as Phase 2.
+
+**Effort:** ~1 day.
+
+### Ongoing cost after all three are in
+
+Every schema change from then on:
+1. `dotnet ef migrations add Foo --output-dir Migrations.MySql` (against MySQL).
+2. Repeat for `Migrations.SqlServer` and `Migrations.Postgres` against the matching
+   targets. EF will emit provider-correct SQL each time.
+3. CI matrix verifies all three.
+
+It's not free — every schema change costs ~10 min of additional migration generation
++ verification. Worth the price if multiple platforms are real consumers.
+
+### Out of scope (deliberately)
+
+- **SQLite as a real production target.** It's fine for dev/CI (already used in unit
+  tests) but lacks the concurrency and rate-limiter-via-Redis-fallback story to be a
+  real prod option. Mention in `docs/operations/deployment.md` only.
+- **Oracle Database.** Enterprise-niche, licence cost, small audience. Easy to add
+  later as Phase 4 if a real consumer asks.
+- **CockroachDB / AWS Aurora Postgres / Yugabyte.** Wire-compatible with PostgreSQL —
+  they'll likely just work once Phase 3 ships. Document as "should work, untested."
 
 ---
 
@@ -68,13 +176,16 @@ None of these block shipping. Flagged so the design space is visible.
 
 ## Recommended next-up order
 
-1. **Run a restore drill** against whichever secret store the team is using in
-   non-prod. The point of M10's universal runbook is that it'll guide one regardless of
-   choice — a drill in staging proves it. Quarterly cadence going forward.
-2. **External IdP / SSO** — wait until there's a concrete need (which provider, what
-   claim mapping, what account-linking semantics).
-3. **Pomelo migration** — blocked on Pomelo 10 release; re-check quarterly.
-4. **Bulk user import** — only if a real migration use-case surfaces.
+1. **Multi-provider DB — Phase 2 (SQL Server).** ~1 day. Probably the higher-demand of
+   the two; .NET shops default to SQL Server. Phase 1 (seam) is shipped — Phase 2 is
+   now an incremental add.
+2. **Multi-provider DB — Phase 3 (PostgreSQL).** ~1 day.
+3. **Run a restore drill** against whichever secret store the team is using in
+   non-prod (M10's signing-key runbook). Quarterly cadence going forward.
+4. **External IdP / SSO** — wait until there's a concrete need.
+5. **Pomelo migration** — blocked on Pomelo 10 release; re-check quarterly. Independent
+   of the multi-provider work above.
+6. **Bulk user import** — only if a real migration use-case surfaces.
 
 ---
 
@@ -87,5 +198,7 @@ observability stack, consumer client libraries — all in place.
 
 The Tier 0 audit (2026-05-21) found 5 blockers (B1–B5), 10 medium-severity items
 (M1–M10), and 8 nice-to-haves. **All Tier 0 items including the nice-to-haves are now
-closed.** The service is production-ready. Remaining roadmap items (SSO, bulk import,
-Pomelo migration) are all "build when demand arrives."
+closed.** The service is production-ready **against MySQL**. Active engineering work:
+**multi-provider database support** — three-phase plan above, ~2.5 days for MySQL +
+SQL Server + PostgreSQL. Remaining longer-term items (SSO, bulk import, Pomelo
+migration) are still "build when demand arrives."

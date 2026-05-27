@@ -1,4 +1,5 @@
-﻿using AuthenticationService.Entities;
+﻿using AuthenticationService.Constants;
+using AuthenticationService.Entities;
 using AuthenticationService.Storage.Seed;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -25,13 +26,18 @@ public class DatabaseContext : IdentityDbContext<User, Role, string>
         base.OnModelCreating(builder);
         builder.ApplyConfiguration(new RoleConfiguration());
 
-        var dateOnlyToNullableDateTime = new ValueConverter<DateOnly?, DateTime?>(
-            d => d.HasValue ? d.Value.ToDateTime(TimeOnly.MinValue) : null,
-            d => d.HasValue ? DateOnly.FromDateTime(d.Value) : null);
+        // DateOnly converter is a MySQL-only workaround. Oracle's MySql.EntityFrameworkCore
+        // can't translate DateOnly natively.
+        if (Database.IsMySql())
+        {
+            var dateOnlyToNullableDateTime = new ValueConverter<DateOnly?, DateTime?>(
+                d => d.HasValue ? d.Value.ToDateTime(TimeOnly.MinValue) : null,
+                d => d.HasValue ? DateOnly.FromDateTime(d.Value) : null);
 
-        builder.Entity<User>()
-            .Property(u => u.DateOfBirth)
-            .HasConversion(dateOnlyToNullableDateTime);
+            builder.Entity<User>()
+                .Property(u => u.DateOfBirth)
+                .HasConversion(dateOnlyToNullableDateTime);
+        }
 
         builder.Entity<RevokedToken>(entity =>
         {
