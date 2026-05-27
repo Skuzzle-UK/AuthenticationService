@@ -62,7 +62,7 @@ None of these block shipping. Flagged so the design space is visible.
 
 - [ ] **Bulk user import.** Onboarding to a corporate platform with existing users elsewhere — there's no migration path. Not initial scope but flagged.
 
-- [ ] **Operational runbook still has TBDs.** `docs/operations/runbook.md` was scaffolded as a skeleton; the obvious gaps were filled in via B5 (admin recovery), M8 (broken cross-ref), and M9 (lock-account procedure). Remaining placeholders (lines ~90–97) are reasonable "fill in as the team actually operates the service" items rather than authoring-time blocks.
+- [ ] **Operational runbook — three team-decision placeholders remain.** The runbook is now a working doc, not a skeleton. The decision tree, common procedures, and a full "I can't log in" triage table are filled in from code knowledge. Three placeholders stay because they need decisions the codebase can't make: **first-time prod deployment** (Helm / Terraform / Pulumi / kubectl flow — depends on platform choice), **SLO / SLA targets** (availability + latency commitments), and **incident-response procedure** (on-call rotation + paging tool + escalation matrix). Each one's expected shape is sketched in `runbook.md` so whoever fills them in knows what's expected.
 
 ---
 

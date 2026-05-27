@@ -1,6 +1,9 @@
 # Operations runbook
 
-> **Status: skeleton.** This doc is the canvas for ops procedures discovered as the service is actually operated. Add to it as incidents surface and procedures get exercised. Items marked **TBD** below need writing once an ops person has done them at least once — premature writing means the doc drifts before it's ever read.
+> **Status: working runbook.** The core decision tree and common procedures are filled
+> in from code knowledge. A few placeholders at the bottom still need team-specific
+> input (deployment platform choice, SLO targets, incident-response tooling). Add to
+> any section as incidents surface and procedures get exercised.
 
 ## Health endpoints
 
@@ -36,8 +39,15 @@ Refresh endpoint returns 401 unexpectedly
   └─ Token genuinely expired (5d) → User must log in fresh
 
 /oauth/token returns 500
-  └─ Look at SIEM EventId 5xxx events around the failure time
-  └─ Common cause TBD — needs ops experience to enumerate
+  ├─ Grab the response body — B2's ProblemDetails handler stamps a `traceId`.
+  │  Grep Serilog logs / Loki for that traceId to find the structured exception.
+  ├─ DB unreachable mid-request? → mysql_check on /readyz should already be red.
+  │  Look for "MySqlRetryingExecutionStrategy" retry-exhaustion in the log.
+  ├─ Signing-key load failure on startup? → would have crashed startup, not surfaced here.
+  │  But check startup logs (`Loaded ES256 signing key`) appear at least once.
+  └─ Genuine controller bug? → the controllers log structured events at every branch
+     (`SecurityEventIds.ClientCredentialsToken*`); look at the 6xxx EventIds around the
+     failure timestamp to see how far the request got before the exception.
 
 Email isn't arriving
   ├─ SMTP credentials wrong → Check EmailServerSettings__Password env var
@@ -80,7 +90,28 @@ Email isn't arriving
 - See [key-rotation.md](key-rotation.md).
 
 ### Disaster recovery (signing key lost)
-- See [key-rotation.md#disaster-recovery-all-keys-lost](key-rotation.md#disaster-recovery-all-keys-lost).
+- See [signing-key-backup-and-restore.md](signing-key-backup-and-restore.md) — universal
+  backup/restore runbook covering Azure Key Vault, AWS Secrets Manager, HashiCorp Vault,
+  GCP Secret Manager, Kubernetes Secrets + Velero, Sealed Secrets / SOPS, and filesystem
+  snapshots. Includes the "all keys lost" procedure with consumer-communication ordering.
+
+### Triage "I can't log in" reports
+
+When a user says they can't sign in, the failure shape they're seeing narrows the cause.
+Ask for the exact response or error before opening a DB session — that alone usually
+identifies the branch below.
+
+| What the user / their client reports | Probable cause | Quick check |
+|---|---|---|
+| HTTP 401 with `"AccountLocked"` | `LockoutEnd` is set in the future, OR `AccessFailedCount` tripped the threshold | `SELECT LockoutEnd, AccessFailedCount FROM AspNetUsers WHERE NormalizedEmail = upper(:email)` |
+| HTTP 401 with `"EmailNotConfirmed"` | They never clicked the confirmation link in their registration email | `SELECT EmailConfirmed FROM AspNetUsers WHERE NormalizedEmail = ...` — if `0`, resend via `POST /api/Registration/confirm/email` |
+| HTTP 401 with `"InvalidCredentials"` (generic) | Wrong password — generic on purpose to avoid leaking which field was wrong | Check `auth.logins.total{result="failed"}` for that user's IP in Prometheus. If a brute-force pattern, look for `EventId 1006` (`FailedLoginLockoutTriggered`). |
+| HTTP 401 with `"MfaRequired"` and an `MfaChallenge` payload | User authenticated correctly but hasn't completed MFA. Not a failure — the response shape says "now POST the code." | Confirm the user knows their MFA path (authenticator app / email / phone). If they've lost the device, see [Admin recovery — reset-mfa](admin-recovery.md) or admin endpoint `POST /api/Admin/users/{id}/reset-mfa`. |
+| HTTP 200 but `/api/Account/me` says different roles than expected | Their session pre-dates a role change. | They need to log out + log back in. Server-side, an admin can force this via `POST /api/Admin/users/{id}/revoke-sessions`. |
+| HTTP 401 right after a successful login | The threshold-escalation worker (`EventId 4005`) auto-locked the account mid-session after sustained revoked-token replay. | `SELECT * FROM RevokedTokens WHERE UserId = ... AND LockedAt IS NOT NULL ORDER BY LockedAt DESC LIMIT 5`. Account needs admin unlock + forgot-password flow. |
+
+Last-resort recovery if the user is the **seeded admin** and none of the above applies:
+[admin-recovery.md](admin-recovery.md) covers three break-glass paths (raw SQL, CLI subcommand, env-var override).
 
 ## Recurring tasks
 
@@ -89,15 +120,37 @@ Email isn't arriving
 - **Review of SIEM rules.** Quarterly. Are the `EventId = 1008` / `4005` pages still happening? Is the threshold tuning still correct?
 - **Audit retention check.** Confirm `DataRetentionSettings` is pruning at the right rate; check DB row counts on `RevokedTokenAccessAttempts` and `SecurityEvents` against expected volume.
 
-## Items to be filled in over time
+## Items still needing team-specific input
 
-The following placeholders need first-hand operational experience to write usefully. As they're exercised, replace the **TBD** with the actual playbook.
+These placeholders need decisions or platform context the codebase can't supply. As
+the relevant decision lands, replace the bullet with the concrete playbook.
 
-- **TBD: First-time deployment to production** — concrete steps for a real platform (Helm chart? Terraform? Pulumi? Plain kubectl?), not generic K8s YAML.
-- **TBD: Backup + restore for the signing-key directory** — depends on the chosen secret store. See [TODO.md](../../TODO.md) "No backup / disaster-recovery story for signing keys."
-- **TBD: SLO / SLA targets** — what's the platform's stance on auth-service availability? 99.9%? 99.95%? Decide and write it here.
-- **TBD: Incident response procedure** — on-call rotation, paging tool, escalation matrix.
-- **TBD: How to triage a user-reported "I can't log in"** — concrete steps. The decision tree above is a start.
+- **First-time deployment to production.** Need to capture concrete steps for the
+  chosen platform: Helm chart values, Terraform module signature, Pulumi stack, or the
+  raw `kubectl apply` flow. The shape this section should take, once written:
+  1. Image registry + tag-pinning strategy
+  2. Secret provisioning (which fields land in which store — cross-link to
+     [signing-key-backup-and-restore.md](signing-key-backup-and-restore.md) for the
+     JWT key story)
+  3. First-boot ordering vs. MySQL / Redis dependencies
+  4. Smoke test after first traffic (login + /readyz + JWKS round-trip)
+  5. Rollback procedure if the smoke test fails
+
+- **SLO / SLA targets.** What availability does the platform commit to? Suggested
+  shape when decided:
+  - Availability target (e.g. 99.9% rolling 30-day).
+  - Latency target on the hot endpoints (login, refresh, /oauth/token, JWKS) at p95
+    and p99.
+  - Error-budget policy: what happens if the budget is exhausted (freeze deploys?
+    reduce rollout speed?).
+  - Reference Grafana dashboard panel(s) that prove the SLO is being met.
+
+- **Incident response procedure.** Once on-call rotation + paging tool are picked:
+  - Severity matrix (what counts as a P1 vs P2 — `EventId 1008` refresh-reuse is
+    almost certainly P1; `EventId 4004` threshold-warned is probably P3).
+  - Paging chain (who's first responder, who's escalation, what hours).
+  - Comms-during-incident expectations (status page? Slack channel? Both?).
+  - Post-incident review cadence and template.
 
 ## Reference
 
