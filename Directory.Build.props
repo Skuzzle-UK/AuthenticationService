@@ -1,0 +1,18 @@
+<Project>
+
+  <!--
+    Solution-wide MSBuild defaults. Applied to every project under this directory unless
+    a project explicitly overrides the property. Keep this file small and focused —
+    project-specific tuning belongs in the project's own .csproj.
+  -->
+
+  <PropertyGroup>
+    <!--
+      Fail the build on any warning. Build is clean today (0 warnings); this prevents a
+      future warning from being merged silently. Per-project / per-file overrides remain
+      possible via NoWarn or #pragma warning disable <code> with a one-line justification.
+    -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+</Project>

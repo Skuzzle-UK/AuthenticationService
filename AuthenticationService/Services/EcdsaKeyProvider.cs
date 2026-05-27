@@ -96,6 +96,15 @@ public sealed class EcdsaKeyProvider : IEcdsaKeyProvider, IDisposable
             var newPath = Path.Combine(directory, "jwt-signing.pem");
             File.WriteAllText(newPath, generated.ExportECPrivateKeyPem());
 
+            // Tighten perms on Unix-like systems — default umask typically leaves a
+            // private key world-readable. Skipped on Windows: the API throws there, and
+            // files under the developer's profile already inherit a user-restricted NTFS
+            // ACL by default. Dev-only path either way (non-Dev refuses to auto-generate).
+            if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+            {
+                File.SetUnixFileMode(newPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            }
+
             pemFiles = Directory.GetFiles(directory, "*.pem");
         }
 

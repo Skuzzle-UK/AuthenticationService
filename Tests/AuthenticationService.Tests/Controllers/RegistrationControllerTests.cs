@@ -35,6 +35,7 @@ public class RegistrationControllerTests : IDisposable
     {
         foreach (var c in _contexts) c.Dispose();
         foreach (var c in _connections) c.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     // ─── Register ───────────────────────────────────────────────────────────────────────

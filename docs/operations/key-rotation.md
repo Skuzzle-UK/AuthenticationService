@@ -61,17 +61,10 @@ Same runbook, faster. The window in step 2 (consumer JWKS cache refresh) becomes
 3. Cut over (step 3) once caches have refreshed.
 4. **Skip the drain** if the suspected compromise window means in-flight old-key tokens are themselves suspect — decommission the old key immediately (step 5). Acceptable side-effect: any legitimate user holding an in-flight old-key token gets a 401 and needs to refresh, which is the cost of an emergency rotation.
 
-## Disaster recovery (all keys lost)
+## Disaster recovery (keys lost, restore from backup, all-keys-lost)
 
-If `PrivateKeyDirectory` is empty in non-Development environments, the service refuses to start. If you've also lost your backups (a *very* bad day):
-
-1. Provision a fresh key (deployment.md §1).
-2. Inject it into `PrivateKeyDirectory`.
-3. Start the service. JWKS now publishes only the new key.
-4. **Every existing token is invalid.** Every user must log in again. Every refresh token is dead. Every issued service token is dead.
-5. Communicate to platform consumers — they'll see 401s until their JWKS caches refresh and they pick up the new key.
-
-This is why the **signing-key backup story** is on [`TODO.md`](../../TODO.md) as a deployment requirement. Whatever your secret-store of choice is (Key Vault / Secrets Manager / Vault), confirm:
-- The key material is backed up.
-- Restore from backup is exercised at least once.
-- The runbook for "all keys lost" is written down somewhere a person on-call can find it.
+See the dedicated runbook: [`signing-key-backup-and-restore.md`](signing-key-backup-and-restore.md).
+Covers what to back up, secret-store-specific backup procedures (Azure Key Vault, AWS
+Secrets Manager, HashiCorp Vault, GCP Secret Manager, Kubernetes Secrets, Sealed
+Secrets / SOPS, filesystem snapshots), the universal restore procedure, and the
+"all-keys-lost" scenario including the consumer-communication ordering.

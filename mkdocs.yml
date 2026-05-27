@@ -54,6 +54,7 @@ nav:
       - Deployment: operations/deployment.md
       - Observability: operations/observability.md
       - Key rotation: operations/key-rotation.md
+      - Signing-key backup and restore: operations/signing-key-backup-and-restore.md
       - Admin recovery: operations/admin-recovery.md
       - Runbook: operations/runbook.md
       - Local Backstage (Aspire): operations/local-backstage.md

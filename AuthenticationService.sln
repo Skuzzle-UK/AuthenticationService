@@ -24,6 +24,61 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		TODO.md = TODO.md
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{D0C50001-A8A8-4A1A-B0C0-DC50000DC501}"
+	ProjectSection(SolutionItems) = preProject
+		docs\admin-endpoints-plan.md = docs\admin-endpoints-plan.md
+		docs\architecture.md = docs\architecture.md
+		docs\getting-started.md = docs\getting-started.md
+		docs\index.md = docs\index.md
+		docs\service-to-service-auth-plan.md = docs\service-to-service-auth-plan.md
+		docs\service-token-client-plan.md = docs\service-token-client-plan.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "api", "api", "{D0C50002-A8A8-4A1A-B0C0-DC50000DC502}"
+	ProjectSection(SolutionItems) = preProject
+		docs\api\openapi.json = docs\api\openapi.json
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "concepts", "concepts", "{D0C50003-A8A8-4A1A-B0C0-DC50000DC503}"
+	ProjectSection(SolutionItems) = preProject
+		docs\concepts\refresh-rotation.md = docs\concepts\refresh-rotation.md
+		docs\concepts\security-model.md = docs\concepts\security-model.md
+		docs\concepts\service-to-service.md = docs\concepts\service-to-service.md
+		docs\concepts\user-auth-flows.md = docs\concepts\user-auth-flows.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "consumers", "consumers", "{D0C50004-A8A8-4A1A-B0C0-DC50000DC504}"
+	ProjectSection(SolutionItems) = preProject
+		docs\consumers\claim-shapes.md = docs\consumers\claim-shapes.md
+		docs\consumers\outgoing-service-tokens.md = docs\consumers\outgoing-service-tokens.md
+		docs\consumers\validating-incoming-tokens.md = docs\consumers\validating-incoming-tokens.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "development", "development", "{D0C50005-A8A8-4A1A-B0C0-DC50000DC505}"
+	ProjectSection(SolutionItems) = preProject
+		docs\development\adding-an-endpoint.md = docs\development\adding-an-endpoint.md
+		docs\development\conventions.md = docs\development\conventions.md
+		docs\development\testing.md = docs\development\testing.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "operations", "operations", "{D0C50006-A8A8-4A1A-B0C0-DC50000DC506}"
+	ProjectSection(SolutionItems) = preProject
+		docs\operations\admin-recovery.md = docs\operations\admin-recovery.md
+		docs\operations\deployment.md = docs\operations\deployment.md
+		docs\operations\key-rotation.md = docs\operations\key-rotation.md
+		docs\operations\local-backstage.md = docs\operations\local-backstage.md
+		docs\operations\observability.md = docs\operations\observability.md
+		docs\operations\runbook.md = docs\operations\runbook.md
+		docs\operations\signing-key-backup-and-restore.md = docs\operations\signing-key-backup-and-restore.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "reference", "reference", "{D0C50007-A8A8-4A1A-B0C0-DC50000DC507}"
+	ProjectSection(SolutionItems) = preProject
+		docs\reference\configuration.md = docs\reference\configuration.md
+		docs\reference\constants.md = docs\reference\constants.md
+		docs\reference\endpoints.md = docs\reference\endpoints.md
+	EndProjectSection
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AuthenticationService.TokenValidationLib.Tests", "Tests\AuthenticationService.TokenValidationLib.Tests\AuthenticationService.TokenValidationLib.Tests.csproj", "{B15E9781-1D72-4183-BF3B-F11DDFC58439}"
@@ -204,6 +259,12 @@ Global
 		{E8F9ECD2-9BE9-4169-B5E9-BCFFA064E8B9} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{55EF81F0-3CE2-4598-B184-046D38BCE31E} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{916394CA-8090-4109-AD59-9ABF2148C91A} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{D0C50002-A8A8-4A1A-B0C0-DC50000DC502} = {D0C50001-A8A8-4A1A-B0C0-DC50000DC501}
+		{D0C50003-A8A8-4A1A-B0C0-DC50000DC503} = {D0C50001-A8A8-4A1A-B0C0-DC50000DC501}
+		{D0C50004-A8A8-4A1A-B0C0-DC50000DC504} = {D0C50001-A8A8-4A1A-B0C0-DC50000DC501}
+		{D0C50005-A8A8-4A1A-B0C0-DC50000DC505} = {D0C50001-A8A8-4A1A-B0C0-DC50000DC501}
+		{D0C50006-A8A8-4A1A-B0C0-DC50000DC506} = {D0C50001-A8A8-4A1A-B0C0-DC50000DC501}
+		{D0C50007-A8A8-4A1A-B0C0-DC50000DC507} = {D0C50001-A8A8-4A1A-B0C0-DC50000DC501}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {4ECC7BFB-D298-4371-91E0-EADF5D2AB657}

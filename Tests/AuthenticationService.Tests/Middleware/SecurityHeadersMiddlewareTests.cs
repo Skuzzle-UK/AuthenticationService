@@ -15,7 +15,7 @@ public class SecurityHeadersMiddlewareTests
     {
         // arrange
         var nextCalled = false;
-        RequestDelegate next = _ => { nextCalled = true; return Task.CompletedTask; };
+        Task next(HttpContext _) { nextCalled = true; return Task.CompletedTask; }
         var middleware = new SecurityHeadersMiddleware(next);
         var context = new DefaultHttpContext();
 
@@ -30,7 +30,8 @@ public class SecurityHeadersMiddlewareTests
             .Contain("default-src 'self'", because: "everything outside our origin is denied unless explicitly allowed below.")
             .And.Contain("frame-ancestors 'none'", because: "pages cannot be embedded in any frame — clickjacking defence.")
             .And.Contain("form-action 'self'", because: "forms can only POST back to our origin — defence against credential-stealing form hijack.")
-            .And.Contain("base-uri 'self'", because: "blocks injection of <base> that would redirect relative URLs to attacker-controlled origin.");
+            .And.Contain("base-uri 'self'", because: "blocks injection of <base> that would redirect relative URLs to attacker-controlled origin.")
+            .And.NotContain("'unsafe-inline'", because: "Razor pages load JS from external files; adding 'unsafe-inline' back would mean inline <script> or onclick= snuck in — review the Pages tree.");
 
         headers.XContentTypeOptions.ToString().Should().Be("nosniff",
             because: "stops MIME sniffing — defence against the browser executing untyped content as script.");
@@ -55,7 +56,7 @@ public class SecurityHeadersMiddlewareTests
     {
         // arrange — pinned that the IHeaderDictionary indexer overwrites, a switch to .Add would throw on duplicate.
         var nextCalled = false;
-        RequestDelegate next = _ => { nextCalled = true; return Task.CompletedTask; };
+        Task next(HttpContext _) { nextCalled = true; return Task.CompletedTask; }
         var middleware = new SecurityHeadersMiddleware(next);
         var context = new DefaultHttpContext();
         context.Response.Headers.XFrameOptions = "SAMEORIGIN";

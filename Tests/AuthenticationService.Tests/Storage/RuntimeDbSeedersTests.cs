@@ -31,6 +31,7 @@ public class RuntimeDbSeedersTests : IDisposable
     public void Dispose()
     {
         foreach (var c in _connections) c.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     [Fact]

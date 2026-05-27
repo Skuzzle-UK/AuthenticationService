@@ -386,7 +386,7 @@ public class AccountController : ControllerBase
     [EnableRateLimiting(RateLimitPolicies.AuthSensitive)]
     public async Task<IActionResult> ChangePasswordAsync([FromBody] ChangePasswordDto request)
     {
-        var sub = User.FindFirst("sub")?.Value;
+        var sub = User.FindFirst(ClaimConstants.Sub)?.Value;
         if (string.IsNullOrEmpty(sub))
         {
             return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidRequest));

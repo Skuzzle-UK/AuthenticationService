@@ -44,6 +44,7 @@ public class WellKnownControllerTests : IDisposable
     {
         _keyProvider.Dispose();
         try { Directory.Delete(_keyDir, recursive: true); } catch { /* best-effort */ }
+        GC.SuppressFinalize(this);
     }
 
     [Fact]

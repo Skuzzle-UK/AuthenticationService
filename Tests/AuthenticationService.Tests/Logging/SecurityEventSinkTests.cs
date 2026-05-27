@@ -193,5 +193,6 @@ public class SecurityEventSinkTests : IDisposable
     {
         try { _provider.Dispose(); } catch { }
         try { _connection.Dispose(); } catch { }
+        GC.SuppressFinalize(this);
     }
 }

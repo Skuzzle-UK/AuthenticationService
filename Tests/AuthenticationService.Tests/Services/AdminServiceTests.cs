@@ -574,5 +574,6 @@ public class AdminServiceTests : IDisposable
     {
         foreach (var ctx in _contexts) { try { ctx.Dispose(); } catch { } }
         foreach (var conn in _connections) { try { conn.Dispose(); } catch { } }
+        GC.SuppressFinalize(this);
     }
 }

@@ -66,6 +66,7 @@ public class JWTServiceTests : IDisposable
         foreach (var ctx in _trackedContexts) ctx.Dispose();
         foreach (var conn in _trackedConnections) conn.Dispose();
         try { Directory.Delete(_keyDir, recursive: true); } catch { /* best-effort */ }
+        GC.SuppressFinalize(this);
     }
 
     // ─── CreateTokenAsync ───────────────────────────────────────────────────────────────
@@ -771,6 +772,6 @@ public class JWTServiceTests : IDisposable
     {
         public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         public TempDir() => Directory.CreateDirectory(Path);
-        public void Dispose() { try { Directory.Delete(Path, recursive: true); } catch { } }
+        public void Dispose() { try { Directory.Delete(Path, recursive: true); } catch { } GC.SuppressFinalize(this); }
     }
 }

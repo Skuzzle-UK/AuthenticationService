@@ -1,4 +1,4 @@
-#pragma warning disable
+#pragma warning disable CS8618 // Uninitialised non-nullable — EF Core sets properties via the change tracker on materialisation.
 
 using System.ComponentModel.DataAnnotations;
 

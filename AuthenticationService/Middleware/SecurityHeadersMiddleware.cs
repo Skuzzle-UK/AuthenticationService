@@ -18,11 +18,12 @@ public class SecurityHeadersMiddleware
     {
         var headers = context.Response.Headers;
 
-        // Razor pages embed inline JS, so 'self' + 'unsafe-inline' is required.
+        // Razor pages load JS from external files under wwwroot/js/ and pass server-side
+        // state via data-* attributes.
         headers.ContentSecurityPolicy =
             "default-src 'self'; " +
-            "script-src 'self' 'unsafe-inline'; " +
-            "style-src 'self' 'unsafe-inline'; " +
+            "script-src 'self'; " +
+            "style-src 'self'; " +
             "img-src 'self' data:; " +
             "connect-src 'self'; " +
             "frame-ancestors 'none'; " +

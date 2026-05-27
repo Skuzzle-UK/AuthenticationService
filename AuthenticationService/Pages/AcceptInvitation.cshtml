@@ -4,62 +4,21 @@
     ViewData["Title"] = "Welcome — set your password";
 }
 
-<script>
-    function submitAcceptInvitation() {
-        let newPassword = document.getElementById('NewPassword').value;
-        let confirmPassword = document.getElementById('ConfirmPassword').value;
-        let token = @Json.Serialize(Model.Token);
-        let email = @Json.Serialize(Model.Email);
-        let callbackUri = @Json.Serialize(Model.CallbackUri);
-
-        if (newPassword !== confirmPassword) {
-            alert('Passwords do not match.');
-            return;
-        }
-
-        let request = {
-            Email: email,
-            NewPassword: newPassword,
-            Token: token,
-            CallbackUri: callbackUri
-        };
-
-        fetch('api/registration/accept-invitation', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(request)
-        })
-        .then(async response => {
-            if (response.ok) {
-                alert('Your account is active. You can now sign in.');
-                let body = await response.json().catch(() => null);
-                let redirect = (body && body.redirect) || '/ActionComplete';
-                setTimeout(() => { window.location.href = redirect; }, 1000);
-            } else {
-                let body = await response.json().catch(() => ({}));
-                let errorMessages = '';
-                if (body && body.errors) {
-                    for (const key in body.errors) {
-                        errorMessages += body.errors[key] + '\n';
-                    }
-                }
-                alert('Failed to activate account:\n' + (errorMessages || 'Unknown error'));
-            }
-        })
-        .catch(error => console.error('Error:', error));
-    }
-</script>
-
-<h2>@ViewData["Title"]</h2>
-<p>An administrator has created an account for you. Set a password below to activate your account.</p>
-<div>
-    New password: <input type="password" id="NewPassword" name="NewPassword" placeholder="Enter password..." />
+<div id="page-data"
+     data-token="@Model.Token"
+     data-email="@Model.Email"
+     data-callback-uri="@Model.CallbackUri">
+    <h2>@ViewData["Title"]</h2>
+    <p>An administrator has created an account for you. Set a password below to activate your account.</p>
+    <div>
+        New password: <input type="password" id="NewPassword" name="NewPassword" placeholder="Enter password..." />
+    </div>
+    <div>
+        Confirm password: <input type="password" id="ConfirmPassword" name="ConfirmPassword" placeholder="Enter password again..." />
+    </div>
+    <div>
+        <button type="button" id="activate-button">Activate account</button>
+    </div>
 </div>
-<div>
-    Confirm password: <input type="password" id="ConfirmPassword" name="ConfirmPassword" placeholder="Enter password again..." />
-</div>
-<div>
-    <button type="button" onclick="submitAcceptInvitation()">Activate account</button>
-</div>
+
+<script src="~/js/accept-invitation.js"></script>

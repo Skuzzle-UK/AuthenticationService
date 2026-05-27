@@ -31,6 +31,7 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
         foreach (var p in _providers) p.Dispose();
         foreach (var c in _contexts) c.Dispose();
         foreach (var c in _connections) c.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     [Fact]

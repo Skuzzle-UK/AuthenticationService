@@ -26,6 +26,7 @@ public class EcdsaKeyProviderTests : IDisposable
     public void Dispose()
     {
         try { Directory.Delete(_tempDir, recursive: true); } catch { /* best-effort cleanup */ }
+        GC.SuppressFinalize(this);
     }
 
     // ─── happy path ─────────────────────────────────────────────────────────────────────
