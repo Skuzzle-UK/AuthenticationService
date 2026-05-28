@@ -39,5 +39,5 @@ public class User : IdentityUser
     /// provider-agnostic across SQLite tests and MySQL prod. The migration adds a MySQL
     /// DEFAULT only for backfilling existing rows.
     /// </summary>
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

@@ -10,8 +10,8 @@ public class ClientDetailDto : ApiResponse
     public string Id { get; set; } = default!;
     public string Name { get; set; } = default!;
     public bool IsDisabled { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime? LastUsedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? LastUsedAt { get; set; }
     public string? Description { get; set; }
 
     /// <summary>

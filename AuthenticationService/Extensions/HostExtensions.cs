@@ -209,15 +209,43 @@ public static class HostExtensions
                     opt.UseMySQL(connectionString, mysql =>
                     {
                         // See Storage/MySqlRetryingExecutionStrategy.cs for rationale.
-                        // MySQL-only: SQL Server / PostgreSQL ship their own EnableRetryOnFailure
+                        // MySQL-only: SQL Server / PostgreSQL ship their own EnableRetryOnFailure.
                         mysql.ExecutionStrategy(deps => new MySqlRetryingExecutionStrategy(deps));
+
+                        mysql.MigrationsAssembly("AuthenticationService.Migrations.MySql");
                     });
                     break;
 
-                // TODO: add SqlServer and PostgreSQL case branches here.
-                // Keeping the default-throw catches anyone configuring
-                // a Provider value that bypassed the validator (e.g. via reflection-based
-                // options injection in tests).
+                case DatabaseProviders.SqlServer:
+                    opt.UseSqlServer(connectionString, sql =>
+                    {
+                        // Microsoft's built-in transient-error retry. Same budget shape as the
+                        // custom MySQL strategy.
+                        sql.EnableRetryOnFailure(
+                            maxRetryCount: 5,
+                            maxRetryDelay: TimeSpan.FromSeconds(30),
+                            errorNumbersToAdd: null);
+
+                        sql.MigrationsAssembly("AuthenticationService.Migrations.SqlServer");
+                    });
+                    break;
+
+                case DatabaseProviders.PostgreSQL:
+                    opt.UseNpgsql(connectionString, npg =>
+                    {
+                        // Npgsql's built-in transient-error retry. Same budget shape
+                        // as MySQL / SqlServer.
+                        npg.EnableRetryOnFailure(
+                            maxRetryCount: 5,
+                            maxRetryDelay: TimeSpan.FromSeconds(30),
+                            errorCodesToAdd: null);
+
+                        npg.MigrationsAssembly("AuthenticationService.Migrations.Postgres");
+                    });
+                    break;
+
+                // The default-throw catches anyone configuring a Provider value that
+                // bypassed the validator (e.g. via reflection-based options injection in tests).
                 default:
                     throw new NotImplementedException(
                         $"DatabaseSettings:Provider '{dbSettings.Provider}' is not yet supported. " +

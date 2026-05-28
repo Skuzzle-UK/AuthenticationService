@@ -36,12 +36,12 @@ public class Client
     /// <summary>
     /// Stamped at object construction. Used for sort + audit display.
     /// </summary>
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     /// <summary>
     /// Updated on every successful token issue. Null until the first issuance.
     /// </summary>
-    public DateTime? LastUsedAt { get; set; }
+    public DateTimeOffset? LastUsedAt { get; set; }
 
     /// <summary>
     /// Free-text note for the admin UI.

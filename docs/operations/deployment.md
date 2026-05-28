@@ -101,14 +101,26 @@ Migrations are applied at startup in Development (so a fresh `dotnet run` Just W
 RunMigrationsAtStartup=false
 ```
 
-…in the production environment. With this flag off, the application **does not** run `Database.Migrate()` on startup — it just logs a message and continues. The deploy pipeline (init container / K8s Job / Helm hook / CI step) is expected to run:
+…in the production environment. With this flag off, the application **does not** run `Database.Migrate()` on startup — it just logs a message and continues. The deploy pipeline (init container / K8s Job / Helm hook / CI step) is expected to run the EF CLI against the production DB before the new replicas roll out. The exact command depends on which provider the deployment is using:
 
 ```bash
-cd AuthenticationService
-dotnet ef database update
+# MySQL
+dotnet ef database update \
+  --project AuthenticationService.Migrations.MySql \
+  --startup-project AuthenticationService.Migrations.MySql
+
+# SQL Server
+dotnet ef database update \
+  --project AuthenticationService.Migrations.SqlServer \
+  --startup-project AuthenticationService.Migrations.SqlServer
+
+# PostgreSQL
+dotnet ef database update \
+  --project AuthenticationService.Migrations.Postgres \
+  --startup-project AuthenticationService.Migrations.Postgres
 ```
 
-…against the production DB before the new replicas roll out.
+See [development/migrations.md](../development/migrations.md) for the full per-provider workflow (adding migrations, generating SQL scripts, undoing bad migrations, etc.).
 
 **Why opt out in production:**
 

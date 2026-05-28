@@ -128,7 +128,7 @@ public class OAuthController : ControllerBase
             Request.GetRemoteIpAddress());
         _metrics.ClientCredentialsTokenIssued();
 
-        var expiresIn = (int)Math.Max(0, (token.Expires!.Value - DateTime.UtcNow).TotalSeconds);
+        var expiresIn = (int)Math.Max(0, (token.Expires!.Value - DateTimeOffset.UtcNow).TotalSeconds);
 
         return Ok(new OAuthTokenResponse
         {

@@ -1,6 +1,7 @@
 using AuthenticationService.Entities;
 using AuthenticationService.Services;
 using AuthenticationService.Storage;
+using AuthenticationService.Tests.Helpers;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
@@ -265,7 +266,7 @@ public class ClientServiceTests : IDisposable
         _connections.Add(connection);
 
         var options = new DbContextOptionsBuilder<DatabaseContext>().UseSqlite(connection).Options;
-        var db = new DatabaseContext(options);
+        var db = new TestDatabaseContext(options);
         db.Database.EnsureCreated();
         _contexts.Add(db);
 

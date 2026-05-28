@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    SQL Server-specific migrations + model snapshot. EF Core requires one snapshot per
+    provider per DbContext, so each provider lives in its own assembly. This project is
+    referenced from the main AuthenticationService project and the design-time factory
+    selects it via the EF_MIGRATIONS_PROVIDER env var. Pure migrations — no runtime code.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <!-- Migrations are EF-generated; relaxing doc-comment warnings keeps the build clean. -->
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Design package is needed so this project can serve as its own startup-project
+         for `dotnet ef migrations add ...`. The Microsoft.EntityFrameworkCore.SqlServer
+         transitive comes via the main project reference. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.8">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AuthenticationService\AuthenticationService.csproj" />
+  </ItemGroup>
+
+  <!--
+    Runtime DLL discovery: when the app boots with DatabaseSettings:Provider=SqlServer,
+    EF Core calls Assembly.Load("AuthenticationService.Migrations.SqlServer") which
+    probes the entry-assembly's bin folder (the main project). Since this project
+    references back to the main project for DatabaseContext, we can't take a reverse
+    ProjectReference without creating a build cycle. So instead: copy this assembly's
+    output into the main project's bin folder after every build. Runs whether the
+    main project has been built yet or not — MakeDir creates the path on demand.
+  -->
+  <Target Name="CopyToMainProjectBin" AfterTargets="Build">
+    <PropertyGroup>
+      <_MainBinDir>$(MSBuildThisFileDirectory)..\AuthenticationService\bin\$(Configuration)\$(TargetFramework)\</_MainBinDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_FilesToCopy Include="$(TargetPath)" />
+      <_FilesToCopy Include="$(TargetDir)$(TargetName).pdb" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
+    </ItemGroup>
+    <MakeDir Directories="$(_MainBinDir)" Condition="!Exists('$(_MainBinDir)')" />
+    <Copy SourceFiles="@(_FilesToCopy)" DestinationFolder="$(_MainBinDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

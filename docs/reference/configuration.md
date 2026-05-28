@@ -135,11 +135,27 @@ Trust list for the `UseForwardedHeaders` middleware. Behind a load balancer / re
 
 Only `X-Forwarded-For` and `X-Forwarded-Proto` are honoured. `X-Forwarded-Host` is intentionally not honoured (host-header attack surface).
 
+## `DatabaseSettings`
+
+| Key | Allowed values | Description |
+|---|---|---|
+| `Provider` | `"MySQL"`, `"SqlServer"`, `"PostgreSQL"` | Picks the EF Core provider `HostExtensions.AddDatabase` dispatches to. Validator rejects any other value at startup. |
+
+Each provider has its own migrations assembly (EF Core requires one model snapshot
+per provider per context). See [development/migrations.md](../development/migrations.md)
+for the workflow.
+
 ## `ConnectionStrings`
+
+The connection string is looked up by name matching the active `DatabaseSettings:Provider`.
+Configure **only the one matching your active provider** — leaving the others present
+but unused is harmless but adds noise.
 
 | Key | Description |
 |---|---|
-| `MySQL` | EF Core connection string for the auth database. |
+| `MySQL` | EF Core connection string for MySQL / MariaDB. Used when `DatabaseSettings:Provider = "MySQL"`. |
+| `SqlServer` | EF Core connection string for SQL Server. Used when `DatabaseSettings:Provider = "SqlServer"`. Example: `Server=localhost,1433;Database=AuthenticationService;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=true`. |
+| `PostgreSQL` | Npgsql connection string for PostgreSQL. Used when `DatabaseSettings:Provider = "PostgreSQL"`. Example: `Host=localhost;Port=5432;Database=AuthenticationService;Username=postgres;Password=YourStrong!Passw0rd`. |
 | `Redis` | StackExchange.Redis connection string for the data-protection key ring. Required in every environment — startup throws on empty. Defaults to `localhost:6379` for local dev. |
 
 ## Top-level flags

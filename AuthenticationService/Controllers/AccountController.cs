@@ -360,7 +360,7 @@ public class AccountController : ControllerBase
         await _emailService.SendEmailAsync(
             user.Email!,
             EmailSubjects.PasswordReset,
-            $"Your password was reset at {DateTime.UtcNow} UTC. If you didn't make this request please click the following link to lock your account and contact a system administrator. {lockAccountUri}");
+            $"Your password was reset at {DateTimeOffset.UtcNow} UTC. If you didn't make this request please click the following link to lock your account and contact a system administrator. {lockAccountUri}");
 
         user.LockoutEnd = null;
         await _userService.UpdateAsync(user);
@@ -434,7 +434,7 @@ public class AccountController : ControllerBase
         await _emailService.SendEmailAsync(
             user.Email!,
             EmailSubjects.PasswordChanged,
-            $"Your password was changed at {DateTime.UtcNow} UTC. If you didn't make this request please click the following link to lock your account and contact a system administrator. {lockAccountUri}");
+            $"Your password was changed at {DateTimeOffset.UtcNow} UTC. If you didn't make this request please click the following link to lock your account and contact a system administrator. {lockAccountUri}");
 
         user.LockoutEnd = null;
         await _userService.UpdateAsync(user);
@@ -488,7 +488,7 @@ public class AccountController : ControllerBase
         await _emailService.SendEmailAsync(
             user.Email!,
             EmailSubjects.AccountLocked,
-            $"Your account was locked at {DateTime.UtcNow} UTC. If you didn't make this request please contact a system administrator. To unlock your account you need to reset your password via the following link. {resetPasswordUri}");
+            $"Your account was locked at {DateTimeOffset.UtcNow} UTC. If you didn't make this request please contact a system administrator. To unlock your account you need to reset your password via the following link. {resetPasswordUri}");
 
         _logger.LogWarning(
             SecurityEventIds.AccountLockedByUser,

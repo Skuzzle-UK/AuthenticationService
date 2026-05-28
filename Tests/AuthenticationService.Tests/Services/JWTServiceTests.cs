@@ -188,7 +188,8 @@ public class JWTServiceTests : IDisposable
 
         // ExecuteUpdate skips EF's change tracker — clear before reading or we'd see the pre-update cached value.
         db.ChangeTracker.Clear();
-        var rows = await db.RefreshTokens.OrderBy(r => r.CreatedAt).ToListAsync();
+        // Client-side ordering — SQLite can't ORDER BY DateTimeOffset (production providers can).
+        var rows = (await db.RefreshTokens.ToListAsync()).OrderBy(r => r.CreatedAt).ToList();
         rows.Should().HaveCount(2);
         rows.Should().ContainSingle(r => r.ConsumedAt != null,
             because: "exactly the old row should be consumed; the new row stays active.");
@@ -614,8 +615,9 @@ public class JWTServiceTests : IDisposable
 
         // assert
         expiry.Should().NotBeNull();
-        expiry!.Value.Should().BeCloseTo(DateTime.UtcNow.AddMinutes(_settings.ExpiryInMinutes), TimeSpan.FromMinutes(1));
-        expiry.Value.Kind.Should().Be(DateTimeKind.Utc);
+        expiry!.Value.Should().BeCloseTo(DateTimeOffset.UtcNow.AddMinutes(_settings.ExpiryInMinutes), TimeSpan.FromMinutes(1));
+        // DateTimeOffset.FromUnixTimeSeconds returns a value with Offset=0 (UTC).
+        expiry.Value.Offset.Should().Be(TimeSpan.Zero);
     }
 
     [Fact]
@@ -719,7 +721,7 @@ public class JWTServiceTests : IDisposable
         var options = new DbContextOptionsBuilder<DatabaseContext>()
             .UseSqlite(connection)
             .Options;
-        var db = new DatabaseContext(options);
+        var db = new TestDatabaseContext(options);
         db.Database.EnsureCreated();
         _trackedContexts.Add(db);
 

@@ -467,7 +467,7 @@ public class RegistrationControllerTests : IDisposable
         _connections.Add(connection);
 
         var dbOptions = new DbContextOptionsBuilder<DatabaseContext>().UseSqlite(connection).Options;
-        var db = new DatabaseContext(dbOptions);
+        var db = new TestDatabaseContext(dbOptions);
         db.Database.EnsureCreated();
         _contexts.Add(db);
 

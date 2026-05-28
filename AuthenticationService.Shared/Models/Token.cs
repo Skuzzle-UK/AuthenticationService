@@ -21,7 +21,7 @@ public class Token
     /// <summary>
     /// When the access token expires.
     /// </summary>
-    public DateTime? Expires { get; init; }
+    public DateTimeOffset? Expires { get; init; }
 
     /// <summary>
     /// The refresh token (an opaque random string — keep it secret).
@@ -31,5 +31,5 @@ public class Token
     /// <summary>
     /// When the refresh token expires.
     /// </summary>
-    public DateTime? RefreshTokenExpiresAt { get; init; }
+    public DateTimeOffset? RefreshTokenExpiresAt { get; init; }
 }

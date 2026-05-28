@@ -94,18 +94,32 @@ jobs:
           path: ${{ github.workspace }}/TestResults/**/*.trx
 
   # ---------------------------------------------------------------------------
-  # Integration tests — slower (~60s), runs against real MySQL / Redis / smtp4dev
-  # containers spun up by the Aspire AppHost. Skipped on plain feature-branch
-  # pushes to keep the fast loop fast; runs on every PR and on push to master.
+  # Integration tests — slower (~60s per provider), runs against real DB / Redis /
+  # smtp4dev containers spun up by the Aspire AppHost. Matrix fans the suite out
+  # across MySQL, SqlServer, and PostgreSQL so every provider is exercised end-to-end.
+  # Skipped on plain feature-branch pushes to keep the fast loop fast; runs on every
+  # PR and on push to master.
   # ---------------------------------------------------------------------------
   integration-tests:
-    name: Integration tests (Aspire + Docker)
+    name: Integration tests (${{ matrix.db }})
     runs-on: ubuntu-latest
     needs: unit-tests   # don't burn ~60s of integration tests if a unit test is broken
     if: |
       github.event_name == 'pull_request'
       || (github.event_name == 'push' && github.ref == 'refs/heads/master')
       || github.event_name == 'workflow_dispatch'
+
+    strategy:
+      # fail-fast: false so a flake on one provider doesn't cancel the in-flight
+      # runs on the other two — we want to see all three results in the PR check
+      # summary, not just the first one to die.
+      fail-fast: false
+      matrix:
+        db: [MySQL, SqlServer, PostgreSQL]
+
+    env:
+      # AppHostFixture / AppHost.cs read this to pick which DB container to spin.
+      INTEGRATION_DB_PROVIDER: ${{ matrix.db }}
 
     steps:
       - name: Checkout
@@ -125,17 +139,24 @@ jobs:
       # ubuntu-latest GitHub-hosted runners come with Docker pre-installed and
       # running. Aspire's DCP downloads on first run (~5s) and is cached for the
       # duration of the runner's life — fine for our purposes.
+      #
+      # We exclude `MultiProviderQuirks` because each matrix shard already gives one
+      # provider's worth of coverage of the bulk scenarios — running the in-process
+      # 3-provider quirks suite on every shard would spin three extra container sets
+      # per job for no extra signal. The quirks suite is for local-dev fast feedback;
+      # see development/testing.md.
       - name: Run integration tests
         run: >-
           dotnet test AuthenticationService.IntegrationTests/AuthenticationService.IntegrationTests.csproj
           --no-build
           --configuration Release
-          --logger "trx;LogFileName=integration-results.trx"
+          --filter "Category!=MultiProviderQuirks"
+          --logger "trx;LogFileName=integration-results-${{ matrix.db }}.trx"
           --results-directory ${{ github.workspace }}/TestResults
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: integration-test-results
+          name: integration-test-results-${{ matrix.db }}
           path: ${{ github.workspace }}/TestResults/**/*.trx

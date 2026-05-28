@@ -11,12 +11,33 @@ var integrationTestMode = args.Contains("--integration-test");
 var rateLimitingDisabled = args.Contains("--rate-limiting-disabled");
 var withBackstage = args.Contains("--with-backstage");
 
+// Database provider selection: --db-provider=<name> arg, else INTEGRATION_DB_PROVIDER
+// env var, else MySQL. Matches DatabaseProviders constants in the main project.
+var dbProvider = args
+    .FirstOrDefault(a => a.StartsWith("--db-provider=", StringComparison.OrdinalIgnoreCase))
+    ?["--db-provider=".Length..]
+    ?? Environment.GetEnvironmentVariable("INTEGRATION_DB_PROVIDER");
+if (string.IsNullOrWhiteSpace(dbProvider))
+{
+    dbProvider = "MySQL";
+}
+
 var smtp = builder.AddContainer("smtp4dev", "rnwood/smtp4dev")
     .WithEndpoint(name: "smtp", targetPort: 25)
     .WithHttpEndpoint(name: "http", targetPort: 80);
 
-var mysql = builder.AddMySql("mysql");
-var authDb = mysql.AddDatabase("AuthenticationService");
+// Each AddDatabase returns a provider-specific resource builder, but they all implement
+// IResourceWithConnectionString (IResourceBuilder<out T> is covariant) so the unified
+// reference works downstream.
+IResourceBuilder<IResourceWithConnectionString> authDb = dbProvider switch
+{
+    "MySQL" => builder.AddMySql("mysql").AddDatabase("AuthenticationService"),
+    "SqlServer" => builder.AddSqlServer("sqlserver").AddDatabase("AuthenticationService"),
+    "PostgreSQL" => builder.AddPostgres("postgres").AddDatabase("AuthenticationService"),
+    _ => throw new InvalidOperationException(
+        $"Unknown DB provider '{dbProvider}'. Supported: MySQL, SqlServer, PostgreSQL. "
+        + "Set --db-provider=<name> or INTEGRATION_DB_PROVIDER env var.")
+};
 
 var redis = builder.AddRedis("redis")
     .WithRedisInsight();
@@ -55,7 +76,10 @@ var auth = builder.AddProject<Projects.AuthenticationService>("auth")
     .WithEnvironment("EmailServerSettings__Port", smtp.GetEndpoint("smtp").Property(EndpointProperty.Port))
     .WithEnvironment("EmailServerSettings__UserName", "")
     .WithEnvironment("EmailServerSettings__Password", "")
-    .WithEnvironment("ConnectionStrings__MySQL", authDb)
+    .WithEnvironment("DatabaseSettings__Provider", dbProvider)
+    // Connection-string env var key matches the active provider name so the auth
+    // service's ConnectionStrings:{Provider} lookup resolves correctly.
+    .WithEnvironment($"ConnectionStrings__{dbProvider}", authDb)
     .WithEnvironment("ConnectionStrings__Redis", redis)
     .WaitFor(authDb)
     .WaitFor(redis)

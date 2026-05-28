@@ -29,9 +29,7 @@ public sealed class DatabaseSettingsValidator : IValidateOptions<DatabaseSetting
         {
             return ValidateOptionsResult.Fail(
                 $"DatabaseSettings:Provider '{options.Provider}' is not supported. " +
-                $"Allowed values: {string.Join(", ", DatabaseProviders.Supported)}. " +
-                $"(Reserved-but-not-yet-wired: {DatabaseProviders.SqlServer}, {DatabaseProviders.PostgreSQL} — " +
-                "see TODO.md multi-provider plan.)");
+                $"Allowed values: {string.Join(", ", DatabaseProviders.Supported)}.");
         }
 
         return ValidateOptionsResult.Success;

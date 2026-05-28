@@ -24,5 +24,5 @@ public class UserSummaryDto
     /// </summary>
     public bool MfaEnabled { get; set; }
 
-    public DateTime CreatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 }

@@ -17,10 +17,11 @@ using NSubstitute;
 namespace AuthenticationService.IntegrationTests.Scenarios;
 
 /// <summary>
-/// Scenario 6 — Threshold escalation worker against real MySQL. Unit tests cover the
-/// worker against SQLite; this catches provider-specific query divergences (sweep uses
-/// GroupBy + ToDictionaryAsync + tracked mutations, all surfaces where
-/// MySql.EntityFrameworkCore can diverge from SQLite-InMemory). Cascade actions are
+/// Scenario 6 — Threshold escalation worker against a real DB (provider chosen by the
+/// fixture). Unit tests cover the worker against SQLite; this catches provider-specific
+/// query divergences (sweep uses GroupBy + ToDictionaryAsync + tracked mutations, plus
+/// the <c>IsMySql()</c>-gated branch that picks per-jti lookup vs batched <c>Contains</c>
+/// — surfaces where any provider can diverge from SQLite-InMemory). Cascade actions are
 /// substituted because Scenarios 3 + 4 integration-test them; this test's value is the
 /// SQL piece end-to-end.
 /// </summary>
@@ -46,8 +47,8 @@ public class ThresholdEscalationWorkerTests(AppHostFixture fixture) : Integratio
             {
                 TokenJti = revokedJti,
                 UserId = dbUser.Id,
-                ExpiresAt = DateTime.UtcNow.AddMinutes(10),
-                RevokedAt = DateTime.UtcNow,
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(10),
+                RevokedAt = DateTimeOffset.UtcNow,
                 RevocationReason = RevocationReasons.Logout,
             });
 
@@ -58,16 +59,15 @@ public class ThresholdEscalationWorkerTests(AppHostFixture fixture) : Integratio
                     TokenJti = revokedJti,
                     UserId = dbUser.Id,
                     IpAddress = "10.0.0.99",
-                    CreatedAt = DateTime.UtcNow.AddSeconds(-i),
+                    CreatedAt = DateTimeOffset.UtcNow.AddSeconds(-i),
                 });
             }
             await setupDb.SaveChangesAsync();
         }
 
-        // DI: real MySQL DbContext + substituted cascade services (full cascade
-        // behaviour is covered in Scenarios 3 + 4).
-        var connectionString = await Fixture.App.GetConnectionStringAsync("AuthenticationService")
-            ?? throw new InvalidOperationException("MySQL connection string not exposed by Aspire.");
+        // DI: real DbContext (provider picked from the fixture) + substituted cascade
+        // services (full cascade behaviour is covered in Scenarios 3 + 4).
+        var connectionString = await ResolveConnectionStringAsync();
 
         var userService = Substitute.For<IUserService>();
         var tokenService = Substitute.For<ITokenService>();
@@ -83,7 +83,7 @@ public class ThresholdEscalationWorkerTests(AppHostFixture fixture) : Integratio
         userService.GeneratePasswordResetTokenAsync(Arg.Any<User>()).Returns("reset-tok");
 
         var services = new ServiceCollection();
-        services.AddDbContext<DatabaseContext>(opt => opt.UseMySQL(connectionString));
+        services.AddDbContext<DatabaseContext>(opt => ConfigureDbContextProvider(opt, connectionString));
         services.AddSingleton(userService);
         services.AddSingleton(tokenService);
         services.AddSingleton(emailService);

@@ -10,7 +10,7 @@ public class SecurityEvent
 {
     public long Id { get; set; }
 
-    public DateTime Timestamp { get; set; }
+    public DateTimeOffset Timestamp { get; set; }
 
     /// <summary>
     /// The numeric <c>EventId.Id</c> from <c>SecurityEventIds</c>.

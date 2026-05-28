@@ -6,7 +6,7 @@ namespace AuthenticationService.Shared.Dtos.Response;
 /// </summary>
 public class AuditEntryDto
 {
-    public DateTime Timestamp { get; set; }
+    public DateTimeOffset Timestamp { get; set; }
 
     public int EventId { get; set; }
 

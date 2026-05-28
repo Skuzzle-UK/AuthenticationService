@@ -2,6 +2,7 @@ using AuthenticationService.Entities;
 using AuthenticationService.Services.Hosted;
 using AuthenticationService.Settings;
 using AuthenticationService.Storage;
+using AuthenticationService.Tests.Helpers;
 using AwesomeAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -48,7 +49,10 @@ public class DataRetentionCleanupServiceTests : IDisposable
 
         // assert
         db.ChangeTracker.Clear();
-        var remaining = await db.RevokedTokenAccessAttempts.OrderBy(x => x.CreatedAt).ToListAsync();
+        // Client-side ordering — SQLite can't ORDER BY DateTimeOffset (production providers can).
+        var remaining = (await db.RevokedTokenAccessAttempts.ToListAsync())
+            .OrderBy(x => x.CreatedAt)
+            .ToList();
         remaining.Should().HaveCount(2);
         remaining.Select(r => r.TokenJti).Should().BeEquivalentTo(new[] { "j2", "j3" });
     }
@@ -139,13 +143,15 @@ public class DataRetentionCleanupServiceTests : IDisposable
         _connections.Add(connection);
 
         var dbOptions = new DbContextOptionsBuilder<DatabaseContext>().UseSqlite(connection).Options;
-        var db = new DatabaseContext(dbOptions);
+        var db = new TestDatabaseContext(dbOptions);
         db.Database.EnsureCreated();
         _contexts.Add(db);
 
-        // Real ServiceProvider so the service's CreateScope().GetRequiredService<DatabaseContext>() resolves to our context.
+        // Real ServiceProvider so the service's CreateScope().GetRequiredService<DatabaseContext>() resolves
+        // to a TestDatabaseContext (so SQLite gets the DateTimeOffset → UtcTicks converter applied).
         var services = new ServiceCollection();
-        services.AddDbContext<DatabaseContext>(opt => opt.UseSqlite(connection));
+        services.AddScoped<DatabaseContext>(_ => new TestDatabaseContext(
+            new DbContextOptionsBuilder<DatabaseContext>().UseSqlite(connection).Options));
         var sp = services.BuildServiceProvider();
         _providers.Add(sp);
 

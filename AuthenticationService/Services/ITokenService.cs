@@ -68,9 +68,9 @@ public interface ITokenService
     Task RevokeFamilyAsync(Guid familyId, string reason);
 
     /// <summary>
-    /// Reads the <c>exp</c> claim from a JWT and returns it as a <see cref="DateTime"/>.
+    /// Reads the <c>exp</c> claim from a JWT and returns it as a <see cref="DateTimeOffset"/>.
     /// </summary>
-    DateTime? GetExpiryDateTime(string token);
+    DateTimeOffset? GetExpiryDateTime(string token);
 
     /// <summary>
     /// Reads the <c>sub</c> claim.

@@ -47,5 +47,5 @@ public class UserDetailDto : ApiResponse
     /// </summary>
     public int ActiveRefreshTokenFamilies { get; set; }
 
-    public DateTime CreatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 }

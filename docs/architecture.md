@@ -15,16 +15,55 @@ What's in this repo, what each piece does, and how a token gets from issuance to
 | `AuthenticationService.ServiceDefaults` | Shared library that wires OpenTelemetry / health-checks / service-discovery defaults into any .NET project that joins the Aspire AppHost graph. Currently only the auth service itself; future microservices reference this for free. Production deploys do **not** ship Aspire — ServiceDefaults still adds OTel without it. |
 | `ExampleConsumer` | A small minimal-API microservice that demonstrates the validation lib end-to-end. Useful as a smoke test and as a copy-paste starting point for new services. See the [end-to-end walk-through](getting-started.md#6-end-to-end-with-exampleconsumer). |
 
+### Per-provider migrations
+
+| Project | Purpose |
+|---|---|
+| `AuthenticationService.Migrations.MySql` | MySQL-specific EF Core migrations + model snapshot. |
+| `AuthenticationService.Migrations.SqlServer` | SQL Server-specific migrations + snapshot. |
+| `AuthenticationService.Migrations.Postgres` | PostgreSQL-specific migrations + snapshot. |
+
+All three follow the same shape: their own `DesignTimeFactory` (so the EF CLI can target
+each directly), an MSBuild `AfterTargets="Build"` step that copies the assembly into the
+main project's `bin/` folder, and a runtime resolver hook in `Program.cs` that disk-probes
+for the assemblies (the alternative — `ProjectReference` from the main project — would
+cycle since each migrations project references the main one for `DatabaseContext`). EF
+Core requires one model snapshot per provider per context, which is why we need the
+separate assemblies. See [development/migrations.md](development/migrations.md) for the
+workflow.
+
 ### Dev / test orchestration (not deployed)
 
 | Project | Purpose |
 |---|---|
-| `AuthenticationService.AppHost` | .NET Aspire orchestrator. F5 here launches the auth service as a normal .NET process and spins up MySQL / Redis / smtp4dev / Grafana as containers with connection strings auto-injected. Aspire dashboard at `https://localhost:17282` shows live traces, logs, and metrics from every resource in the graph. **Dev/test only — never deployed.** |
+| `AuthenticationService.AppHost` | .NET Aspire orchestrator. F5 here launches the auth service as a normal .NET process and spins up the configured DB + Redis + smtp4dev + Grafana as containers with connection strings auto-injected. DB defaults to MySQL; swap via `--db-provider=<SqlServer\|PostgreSQL>` arg or `INTEGRATION_DB_PROVIDER` env var. Aspire dashboard at `https://localhost:17282` shows live traces, logs, and metrics from every resource in the graph. **Dev/test only — never deployed.** |
 | `Tests/AuthenticationService.TokenValidationLib.Tests` | Unit tests for the token-validation library (10 tests). |
 | `Tests/AuthenticationService.TokenClientLib.Tests` | Unit tests for the token-client library (38 tests). |
 | `Tests/AuthenticationService.Shared.Tests` | Unit tests for the shared DTOs / constants (78 tests). |
-| `Tests/AuthenticationService.Tests` | Unit tests for the auth service — every controller endpoint, validator, middleware, helper, hosted-service sweep, etc. (415 tests). |
+| `Tests/AuthenticationService.Tests` | Unit tests for the auth service — every controller endpoint, validator, middleware, helper, hosted-service sweep, etc. (493 tests). |
 | `AuthenticationService.IntegrationTests` | End-to-end scenario tests using `Aspire.Hosting.Testing` to boot the whole AppHost graph in-process. Real MySQL, Redis, smtp4dev. (15 tests — see [development/testing.md](development/testing.md).) |
+
+## Supported database providers
+
+The auth service supports multiple EF Core providers, selected at startup via the
+`DatabaseSettings:Provider` config value. The retry strategy and any provider-specific
+workarounds (DateOnly value-converter etc.) are gated per provider.
+
+| Provider | Allowed value | Retry strategy | Status |
+|---|---|---|---|
+| MySQL (Oracle) | `"MySQL"` | Custom `MySqlRetryingExecutionStrategy` (Oracle provider doesn't ship one) | Shipped |
+| SQL Server | `"SqlServer"` | Built-in `EnableRetryOnFailure(5, 30s)` | Shipped |
+| PostgreSQL | `"PostgreSQL"` | Built-in Npgsql `EnableRetryOnFailure(5, 30s)` | Shipped |
+
+All entity timestamps are `DateTimeOffset` — the model is provider-agnostic in this regard,
+and the strict `timestamptz` handling Npgsql 6+ ships by default is exactly what we want
+(no `Npgsql.EnableLegacyTimestampBehavior` switch needed). On MySQL, columns are pinned to
+`datetime(6)` via fluent configuration to preserve sub-second precision (Oracle's provider
+defaults `DateTimeOffset` to plain `datetime` — second precision — which would be a silent
+downgrade); SQL Server uses native `datetimeoffset`; PostgreSQL uses `timestamptz`.
+
+When the model changes, you need to add migrations to every active provider —
+[development/migrations.md](development/migrations.md) is the workflow runbook.
 
 ## How tokens flow
 

@@ -5,10 +5,7 @@ namespace AuthenticationService.Constants;
 /// <summary>
 /// Canonical names for supported EF Core database providers. Used by
 /// <c>DatabaseSettings.Provider</c> + the dispatch in <c>HostExtensions.AddDatabase</c>.
-/// <c>SqlServer</c> and <c>PostgreSQL</c> are reserved for Phases 2 and 3 of the
-/// multi-provider plan (see TODO.md) — referenced from the validator's allowed-set
-/// even though the dispatch case hasn't been wired yet would be a footgun, so they're
-/// not in <see cref="Supported"/> until each phase ships.
+/// All three providers in this class are now wired — multi-provider plan complete.
 /// </summary>
 public static class DatabaseProviders
 {
@@ -17,9 +14,9 @@ public static class DatabaseProviders
     public const string PostgreSQL = "PostgreSQL";
 
     /// <summary>
-    /// Providers the host will actually start under. Grows as multi-provider phases land.
+    /// Providers the host will actually start under.
     /// </summary>
-    public static readonly IReadOnlyList<string> Supported = [MySql];
+    public static readonly IReadOnlyList<string> Supported = [MySql, SqlServer, PostgreSQL];
 }
 
 /// <summary>

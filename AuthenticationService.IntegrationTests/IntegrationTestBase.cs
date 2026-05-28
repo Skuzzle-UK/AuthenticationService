@@ -114,20 +114,50 @@ public abstract class IntegrationTestBase(AppHostFixture fixture) : IAsyncLifeti
     }
 
     /// <summary>
-    /// Returns a <see cref="DatabaseContext"/> connected to the same MySQL the auth
-    /// service uses (connection string resolved via Aspire's resource graph, not
-    /// <c>appsettings.json</c>). Caller owns disposal — use <c>await using</c>.
+    /// Returns a <see cref="DatabaseContext"/> connected to the same DB the auth service
+    /// uses (connection string resolved via Aspire's resource graph, not
+    /// <c>appsettings.json</c>). Provider is picked from <see cref="AppHostFixture.DbProvider"/>
+    /// so the same helper works under the CI matrix and the in-process quirks suite.
+    /// Caller owns disposal — use <c>await using</c>.
     /// </summary>
     protected async Task<DatabaseContext> CreateDbContextAsync()
     {
-        var connectionString = await Fixture.App.GetConnectionStringAsync("AuthenticationService")
+        var connectionString = await ResolveConnectionStringAsync();
+        var builder = new DbContextOptionsBuilder<DatabaseContext>();
+        ConfigureDbContextProvider(builder, connectionString);
+        return new DatabaseContext(builder.Options);
+    }
+
+    /// <summary>
+    /// Resolves the active DB connection string from Aspire's resource graph.
+    /// </summary>
+    protected async Task<string> ResolveConnectionStringAsync() =>
+        await Fixture.App.GetConnectionStringAsync("AuthenticationService")
             ?? throw new InvalidOperationException(
                 "Aspire didn't expose a connection string for the 'AuthenticationService' database.");
 
-        var options = new DbContextOptionsBuilder<DatabaseContext>()
-            .UseMySQL(connectionString)
-            .Options;
-
-        return new DatabaseContext(options);
+    /// <summary>
+    /// Applies the EF provider matching <see cref="AppHostFixture.DbProvider"/> to the
+    /// supplied builder. Use in test-owned <c>AddDbContext</c> registrations so the same
+    /// test code adapts under MySQL / SqlServer / PostgreSQL without conditional logic
+    /// at each call site.
+    /// </summary>
+    protected void ConfigureDbContextProvider(DbContextOptionsBuilder builder, string connectionString)
+    {
+        switch (Fixture.DbProvider)
+        {
+            case "MySQL":
+                builder.UseMySQL(connectionString);
+                break;
+            case "SqlServer":
+                builder.UseSqlServer(connectionString);
+                break;
+            case "PostgreSQL":
+                builder.UseNpgsql(connectionString);
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"Unknown DbProvider '{Fixture.DbProvider}' — can't pick an EF provider.");
+        }
     }
 }

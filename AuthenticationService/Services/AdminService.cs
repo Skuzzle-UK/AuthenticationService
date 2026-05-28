@@ -120,7 +120,7 @@ public class AdminService : IAdminService
         }
 
         var roles = await _userManager.GetRolesAsync(user);
-        var now = DateTime.UtcNow;
+        var now = DateTimeOffset.UtcNow;
 
         // Proxies "how many devices is this user signed in on right now."
         var activeFamilies = await _context.RefreshTokens
@@ -471,7 +471,7 @@ public class AdminService : IAdminService
         var page = Math.Max(1, filter.Page);
         var pageSize = Math.Clamp(filter.PageSize, 1, AdminAuditFilter.MaxPageSize);
         // Last 30 days by default — bounds the query for users with long histories.
-        var since = filter.Since ?? DateTime.UtcNow.AddDays(-30);
+        var since = filter.Since ?? DateTimeOffset.UtcNow.AddDays(-30);
 
         var query = _context.SecurityEvents
             .AsNoTracking()

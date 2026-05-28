@@ -236,7 +236,7 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
         _connections.Add(connection);
 
         var dbOptions = new DbContextOptionsBuilder<DatabaseContext>().UseSqlite(connection).Options;
-        var db = new DatabaseContext(dbOptions);
+        var db = new TestDatabaseContext(dbOptions);
         db.Database.EnsureCreated();
         _contexts.Add(db);
 
@@ -248,7 +248,9 @@ public class RevokedTokenReplayEscalationServiceTests : IDisposable
         };
 
         var services = new ServiceCollection();
-        services.AddDbContext<DatabaseContext>(opt => opt.UseSqlite(connection));
+        // Resolve to TestDatabaseContext so the SQLite DateTimeOffset → UtcTicks converter applies.
+        services.AddScoped<DatabaseContext>(_ => new TestDatabaseContext(
+            new DbContextOptionsBuilder<DatabaseContext>().UseSqlite(connection).Options));
         services.AddSingleton(deps.UserService);
         services.AddSingleton(deps.TokenService);
         services.AddSingleton(deps.EmailService);

@@ -60,6 +60,7 @@ nav:
       - Local Backstage (Aspire): operations/local-backstage.md
   - Development:
       - Testing: development/testing.md
+      - Database migrations: development/migrations.md
       - Conventions: development/conventions.md
       - Adding an endpoint: development/adding-an-endpoint.md
   - Reference:

@@ -70,8 +70,8 @@ public class JWTService : ITokenService
             UserId = user.Id,
             TokenHash = HashRefreshToken(rawRefreshToken),
             FamilyId = family,
-            CreatedAt = DateTime.UtcNow,
-            ExpiresAt = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenExpiryInDays),
+            CreatedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(_jwtSettings.RefreshTokenExpiryInDays),
             CreatedFromIp = ipAddress,
         };
 
@@ -95,7 +95,7 @@ public class JWTService : ITokenService
     public Task<Token> CreateServiceTokenAsync(string clientId, string audience, IEnumerable<string> scopes)
     {
         var scopeList = scopes.ToList();
-        var expiresAt = DateTime.UtcNow.AddHours(_clientCredentialsSettings.TokenLifetimeInHours);
+        var expiresAt = DateTimeOffset.UtcNow.AddHours(_clientCredentialsSettings.TokenLifetimeInHours);
 
         var claims = new List<Claim>
         {
@@ -113,7 +113,8 @@ public class JWTService : ITokenService
             issuer: _jwtSettings.ValidIssuer,
             audience: audience,
             claims: claims,
-            expires: expiresAt,
+            // JwtSecurityToken's expires is DateTime?; offset is always zero so UtcDateTime is lossless.
+            expires: expiresAt.UtcDateTime,
             signingCredentials: _keyProvider.SigningCredentials);
 
         // No refresh half — service tokens re-authenticate from scratch.
@@ -159,7 +160,7 @@ public class JWTService : ITokenService
                 return await CascadeReuseAsync(userId, existing.FamilyId, transaction);
             }
 
-            if (existing.ExpiresAt < DateTime.UtcNow)
+            if (existing.ExpiresAt < DateTimeOffset.UtcNow)
             {
                 return new RefreshResult.Expired();
             }
@@ -176,7 +177,7 @@ public class JWTService : ITokenService
             var rowsClaimed = await _context.RefreshTokens
                 .Where(t => t.Id == existing.Id && t.ConsumedAt == null)
                 .ExecuteUpdateAsync(s => s
-                    .SetProperty(t => t.ConsumedAt, DateTime.UtcNow)
+                    .SetProperty(t => t.ConsumedAt, DateTimeOffset.UtcNow)
                     .SetProperty(t => t.ReplacedByTokenId, (Guid?)newTokenId));
 
             if (rowsClaimed == 0)
@@ -211,7 +212,7 @@ public class JWTService : ITokenService
 
     public async Task RevokeAllRefreshTokenFamiliesAsync(string userId, string reason)
     {
-        var now = DateTime.UtcNow;
+        var now = DateTimeOffset.UtcNow;
         await _context.RefreshTokens
             .Where(t => t.UserId == userId && t.ConsumedAt == null)
             .ExecuteUpdateAsync(s => s
@@ -221,7 +222,7 @@ public class JWTService : ITokenService
 
     public async Task RevokeFamilyAsync(Guid familyId, string reason)
     {
-        var now = DateTime.UtcNow;
+        var now = DateTimeOffset.UtcNow;
         await _context.RefreshTokens
             .Where(t => t.FamilyId == familyId && t.ConsumedAt == null)
             .ExecuteUpdateAsync(s => s
@@ -265,7 +266,7 @@ public class JWTService : ITokenService
             ExpiresAt = GetExpiryDateTime(token),
             UserId = userId,
             RevokedFromIp = ipAddress,
-            RevokedAt = DateTime.UtcNow,
+            RevokedAt = DateTimeOffset.UtcNow,
             RevocationReason = reason,
         };
 
@@ -304,7 +305,7 @@ public class JWTService : ITokenService
     {
         // Still-live revoked token = Medium (only the deny-list stops it);
         // naturally-expired revoked token = Low (JwtBearer's expiry check would reject anyway).
-        var severity = revokedToken.ExpiresAt.HasValue && revokedToken.ExpiresAt.Value < DateTime.UtcNow
+        var severity = revokedToken.ExpiresAt.HasValue && revokedToken.ExpiresAt.Value < DateTimeOffset.UtcNow
             ? Severity.Low
             : Severity.Medium;
 
@@ -324,7 +325,7 @@ public class JWTService : ITokenService
             UserId = revokedToken.UserId,
             IpAddress = ipAddress,
             UserAgent = TruncateUserAgent(userAgent),
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = DateTimeOffset.UtcNow,
             Severity = severity,
         };
 
@@ -373,7 +374,7 @@ public class JWTService : ITokenService
         }
     }
 
-    public DateTime? GetExpiryDateTime(string token)
+    public DateTimeOffset? GetExpiryDateTime(string token)
     {
         if (TokenHandler.ReadToken(token) is not JwtSecurityToken jwtToken)
         {
@@ -386,7 +387,7 @@ public class JWTService : ITokenService
             return null;
         }
 
-        return DateTimeOffset.FromUnixTimeSeconds(long.Parse(expClaim)).UtcDateTime;
+        return DateTimeOffset.FromUnixTimeSeconds(long.Parse(expClaim));
     }
 
     private static List<Claim> GetClaims(User user, IList<string> roles, Guid familyId)
@@ -414,7 +415,8 @@ public class JWTService : ITokenService
             issuer: _jwtSettings.ValidIssuer,
             audience: _jwtSettings.ValidAudience,
             claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(_jwtSettings.ExpiryInMinutes),
+            // JwtSecurityToken's expires is DateTime?; offset is always zero so UtcDateTime is lossless.
+            expires: DateTimeOffset.UtcNow.AddMinutes(_jwtSettings.ExpiryInMinutes).UtcDateTime,
             signingCredentials: signingCredentials);
 
         return tokenOptions;

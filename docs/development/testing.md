@@ -1,6 +1,6 @@
 # Testing
 
-Five test projects, **541 unit tests** total + **15 integration tests**. Two layers — fast unit feedback for everyday work, slower integration tests for the cross-cutting / DB-shape stuff.
+Five test projects, **619 unit tests** total + **15 integration tests**. Two layers — fast unit feedback for everyday work, slower integration tests for the cross-cutting / DB-shape stuff.
 
 ## Layout
 
@@ -9,7 +9,7 @@ Five test projects, **541 unit tests** total + **15 integration tests**. Two lay
 | `Tests/AuthenticationService.TokenValidationLib.Tests` | Unit | 10 | ~0.2s | Every commit |
 | `Tests/AuthenticationService.TokenClientLib.Tests` | Unit | 38 | ~1s | Every commit |
 | `Tests/AuthenticationService.Shared.Tests` | Unit | 78 | ~0.1s | Every commit |
-| `Tests/AuthenticationService.Tests` | Unit | 415 | ~3s | Every commit |
+| `Tests/AuthenticationService.Tests` | Unit | 493 | ~3s | Every commit |
 | `AuthenticationService.IntegrationTests` | Integration | 15 | ~60s | Every PR |
 
 **Zero skipped tests.** Workarounds for provider quirks (SQLite ↔ DateTimeOffset, etc.) live in a test-project subclass of `DatabaseContext` so production code stays provider-agnostic.
@@ -30,6 +30,55 @@ dotnet test
 ```
 
 Integration tests need Docker (or a Docker-compatible runtime — Rancher Desktop, Podman Desktop). The first run pulls the MySQL / Redis / smtp4dev images (~30s); subsequent runs reuse them and finish in under a minute.
+
+### Running against a non-MySQL database
+
+The Aspire AppHost picks the DB container based on a single switch — set it either as a CLI arg (`--db-provider=<name>` for `dotnet run --project AuthenticationService.AppHost`) or as the `INTEGRATION_DB_PROVIDER` environment variable (which `dotnet test` propagates to the AppHost). Supported values: `MySQL` (default), `SqlServer`, `PostgreSQL`.
+
+```bash
+# MySQL (default — no switch needed)
+dotnet test AuthenticationService.IntegrationTests/
+
+# SQL Server
+INTEGRATION_DB_PROVIDER=SqlServer dotnet test AuthenticationService.IntegrationTests/
+
+# PostgreSQL
+INTEGRATION_DB_PROVIDER=PostgreSQL dotnet test AuthenticationService.IntegrationTests/
+```
+
+PowerShell:
+
+```powershell
+$env:INTEGRATION_DB_PROVIDER = "SqlServer"; dotnet test AuthenticationService.IntegrationTests/
+```
+
+The same scenario suite runs against every provider — there's no provider-specific test branching. First run pulls the `mcr.microsoft.com/mssql/server` (~700 MB) or `postgres` image, so budget extra time.
+
+**CI runs all three in parallel** via the [matrix in `.github/workflows/ci.yml`](../../.github/workflows/ci.yml) — every PR gets MySQL + SqlServer + PostgreSQL coverage as three jobs. `fail-fast: false` so a flake on one doesn't taint the other results.
+
+Inside a test, the active provider is surfaced as `AppHostFixture.DbProvider` — branch on it only when a provider-specific edge case genuinely needs verifying (the goal is full parity, not three forks of the same scenario). Test helpers like `CreateDbContextAsync` and `ConfigureDbContextProvider` on `IntegrationTestBase` switch on `DbProvider` so test code stays provider-agnostic.
+
+### Multi-provider quirks suite (opt-in, all three in one run)
+
+The CI matrix is the bulk safety net, but it's only triggered on PR / push-to-master. For local fast feedback when touching the EF model or the `IsMySql()`-gated runtime workarounds, there's a small focused suite that boots all three providers in **one** `dotnet test` invocation:
+
+```bash
+dotnet test AuthenticationService.IntegrationTests/ --filter "Category=MultiProviderQuirks"
+```
+
+The suite (in `AuthenticationService.IntegrationTests/Quirks/`) currently exercises:
+
+- **DateTimeOffset round-trip on `User.CreatedAt`** — verifies the offset comes back zero on every provider (MySQL drops it; Postgres normalises to UTC; SqlServer preserves but the service uses `UtcNow` so offset=zero is what we expect).
+- **DateOnly round-trip on `User.DateOfBirth`** — MySQL goes through the `DateOnly?→DateTime?` value converter in `DatabaseContext.OnModelCreating`; SqlServer + Postgres map natively. All three should hand back the same `DateOnly`.
+- **Migrations applied cleanly** — asserts `GetAppliedMigrationsAsync()` is non-empty (auth's `Database.Migrate()` actually ran) and `GetPendingMigrationsAsync()` is empty (every migration in the provider's assembly was applied). We intentionally skip `HasPendingModelChanges()` — its model-differ flags annotation-level differences that don't translate to schema changes (false positives are easy to hit with EF tools/runtime version skew). Real model drift surfaces either as a non-empty migration when someone runs `dotnet ef migrations add` or as a query failure in the CI matrix — both higher-signal than the differ.
+
+It's opt-in (tagged `[Trait("Category", "MultiProviderQuirks")]`) because booting three container sets serially adds ~90s of walltime even with cached images. Default `dotnet test` and the CI matrix both skip the suite (`--filter "Category!=MultiProviderQuirks"` in CI; not selected by default locally) so they aren't redundant with the matrix coverage.
+
+All three quirks tests run cleanly locally on Docker Desktop for Windows + WSL2 / Linux Docker. SQL Server's container is the slowest to boot (~30s reaching healthy on a warm image) so the fixture's `ReadinessDeadline` defaults to 5 minutes — comfortable headroom for cold pulls.
+
+**One important piece of plumbing makes this work:** the SqlServer + PostgreSQL migrations live in separate assemblies (`AuthenticationService.Migrations.SqlServer` / `…Postgres`) that aren't `ProjectReference`d from the main project — they'd form a build cycle since *they* reference the main project for `DatabaseContext`. The post-build copy targets land the DLLs in the main project's `bin/` folder, but .NET Core's default assembly loader uses `deps.json` for `Assembly.Load(AssemblyName)` resolution — a DLL dropped into the bin folder without being in `deps.json` is invisible. So `Program.cs` registers an `AssemblyLoadContext.Default.Resolving` hook that maps any `AuthenticationService.Migrations.*` lookup to `LoadFromAssemblyPath` against the bin folder. Without this hook EF Core's `MigrationsAssembly("AuthenticationService.Migrations.SqlServer")` setting throws `FileNotFoundException` at the first `Database.Migrate()` call. See [`Program.cs`](../../AuthenticationService/Program.cs) for the implementation.
+
+Extending the suite is straightforward — add tests to `MultiProviderQuirksTestsBase`; they run once per provider via the three concrete subclasses (`MySqlMultiProviderQuirksTests`, `SqlServerMultiProviderQuirksTests`, `PostgresMultiProviderQuirksTests`).
 
 ## What's covered
 

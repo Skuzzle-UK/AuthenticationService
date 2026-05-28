@@ -21,6 +21,6 @@ public class RevokedTokenAccessAttempt
     [MaxLength(512)]
     public string? UserAgent { get; set; }
 
-    public DateTime CreatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
     public Severity Severity { get; set; }
 }

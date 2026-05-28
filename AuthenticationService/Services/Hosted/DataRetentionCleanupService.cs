@@ -68,11 +68,16 @@ public class DataRetentionCleanupService : BackgroundService
             using var scope = _serviceScopeFactory.CreateScope();
 
             var context = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
-            var now = DateTime.UtcNow;
+            var now = DateTimeOffset.UtcNow;
+            // Move the AddDays to the parameter side so the WHERE compares a column against
+            // a literal — every provider's translator handles that, and the test SQLite
+            // backend's DateTimeOffset converter only sees plain column-vs-parameter ops.
+            var auditCutoff = now.AddDays(-_settings.RevokedReplayTTLInDays);
+            var securityEventCutoff = now.AddDays(-_settings.SecurityEventTTLInDays);
 
             // ExecuteDeleteAsync — server-side delete, no entity load.
             await context.RevokedTokenAccessAttempts
-                .Where(x => x.CreatedAt.AddDays(_settings.RevokedReplayTTLInDays) < now)
+                .Where(x => x.CreatedAt < auditCutoff)
                 .ExecuteDeleteAsync(stoppingToken);
 
             await context.RevokedTokens
@@ -84,7 +89,7 @@ public class DataRetentionCleanupService : BackgroundService
                 .ExecuteDeleteAsync(stoppingToken);
 
             await context.SecurityEvents
-                .Where(x => x.Timestamp.AddDays(_settings.SecurityEventTTLInDays) < now)
+                .Where(x => x.Timestamp < securityEventCutoff)
                 .ExecuteDeleteAsync(stoppingToken);
         }
         catch (Exception ex)

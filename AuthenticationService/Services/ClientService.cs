@@ -40,7 +40,7 @@ public class ClientService : IClientService
     public async Task TouchLastUsedAsync(string clientId, CancellationToken ct)
     {
         // ExecuteUpdate avoids loading the entity just to bump a timestamp.
-        var now = DateTime.UtcNow;
+        var now = DateTimeOffset.UtcNow;
         await _context.Clients
             .Where(c => c.Id == clientId)
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.LastUsedAt, now), ct);

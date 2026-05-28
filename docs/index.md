@@ -30,6 +30,7 @@ How things work, and why:
 - [Testing](development/testing.md) — five test projects, 541 unit + 15 integration, zero skipped
 - [Conventions](development/conventions.md) — comment style, naming, file organisation
 - [Adding an endpoint](development/adding-an-endpoint.md) — recipe walking through the conventions in practice
+- [Database migrations](development/migrations.md) — per-provider migration workflow (MySQL + SQL Server, Postgres planned)
 
 ## For operators
 

@@ -95,7 +95,7 @@ public class RevokedTokenReplayEscalationService : BackgroundService
             var tokenService = scope.ServiceProvider.GetRequiredService<ITokenService>();
             var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
 
-            var windowStart = DateTime.UtcNow.AddMinutes(-_settings.WindowInMinutes);
+            var windowStart = DateTimeOffset.UtcNow.AddMinutes(-_settings.WindowInMinutes);
 
             // Group by jti in the window — table is bounded by cleanup so this is small.
             var attemptCounts = await context.RevokedTokenAccessAttempts
@@ -110,15 +110,35 @@ public class RevokedTokenReplayEscalationService : BackgroundService
                 return;
             }
 
-            // One-row-at-a-time lookup instead of a batched Contains query: Oracle's
-            // MySql.EntityFrameworkCore can't translate Contains-on-collection. N is single-digit
-            // in practice. Revert to a batched query once we move to Pomelo.
+            // Oracle's MySql.EntityFrameworkCore can't translate Contains-on-collection, so MySQL
+            // falls back to a per-jti point lookup (N is single-digit in practice; the workaround
+            // disappears when we move to Pomelo). SqlServer + Postgres translate Contains cleanly,
+            // so they get one batched IN-clause query.
+            Dictionary<string, RevokedToken> revokedTokens;
+            if (context.Database.IsMySql())
+            {
+                revokedTokens = new Dictionary<string, RevokedToken>(attemptCounts.Count);
+                foreach (var attempt in attemptCounts)
+                {
+                    var rt = await context.RevokedTokens
+                        .FirstOrDefaultAsync(t => t.TokenJti == attempt.Jti, stoppingToken);
+                    if (rt is not null)
+                    {
+                        revokedTokens[rt.TokenJti] = rt;
+                    }
+                }
+            }
+            else
+            {
+                var jtis = attemptCounts.Select(a => a.Jti).ToList();
+                revokedTokens = await context.RevokedTokens
+                    .Where(t => jtis.Contains(t.TokenJti))
+                    .ToDictionaryAsync(t => t.TokenJti, stoppingToken);
+            }
+
             foreach (var attempt in attemptCounts)
             {
-                var revokedToken = await context.RevokedTokens
-                    .FirstOrDefaultAsync(t => t.TokenJti == attempt.Jti, stoppingToken);
-
-                if (revokedToken is null)
+                if (!revokedTokens.TryGetValue(attempt.Jti, out var revokedToken))
                 {
                     // Audit row points at a jti we don't have — shouldn't happen, skip gracefully.
                     continue;
@@ -162,14 +182,14 @@ public class RevokedTokenReplayEscalationService : BackgroundService
             
             _metrics.ThresholdEscalationFired("warned");
 
-            revokedToken.WarnedAt = DateTime.UtcNow;
+            revokedToken.WarnedAt = DateTimeOffset.UtcNow;
         }
 
         // Lock level — once per incident.
         if (revokedToken.LockedAt is null && attemptCount >= _settings.LockThreshold)
         {
             await ApplyLockAsync(revokedToken, attemptCount, userService, tokenService, emailService, stoppingToken);
-            revokedToken.LockedAt = DateTime.UtcNow;
+            revokedToken.LockedAt = DateTimeOffset.UtcNow;
         }
     }
 

@@ -28,14 +28,14 @@ public class RefreshToken
     /// </summary>
     public Guid FamilyId { get; set; }
 
-    public DateTime CreatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 
-    public DateTime ExpiresAt { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
 
     /// <summary>
     /// Null while the token is still usable. Set when consumed by rotation, logout, or revocation.
     /// </summary>
-    public DateTime? ConsumedAt { get; set; }
+    public DateTimeOffset? ConsumedAt { get; set; }
 
     /// <summary>
     /// When consumed by rotation, points at the next token in the family. Null otherwise.

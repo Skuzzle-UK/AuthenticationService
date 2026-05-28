@@ -5,6 +5,7 @@ using AuthenticationService.Settings;
 using AuthenticationService.Storage.Seed;
 using Serilog;
 using Serilog.Sinks.OpenTelemetry;
+using System.Runtime.Loader;
 
 namespace AuthenticationService;
 
@@ -14,6 +15,26 @@ public class Program
 
     public static async Task Main(string[] args)
     {
+        // Migration assemblies for SqlServer + PostgreSQL are copied into this project's
+        // bin folder via post-build targets in those projects' csprojs, but they aren't
+        // ProjectReferenced (would create a build cycle — they reference us for
+        // DatabaseContext). .NET Core's default assembly loader uses deps.json, so a DLL
+        // dropped into the bin folder without being in deps.json is invisible to
+        // Assembly.Load(AssemblyName) — which is how EF Core resolves the
+        // MigrationsAssembly setting. This hook fills the gap: when EF asks for one of
+        // our migration assemblies by name, we LoadFromAssemblyPath against the bin
+        // folder on disk. No-op when EF asks for anything else.
+        AssemblyLoadContext.Default.Resolving += static (ctx, name) =>
+        {
+            if (name.Name is not { } n ||
+                !n.StartsWith("AuthenticationService.Migrations.", StringComparison.Ordinal))
+            {
+                return null;
+            }
+            var path = Path.Combine(AppContext.BaseDirectory, $"{n}.dll");
+            return File.Exists(path) ? ctx.LoadFromAssemblyPath(path) : null;
+        };
+
         Log.Logger = new LoggerConfiguration()
             .WriteTo.Console()
             .CreateBootstrapLogger();
@@ -91,6 +112,10 @@ public class Program
         catch (Exception ex) when (ex is not HostAbortedException)
         {
             Log.Fatal(ex, "Authentication service terminated unexpectedly.");
+            // Set a non-zero exit code so orchestrators (Aspire, K8s, systemd) can
+            // distinguish a startup crash from a graceful shutdown — without this, a
+            // failed-to-start auth process exits cleanly and looks like success.
+            Environment.ExitCode = 1;
         }
         finally
         {

@@ -317,7 +317,7 @@ public class AuthenticationController : ControllerBase
             await _emailService.SendEmailAsync(
                 compromisedUser.Email,
                 EmailSubjects.SuspiciousActivity,
-                $"We detected suspicious activity on your account at {DateTime.UtcNow:u} UTC from IP {ipAddress}. " +
+                $"We detected suspicious activity on your account at {DateTimeOffset.UtcNow:u} UTC from IP {ipAddress}. " +
                 "As a precaution, all your sessions have been signed out and you'll need to sign in again. " +
                 "If this wasn't you, please change your password immediately.");
         }

@@ -208,7 +208,7 @@ public static class RuntimeDbSeeders
         await dbContext.RefreshTokens
             .Where(t => t.UserId == user.Id && t.ConsumedAt == null)
             .ExecuteUpdateAsync(s => s
-                .SetProperty(t => t.ConsumedAt, DateTime.UtcNow)
+                .SetProperty(t => t.ConsumedAt, DateTimeOffset.UtcNow)
                 .SetProperty(t => t.RevocationReason, RevocationReasons.AdminRecovery));
 
         // 7. Rotate the security stamp — kills any still-live access tokens immediately

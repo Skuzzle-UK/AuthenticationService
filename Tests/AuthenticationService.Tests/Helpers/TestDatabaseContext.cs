@@ -7,9 +7,10 @@ namespace AuthenticationService.Tests.Helpers;
 
 /// <summary>
 /// Test-only subclass of <see cref="DatabaseContext"/> that papers over SQLite quirks.
-/// Currently maps <c>User.LockoutEnd</c> through a DateTimeOffset → UtcTicks converter
-/// so SQLite can translate <c>Where(u =&gt; u.LockoutEnd &gt; now)</c> (otherwise EF throws
-/// at translation time on the ambiguous lexicographic ordering).
+/// SQLite stores DateTimeOffset as TEXT and can't translate comparisons / ORDER BY on it
+/// — so we register value converters that map every DateTimeOffset property to UtcTicks,
+/// an Int64 column SQLite handles natively. Production providers (MySQL / SqlServer /
+/// PostgreSQL) all have proper DateTimeOffset support and don't see this converter.
 /// </summary>
 internal sealed class TestDatabaseContext : DatabaseContext
 {
@@ -21,12 +22,32 @@ internal sealed class TestDatabaseContext : DatabaseContext
     {
         base.OnModelCreating(builder);
 
-        var dateTimeOffsetToUtcTicks = new ValueConverter<DateTimeOffset?, long?>(
+        var nonNull = new ValueConverter<DateTimeOffset, long>(
+            v => v.UtcTicks,
+            v => new DateTimeOffset(v, TimeSpan.Zero));
+
+        var nullable = new ValueConverter<DateTimeOffset?, long?>(
             v => v.HasValue ? v.Value.UtcTicks : null,
             v => v.HasValue ? new DateTimeOffset(v.Value, TimeSpan.Zero) : null);
 
-        builder.Entity<User>()
-            .Property(u => u.LockoutEnd)
-            .HasConversion(dateTimeOffsetToUtcTicks);
+        // IdentityUser.LockoutEnd — was here before the wider refactor, keep it.
+        builder.Entity<User>().Property(u => u.LockoutEnd).HasConversion(nullable);
+        builder.Entity<User>().Property(u => u.CreatedAt).HasConversion(nonNull);
+
+        builder.Entity<RefreshToken>().Property(r => r.CreatedAt).HasConversion(nonNull);
+        builder.Entity<RefreshToken>().Property(r => r.ExpiresAt).HasConversion(nonNull);
+        builder.Entity<RefreshToken>().Property(r => r.ConsumedAt).HasConversion(nullable);
+
+        builder.Entity<RevokedToken>().Property(r => r.ExpiresAt).HasConversion(nullable);
+        builder.Entity<RevokedToken>().Property(r => r.RevokedAt).HasConversion(nullable);
+        builder.Entity<RevokedToken>().Property(r => r.WarnedAt).HasConversion(nullable);
+        builder.Entity<RevokedToken>().Property(r => r.LockedAt).HasConversion(nullable);
+
+        builder.Entity<RevokedTokenAccessAttempt>().Property(r => r.CreatedAt).HasConversion(nonNull);
+
+        builder.Entity<SecurityEvent>().Property(s => s.Timestamp).HasConversion(nonNull);
+
+        builder.Entity<Client>().Property(c => c.CreatedAt).HasConversion(nonNull);
+        builder.Entity<Client>().Property(c => c.LastUsedAt).HasConversion(nullable);
     }
 }

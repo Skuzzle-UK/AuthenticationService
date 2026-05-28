@@ -26,10 +26,10 @@ public class DatabaseContext : IdentityDbContext<User, Role, string>
         base.OnModelCreating(builder);
         builder.ApplyConfiguration(new RoleConfiguration());
 
-        // DateOnly converter is a MySQL-only workaround. Oracle's MySql.EntityFrameworkCore
-        // can't translate DateOnly natively.
         if (Database.IsMySql())
         {
+            // DateOnly converter is a MySQL-only workaround. Oracle's MySql.EntityFrameworkCore
+            // can't translate DateOnly natively.
             var dateOnlyToNullableDateTime = new ValueConverter<DateOnly?, DateTime?>(
                 d => d.HasValue ? d.Value.ToDateTime(TimeOnly.MinValue) : null,
                 d => d.HasValue ? DateOnly.FromDateTime(d.Value) : null);
@@ -37,6 +37,24 @@ public class DatabaseContext : IdentityDbContext<User, Role, string>
             builder.Entity<User>()
                 .Property(u => u.DateOfBirth)
                 .HasConversion(dateOnlyToNullableDateTime);
+
+            // Oracle's MySQL provider defaults DateTimeOffset columns to plain `datetime`
+            // (second precision). Pin to datetime(6) to preserve sub-second precision —
+            // matches the pre-refactor schema and keeps token/audit timestamps high-res.
+            // SqlServer maps to native `datetimeoffset` (already μs); Postgres to
+            // `timestamptz` (also μs); only MySQL needs this hint.
+            ConfigureMySqlDateTimeOffsetPrecision<User>(builder, u => u.CreatedAt);
+            ConfigureMySqlDateTimeOffsetPrecision<RefreshToken>(builder, r => r.CreatedAt);
+            ConfigureMySqlDateTimeOffsetPrecision<RefreshToken>(builder, r => r.ExpiresAt);
+            ConfigureMySqlDateTimeOffsetPrecision<RefreshToken>(builder, r => r.ConsumedAt);
+            ConfigureMySqlDateTimeOffsetPrecision<RevokedToken>(builder, r => r.ExpiresAt);
+            ConfigureMySqlDateTimeOffsetPrecision<RevokedToken>(builder, r => r.RevokedAt);
+            ConfigureMySqlDateTimeOffsetPrecision<RevokedToken>(builder, r => r.WarnedAt);
+            ConfigureMySqlDateTimeOffsetPrecision<RevokedToken>(builder, r => r.LockedAt);
+            ConfigureMySqlDateTimeOffsetPrecision<RevokedTokenAccessAttempt>(builder, r => r.CreatedAt);
+            ConfigureMySqlDateTimeOffsetPrecision<SecurityEvent>(builder, s => s.Timestamp);
+            ConfigureMySqlDateTimeOffsetPrecision<Client>(builder, c => c.CreatedAt);
+            ConfigureMySqlDateTimeOffsetPrecision<Client>(builder, c => c.LastUsedAt);
         }
 
         builder.Entity<RevokedToken>(entity =>
@@ -97,5 +115,21 @@ public class DatabaseContext : IdentityDbContext<User, Role, string>
                   .HasForeignKey(e => e.ClientId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
+    }
+
+    private static void ConfigureMySqlDateTimeOffsetPrecision<TEntity>(
+        ModelBuilder builder,
+        System.Linq.Expressions.Expression<Func<TEntity, DateTimeOffset?>> property)
+        where TEntity : class
+    {
+        builder.Entity<TEntity>().Property(property).HasColumnType("datetime(6)");
+    }
+
+    private static void ConfigureMySqlDateTimeOffsetPrecision<TEntity>(
+        ModelBuilder builder,
+        System.Linq.Expressions.Expression<Func<TEntity, DateTimeOffset>> property)
+        where TEntity : class
+    {
+        builder.Entity<TEntity>().Property(property).HasColumnType("datetime(6)");
     }
 }

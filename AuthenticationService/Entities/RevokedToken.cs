@@ -17,7 +17,7 @@ public class RevokedToken
 
     public string UserId { get; set; }
 
-    public DateTime? ExpiresAt { get; set; }
+    public DateTimeOffset? ExpiresAt { get; set; }
 
     /// <summary>
     /// IP from which the revocation request originated. Audit only.
@@ -28,7 +28,7 @@ public class RevokedToken
     /// <summary>
     /// When the revocation occurred. Audit only.
     /// </summary>
-    public DateTime? RevokedAt { get; set; }
+    public DateTimeOffset? RevokedAt { get; set; }
 
     /// <summary>
     /// Why the token was revoked. See <c>RevocationReasons</c> for canonical values.
@@ -39,10 +39,10 @@ public class RevokedToken
     /// <summary>
     /// Non-null prevents the threshold-escalation worker re-firing the warn event each sweep.
     /// </summary>
-    public DateTime? WarnedAt { get; set; }
+    public DateTimeOffset? WarnedAt { get; set; }
 
     /// <summary>
     /// Non-null prevents the worker re-locking and re-emailing each sweep.
     /// </summary>
-    public DateTime? LockedAt { get; set; }
+    public DateTimeOffset? LockedAt { get; set; }
 }

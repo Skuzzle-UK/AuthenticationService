@@ -15,7 +15,7 @@ public sealed class AdminAuditFilter
     /// <summary>
     /// Only events with <c>Timestamp &gt;= Since</c>. Controller defaults to last 30 days.
     /// </summary>
-    public DateTime? Since { get; init; }
+    public DateTimeOffset? Since { get; init; }
 
     /// <summary>
     /// Optional single-event filter. Null = all events.
