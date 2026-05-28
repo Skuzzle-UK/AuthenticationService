@@ -2,7 +2,31 @@
 
 [![CI](https://github.com/Skuzzle-UK/AuthenticationService/actions/workflows/ci.yml/badge.svg)](https://github.com/Skuzzle-UK/AuthenticationService/actions/workflows/ci.yml)
 
-Centralised identity & access service for the platform. Issues short-lived ES256-signed JWTs (user + service-identity flavours), exposes a JWKS endpoint so consuming microservices can validate them without sharing secrets, and ships a pair of drop-in client libraries that handle both sides of the wire.
+Centralised identity & access service for the platform. Issues short-lived ES256-signed JWTs in two flavours — end-user tokens and service-identity tokens — and publishes a JWKS endpoint so every consuming microservice can validate them without ever holding the signing key. Ships a pair of drop-in client libraries for the consumer side: one to validate incoming tokens, one to acquire outgoing ones.
+
+The service is dev-orchestrated with [.NET Aspire](https://learn.microsoft.com/en-us/dotnet/aspire/) and deploys as a plain ASP.NET Core process — Aspire is the local front-end, not the runtime.
+
+## Features
+
+- **User authentication** — registration with email confirmation, login (optional MFA), refresh-token rotation with reuse-detection cascade, password reset, indefinite-lockout / unlock flows, per-device + all-device logout.
+- **Service-to-service authentication** — OAuth 2.0 client-credentials grant. Clients are authorised by `(audience, scope)` tuples; tokens carry an explicit `client_id` claim so the consuming service can distinguish service identities from user identities.
+- **No shared secrets** — consumers validate via the published JWKS (`/.well-known/jwks.json`). The auth service is the only holder of the private key. Algorithm is restricted to ES256 at validation time to defeat algorithm-confusion attacks.
+- **Drop-in client libraries**:
+  - `AuthenticationService.TokenValidationLib` — `AddAuthenticationServiceJwt(...)` + `AddScopePolicy(...)` for any consuming microservice.
+  - `AuthenticationService.TokenClientLib` — `AddServiceToken(audience, scopes)` for outgoing calls; cached, semaphore-protected, retry-on-`invalid_token`.
+- **Three databases, one codebase** — MySQL, SQL Server, and PostgreSQL are all first-class. Pick via `DatabaseSettings:Provider`; each provider gets its own EF migrations assembly. CI runs the full integration suite against all three in parallel.
+- **Admin surface** — user CRUD, invitation flow, client management, force-reset, audit endpoint, indefinite lockout. Gated by role + scope.
+- **Security operations**:
+  - Threshold-escalation worker warns and locks accounts on sustained revoked-token replay attempts (configurable warn / lock thresholds, idempotent).
+  - Redis-backed rate limiting at both global and per-endpoint policy granularity.
+  - Structured audit pipeline routing `SecurityEventIds`-tagged events to a persistent audit table + the standard log sink.
+  - Data-protection key ring persisted to Redis with optional X.509 at-rest encryption.
+- **OpenTelemetry** — traces, metrics, and logs wired throughout. A Grafana / Loki / Tempo / Prometheus stack is auto-provisioned when the AppHost runs locally; production wires up to any OTLP-compatible collector via `OTEL_EXPORTER_OTLP_ENDPOINT`.
+- **Production-hardened** — Tier 0 audit closed (per-iteration safety in background workers, transient-error retry, validated settings with fail-fast startup, ProblemDetails error contract, signing-key backup runbook, custom DB health check, CSP without `unsafe-inline`).
+
+## Documentation
+
+Full documentation lives under [`docs/`](docs/) and is rendered by Backstage TechDocs in-platform. Start at [`docs/index.md`](docs/index.md) for the full nav.
 
 ## Quick links
 
@@ -10,45 +34,17 @@ Centralised identity & access service for the platform. Issues short-lived ES256
 |---|---|
 | **Run it locally** (F5 → swagger) | [docs/getting-started.md](docs/getting-started.md) |
 | **Understand the architecture** | [docs/architecture.md](docs/architecture.md) |
-| **Wire a consumer service to validate tokens** | [docs/consumers/validating-incoming-tokens.md](docs/consumers/validating-incoming-tokens.md) |
+| **Wire a consumer to validate tokens** | [docs/consumers/validating-incoming-tokens.md](docs/consumers/validating-incoming-tokens.md) |
 | **Make service-to-service calls** | [docs/consumers/outgoing-service-tokens.md](docs/consumers/outgoing-service-tokens.md) |
 | **Deploy to production** | [docs/operations/deployment.md](docs/operations/deployment.md) |
-| **Read SIEM logs / metrics / traces** | [docs/operations/observability.md](docs/operations/observability.md) |
-| **Run / write tests** | [docs/development/testing.md](docs/development/testing.md) |
+| **Add / apply a database migration** | [docs/development/migrations.md](docs/development/migrations.md) |
 | **Look up config keys** | [docs/reference/configuration.md](docs/reference/configuration.md) |
 | **Look up an endpoint** | [docs/reference/endpoints.md](docs/reference/endpoints.md) |
-| **See the full nav** | [docs/index.md](docs/index.md) |
-
-## What's in the repo
-
-```
-AuthenticationService/                       ← The HTTP API
-AuthenticationService.Shared/                ← DTOs + wire-contract constants
-AuthenticationService.TokenValidationLib/    ← Consumer lib: validate incoming JWTs
-AuthenticationService.TokenClientLib/        ← Consumer lib: acquire outgoing tokens
-AuthenticationService.ServiceDefaults/       ← OpenTelemetry + health-check defaults
-AuthenticationService.AppHost/               ← Aspire orchestrator (dev/test only)
-AuthenticationService.IntegrationTests/      ← E2E scenarios via Aspire.Hosting.Testing
-ExampleConsumer/                             ← Demo consumer microservice
-Tests/                                       ← Per-project xUnit suites
-docs/                                        ← Audience-organised documentation
-```
-
-See [docs/architecture.md](docs/architecture.md) for the full breakdown.
-
-## At a glance
-
-- **541 unit tests** + **15 integration tests**, zero skipped, sub-minute on a developer laptop.
-- **No shared secrets.** Consumers validate via JWKS — they never see the signing key.
-- **ES256 only.** Restricted at validation time to defeat algorithm-confusion attacks.
-- **OpenTelemetry traces / metrics / logs** wired throughout, with a Grafana stack auto-imported when the AppHost runs.
-- **Production-deployed without Aspire.** Aspire is the dev front-end, not the runtime.
-- **Backstage-ready.** TechDocs renders `docs/` directly; [`catalog-info.yaml`](catalog-info.yaml) declares the components.
 
 ## Contributing
 
-See [docs/development/conventions.md](docs/development/conventions.md) for code style and [docs/development/adding-an-endpoint.md](docs/development/adding-an-endpoint.md) for a worked example.
+See [docs/development/conventions.md](docs/development/conventions.md) for code style and [docs/development/adding-an-endpoint.md](docs/development/adding-an-endpoint.md) for a worked example of adding a new feature end-to-end.
 
-## Status & roadmap
+## Status
 
-Active findings are in [`TODO.md`](TODO.md). Most items are "build when real demand arrives" — nothing on the list blocks adopting the service into a new microservice today.
+Active findings are tracked in [`TODO.md`](TODO.md). Most items are "build when real demand arrives" — nothing on the list blocks adopting the service into a new microservice today.
