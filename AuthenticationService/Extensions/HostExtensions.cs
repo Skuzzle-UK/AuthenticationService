@@ -155,10 +155,20 @@ public static class HostExtensions
             .AddSingleton<IEmailService>(sp => sp.GetRequiredService<QueuedEmailService>())
             .AddSingleton<AuthMetrics>()
             .AddScoped<IAdminService, AdminService>()
+            // Centralised allow-list for role assignment (multi-tenancy Decision 5).
+            // Stateless; safe as a singleton.
+            .AddSingleton<IRoleAssignmentPolicy, RoleAssignmentPolicy>()
             // IPasswordHasher<Client> reuses Identity's standard hasher so s2s secrets land
             // in the DB with the same algorithm + iteration count as user passwords.
             .AddScoped<IClientService, ClientService>()
-            .AddScoped<IPasswordHasher<Client>, PasswordHasher<Client>>();
+            .AddScoped<IPasswordHasher<Client>, PasswordHasher<Client>>()
+            // Multi-tenancy Phase 1:
+            //  - TenantAccessor is scoped (one per request, populated by middleware).
+            //  - NameValidator is stateless and reused.
+            //  - TenantService is scoped (uses DbContext, which is scoped).
+            .AddScoped<ITenantAccessor, TenantAccessor>()
+            .AddSingleton<ITenantNameValidator, TenantNameValidator>()
+            .AddScoped<ITenantService, TenantService>();
 
         return services;
     }
@@ -333,7 +343,9 @@ public static class HostExtensions
             });
 
         services.AddAuthorizationBuilder()
-            .AddPolicy(PolicyConstants.AdminOnly, policy => policy.RequireRole(RolesConstants.Admin));
+            .AddPolicy(PolicyConstants.AdminOnly, policy => policy.RequireRole(RolesConstants.Admin))
+            // Multi-tenancy Decision 5 — gates TenantsController.
+            .AddPolicy(PolicyConstants.PlatformAdminOnly, policy => policy.RequireRole(RolesConstants.PlatformAdmin));
 
         return services;
     }

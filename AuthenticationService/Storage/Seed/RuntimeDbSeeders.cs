@@ -93,6 +93,10 @@ public static class RuntimeDbSeeders
             var user = await userManager.FindByEmailAsync(settings.Email);
             await userManager.AddToRoleAsync(user!, RolesConstants.Admin);
             await userManager.AddToRoleAsync(user!, RolesConstants.DefaultUser);
+            // Multi-tenancy Phase 1: the seeded admin holds PlatformAdmin so the
+            // TenantsController endpoints have a callable identity. Phase 4 will add a
+            // proper "promote-to-PlatformAdmin" admin flow.
+            await userManager.AddToRoleAsync(user!, RolesConstants.PlatformAdmin);
 
             logger.LogInformation(
                 "Seeded administrator account {UserName} ({UserId}).",
@@ -194,7 +198,9 @@ public static class RuntimeDbSeeders
             await userManager.SetTwoFactorEnabledAsync(user, false);
         }
 
-        // 5. Re-ensure role membership in case it was somehow lost.
+        // 5. Re-ensure role membership in case it was somehow lost. PlatformAdmin
+        // (multi-tenancy Decision 5) is restored alongside Admin / DefaultUser so the
+        // tenant-management endpoints stay callable after a recovery.
         if (!await userManager.IsInRoleAsync(user, RolesConstants.Admin))
         {
             await userManager.AddToRoleAsync(user, RolesConstants.Admin);
@@ -202,6 +208,10 @@ public static class RuntimeDbSeeders
         if (!await userManager.IsInRoleAsync(user, RolesConstants.DefaultUser))
         {
             await userManager.AddToRoleAsync(user, RolesConstants.DefaultUser);
+        }
+        if (!await userManager.IsInRoleAsync(user, RolesConstants.PlatformAdmin))
+        {
+            await userManager.AddToRoleAsync(user, RolesConstants.PlatformAdmin);
         }
 
         // 6. Revoke all active refresh tokens — forces re-login from every device.

@@ -49,5 +49,13 @@ internal sealed class TestDatabaseContext : DatabaseContext
 
         builder.Entity<Client>().Property(c => c.CreatedAt).HasConversion(nonNull);
         builder.Entity<Client>().Property(c => c.LastUsedAt).HasConversion(nullable);
+
+        // Multi-tenancy Phase 1 entities.
+        builder.Entity<Tenant>().Property(t => t.CreatedAt).HasConversion(nonNull);
+        builder.Entity<Tenant>().Property(t => t.SuspendedAt).HasConversion(nullable);
+        builder.Entity<Tenant>().Property(t => t.PendingDeletionAt).HasConversion(nullable);
+        builder.Entity<UserTenantMembership>().Property(m => m.CreatedAt).HasConversion(nonNull);
+        builder.Entity<UserTenantMembership>().Property(m => m.RemovedAt).HasConversion(nullable);
+        builder.Entity<UserTenantMembershipRole>().Property(r => r.AssignedAt).HasConversion(nonNull);
     }
 }

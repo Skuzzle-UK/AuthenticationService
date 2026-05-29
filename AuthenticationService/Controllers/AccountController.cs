@@ -8,6 +8,7 @@ using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
 using AuthenticationService.Shared.Enums;
+using AuthenticationService.Shared.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -54,7 +55,7 @@ public class AccountController : ControllerBase
     [Authorize]
     public async Task<IActionResult> MeAsync()
     {
-        var sub = User.FindFirst(ClaimConstants.Sub)?.Value;
+        var sub = User.GetUserId();
         if (string.IsNullOrEmpty(sub))
         {
             return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidToken));
@@ -108,7 +109,7 @@ public class AccountController : ControllerBase
             return BadRequest(new ApiResponse().AddError(ResponseConstants.BadRequest, ErrorMessages.InvalidRequest));
         }
 
-        var sub = User.FindFirst(ClaimConstants.Sub)?.Value;
+        var sub = User.GetUserId();
         if (string.IsNullOrEmpty(sub))
         {
             return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidToken));
@@ -386,7 +387,7 @@ public class AccountController : ControllerBase
     [EnableRateLimiting(RateLimitPolicies.AuthSensitive)]
     public async Task<IActionResult> ChangePasswordAsync([FromBody] ChangePasswordDto request)
     {
-        var sub = User.FindFirst(ClaimConstants.Sub)?.Value;
+        var sub = User.GetUserId();
         if (string.IsNullOrEmpty(sub))
         {
             return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidRequest));

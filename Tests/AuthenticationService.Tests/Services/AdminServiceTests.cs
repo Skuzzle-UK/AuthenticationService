@@ -140,12 +140,65 @@ public class AdminServiceTests : IDisposable
         var result = await svc.CreateUserAsync(
             new AdminCreateUserDto { Email = "x@example.com", UserName = "x", FirstName = "X", LastName = "Y", Roles = new List<string> { RolesConstants.Admin } },
             AdminId,
+            DefaultCallerRoles,
             "10.0.0.1",
             CancellationToken.None);
 
         // assert
         result.Should().BeOfType<AdminCreateUserResult.ValidationFailed>(
-            because: "the Admin role can only be assigned via the DB seed, not via this endpoint");
+            because: "the Admin role is seed-only and never assignable via API — not even by a PlatformAdmin");
+    }
+
+    [Fact]
+    public async Task CreateUserAsync_PlatformAdminRoleRequested_ByAdmin_ReturnsValidationFailed()
+    {
+        // arrange — caller holds Admin but NOT PlatformAdmin. The endpoint is gated to
+        // AdminOnly so the request lands; the service must still refuse the escalation.
+        var (svc, _, _) = BuildService();
+
+        // act
+        var result = await svc.CreateUserAsync(
+            new AdminCreateUserDto { Email = "x@example.com", UserName = "x", FirstName = "X", LastName = "Y", Roles = new List<string> { RolesConstants.PlatformAdmin } },
+            AdminId,
+            callerRoles: [RolesConstants.Admin],
+            "10.0.0.1",
+            CancellationToken.None);
+
+        // assert
+        var failure = result.Should().BeOfType<AdminCreateUserResult.ValidationFailed>(
+            because: "an Admin caller without PlatformAdmin cannot create a user holding PlatformAdmin — that would be self-elevation by proxy")
+            .Subject;
+        failure.Errors.Should().ContainKey("roles");
+        failure.Errors["roles"].Should().Contain(RolesConstants.PlatformAdmin);
+    }
+
+    [Fact]
+    public async Task CreateUserAsync_PlatformAdminRoleRequested_ByPlatformAdmin_AllowsCreate()
+    {
+        // arrange — caller holds PlatformAdmin (and Admin too — that's how the seeded admin
+        // is shaped). They should be able to mint a fellow PlatformAdmin.
+        var (svc, _, deps) = BuildService();
+        deps.RoleManager.RoleExistsAsync(RolesConstants.PlatformAdmin).Returns(true);
+        deps.UserManager.FindByEmailAsync(Arg.Any<string>()).Returns((User?)null);
+        deps.UserManager.FindByNameAsync(Arg.Any<string>()).Returns((User?)null);
+        deps.UserService.CreateAsync(Arg.Any<User>()).Returns(ci =>
+        {
+            ci.Arg<User>().Id = "new-id";
+            return IdentityResult.Success;
+        });
+        deps.UserManager.AddToRolesAsync(Arg.Any<User>(), Arg.Any<IEnumerable<string>>()).Returns(IdentityResult.Success);
+        deps.UserManager.GeneratePasswordResetTokenAsync(Arg.Any<User>()).Returns("reset-token");
+
+        // act
+        var result = await svc.CreateUserAsync(
+            new AdminCreateUserDto { Email = "x@example.com", UserName = "x", FirstName = "X", LastName = "Y", Roles = new List<string> { RolesConstants.PlatformAdmin } },
+            AdminId,
+            callerRoles: [RolesConstants.Admin, RolesConstants.PlatformAdmin],
+            "10.0.0.1",
+            CancellationToken.None);
+
+        // assert
+        result.Should().BeOfType<AdminCreateUserResult.Success>();
     }
 
     [Fact]
@@ -159,6 +212,7 @@ public class AdminServiceTests : IDisposable
         var result = await svc.CreateUserAsync(
             new AdminCreateUserDto { Email = "x@example.com", UserName = "x", FirstName = "X", LastName = "Y", Roles = new List<string> { "Wizard" } },
             AdminId,
+            DefaultCallerRoles,
             "10.0.0.1",
             CancellationToken.None);
 
@@ -178,6 +232,7 @@ public class AdminServiceTests : IDisposable
         var result = await svc.CreateUserAsync(
             new AdminCreateUserDto { Email = "dup@example.com", UserName = "dup", FirstName = "X", LastName = "Y" },
             AdminId,
+            DefaultCallerRoles,
             "10.0.0.1",
             CancellationToken.None);
 
@@ -206,6 +261,7 @@ public class AdminServiceTests : IDisposable
         var result = await svc.CreateUserAsync(
             new AdminCreateUserDto { Email = "alice@example.com", UserName = "alice", FirstName = "A", LastName = "B" },
             AdminId,
+            DefaultCallerRoles,
             "10.0.0.1",
             CancellationToken.None);
 
@@ -233,6 +289,7 @@ public class AdminServiceTests : IDisposable
         var result = await svc.CreateUserAsync(
             new AdminCreateUserDto { Email = "x@example.com", UserName = "x", FirstName = "X", LastName = "Y" },
             AdminId,
+            DefaultCallerRoles,
             "10.0.0.1",
             CancellationToken.None);
 
@@ -522,12 +579,18 @@ public class AdminServiceTests : IDisposable
             deps.UserService,
             deps.TokenService,
             deps.EmailService,
+            new RoleAssignmentPolicy(),
             publicUrl,
             TestMetricsFactory.Create(),
             NullLogger<AdminService>.Instance);
 
         return (service, db, deps);
     }
+
+    // Default caller-roles for invitation-flow tests — Admin holder. Mirrors the seeded
+    // admin's role set (Admin + DefaultUser + PlatformAdmin); individual tests override
+    // when they want to assert escalation behaviour.
+    private static readonly string[] DefaultCallerRoles = [RolesConstants.Admin];
 
     private static UserManager<User> StubUserManager()
     {

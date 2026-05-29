@@ -1,6 +1,7 @@
 using AuthenticationService.Constants;
 using AuthenticationService.Settings;
 using AuthenticationService.Shared.Constants;
+using AuthenticationService.Shared.Extensions;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using RedisRateLimiting;
@@ -64,7 +65,7 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
         // Per-user cap for authenticated state-changing endpoints.
         options.AddPolicy(RateLimitPolicies.AuthSensitive, context =>
         {
-            var key = context.User?.FindFirst(ClaimConstants.Sub)?.Value
+            var key = context.User?.GetUserId()
                       ?? context.Connection.RemoteIpAddress?.ToString()
                       ?? "anonymous";
             return RedisRateLimitPartition.GetFixedWindowRateLimiter(
@@ -115,7 +116,7 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
             }
 
             // Default: per-user once authenticated, per-IP otherwise.
-            var userId = context.User?.FindFirst(ClaimConstants.Sub)?.Value
+            var userId = context.User?.GetUserId()
                          ?? context.Connection.RemoteIpAddress?.ToString()
                          ?? "anonymous";
 
@@ -164,7 +165,7 @@ public sealed class RateLimiterOptionsConfigurator : IConfigureOptions<RateLimit
                     });
             }
 
-            var userId = context.User?.FindFirst(ClaimConstants.Sub)?.Value
+            var userId = context.User?.GetUserId()
                          ?? context.Connection.RemoteIpAddress?.ToString()
                          ?? "anonymous";
 

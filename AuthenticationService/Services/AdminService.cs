@@ -27,6 +27,7 @@ public class AdminService : IAdminService
     private readonly IUserService _userService;
     private readonly ITokenService _tokenService;
     private readonly IEmailService _emailService;
+    private readonly IRoleAssignmentPolicy _roleAssignmentPolicy;
     private readonly PublicUrlSettings _publicUrlSettings;
     private readonly AuthMetrics _metrics;
     private readonly ILogger<AdminService> _logger;
@@ -38,6 +39,7 @@ public class AdminService : IAdminService
         IUserService userService,
         ITokenService tokenService,
         IEmailService emailService,
+        IRoleAssignmentPolicy roleAssignmentPolicy,
         IOptions<PublicUrlSettings> publicUrlSettings,
         AuthMetrics metrics,
         ILogger<AdminService> logger)
@@ -48,6 +50,7 @@ public class AdminService : IAdminService
         _userService = userService;
         _tokenService = tokenService;
         _emailService = emailService;
+        _roleAssignmentPolicy = roleAssignmentPolicy;
         _publicUrlSettings = publicUrlSettings.Value;
         _metrics = metrics;
         _logger = logger;
@@ -165,17 +168,21 @@ public class AdminService : IAdminService
 
     public async Task<AdminCreateUserResult> CreateUserAsync(
         AdminCreateUserDto request,
-        string adminUserId,
+        string callerUserId,
+        IReadOnlyCollection<string> callerRoles,
         string ipAddress,
         CancellationToken ct)
     {
-        // Empty roles default to DefaultUser. Admin is rejected — admins are only created via DB seed.
+        // Empty roles default to DefaultUser. Caller-controlled role requests pass through
+        // IRoleAssignmentPolicy — Admin remains seed-only and PlatformAdmin can only be
+        // granted by an existing PlatformAdmin (multi-tenancy Decision 5).
         var roles = (request.Roles is { Count: > 0 } ? request.Roles : new List<string> { RolesConstants.DefaultUser }).ToList();
-        if (roles.Contains(RolesConstants.Admin, StringComparer.Ordinal))
+        var forbidden = _roleAssignmentPolicy.Forbidden(callerRoles, roles);
+        if (forbidden.Count > 0)
         {
             return new AdminCreateUserResult.ValidationFailed(new Dictionary<string, string>
             {
-                ["roles"] = "Admin role cannot be assigned via the invitation endpoint."
+                ["roles"] = $"Caller is not permitted to assign these roles: {string.Join(", ", forbidden)}."
             });
         }
 
@@ -232,8 +239,8 @@ public class AdminService : IAdminService
 
         _logger.LogInformation(
             SecurityEventIds.AdminCreatedUser,
-            "Admin {AdminUserId} created user {TargetUserId} with roles {Roles} from {IpAddress}",
-            adminUserId,
+            "Admin {CallerUserId} created user {TargetUserId} with roles {Roles} from {IpAddress}",
+            callerUserId,
             user.Id,
             string.Join(",", roles),
             ipAddress);
@@ -243,7 +250,7 @@ public class AdminService : IAdminService
 
     public async Task<AdminInvitationResendResult> ResendInvitationAsync(
         string targetUserId,
-        string adminUserId,
+        string callerUserId,
         string ipAddress,
         CancellationToken ct)
     {
@@ -263,8 +270,8 @@ public class AdminService : IAdminService
 
         _logger.LogInformation(
             SecurityEventIds.AdminResentInvitation,
-            "Admin {AdminUserId} re-sent invitation to {TargetUserId} from {IpAddress}",
-            adminUserId,
+            "Admin {CallerUserId} re-sent invitation to {TargetUserId} from {IpAddress}",
+            callerUserId,
             user.Id,
             ipAddress);
 
@@ -304,7 +311,7 @@ public class AdminService : IAdminService
 
     public async Task<LockoutInfoDto?> LockUserAsync(
         string targetUserId,
-        string adminUserId,
+        string callerUserId,
         string ipAddress,
         CancellationToken ct)
     {
@@ -319,8 +326,8 @@ public class AdminService : IAdminService
 
         _logger.LogWarning(
             SecurityEventIds.AdminLockedAccount,
-            "Admin {AdminUserId} locked account {TargetUserId} from {IpAddress}",
-            adminUserId,
+            "Admin {CallerUserId} locked account {TargetUserId} from {IpAddress}",
+            callerUserId,
             user.Id,
             ipAddress);
         _metrics.LockoutTriggered("admin");
@@ -330,7 +337,7 @@ public class AdminService : IAdminService
 
     public async Task<LockoutInfoDto?> UnlockUserAsync(
         string targetUserId,
-        string adminUserId,
+        string callerUserId,
         string ipAddress,
         CancellationToken ct)
     {
@@ -346,8 +353,8 @@ public class AdminService : IAdminService
 
         _logger.LogInformation(
             SecurityEventIds.AdminUnlockedAccount,
-            "Admin {AdminUserId} unlocked account {TargetUserId} from {IpAddress}",
-            adminUserId,
+            "Admin {CallerUserId} unlocked account {TargetUserId} from {IpAddress}",
+            callerUserId,
             user.Id,
             ipAddress);
 
@@ -356,7 +363,7 @@ public class AdminService : IAdminService
 
     public async Task<bool> RevokeSessionsAsync(
         string targetUserId,
-        string adminUserId,
+        string callerUserId,
         string ipAddress,
         CancellationToken ct)
     {
@@ -372,8 +379,8 @@ public class AdminService : IAdminService
 
         _logger.LogWarning(
             SecurityEventIds.AdminRevokedSessions,
-            "Admin {AdminUserId} revoked all sessions for {TargetUserId} from {IpAddress}",
-            adminUserId,
+            "Admin {CallerUserId} revoked all sessions for {TargetUserId} from {IpAddress}",
+            callerUserId,
             user.Id,
             ipAddress);
 
@@ -382,7 +389,7 @@ public class AdminService : IAdminService
 
     public async Task<bool> ResetMfaAsync(
         string targetUserId,
-        string adminUserId,
+        string callerUserId,
         string ipAddress,
         CancellationToken ct)
     {
@@ -400,8 +407,8 @@ public class AdminService : IAdminService
 
         _logger.LogWarning(
             SecurityEventIds.AdminResetMfa,
-            "Admin {AdminUserId} reset MFA for {TargetUserId} from {IpAddress}",
-            adminUserId,
+            "Admin {CallerUserId} reset MFA for {TargetUserId} from {IpAddress}",
+            callerUserId,
             user.Id,
             ipAddress);
 
@@ -410,7 +417,7 @@ public class AdminService : IAdminService
 
     public async Task<bool> ForcePasswordResetAsync(
         string targetUserId,
-        string adminUserId,
+        string callerUserId,
         string ipAddress,
         string? callbackUri,
         CancellationToken ct)
@@ -447,8 +454,8 @@ public class AdminService : IAdminService
 
         _logger.LogWarning(
             SecurityEventIds.AdminForcedPasswordReset,
-            "Admin {AdminUserId} forced password reset for {TargetUserId} from {IpAddress}",
-            adminUserId,
+            "Admin {CallerUserId} forced password reset for {TargetUserId} from {IpAddress}",
+            callerUserId,
             user.Id,
             ipAddress);
 

@@ -10,7 +10,7 @@ namespace AuthenticationService.Constants;
 /// authenticator secrets MUST NOT appear in payloads — use <c>UserId</c> for correlation.</para>
 ///
 /// <para>Ranges: 1000s authentication, 2000s registration, 3000s account, 4000s token,
-/// 5000s admin, 6000s s2s.</para>
+/// 5000s admin, 6000s s2s, 7000s tenant management.</para>
 /// </summary>
 public static class SecurityEventIds
 {
@@ -161,9 +161,11 @@ public static class SecurityEventIds
     // ------------------------------------------------------------------
     // 5000s — Admin actions
     //
-    // All admin events log {AdminUserId} (the actor) and {TargetUserId} (who they
+    // All admin events log {CallerUserId} (the actor) and {TargetUserId} (who they
     // acted on) so SIEM can group by either dimension and answer "what did this
-    // admin do?" / "what's been done to this user?" independently.
+    // admin do?" / "what's been done to this user?" independently. Actor role is
+    // implicit in the event-id range (5000s = admin, 7000s = platform admin) so the
+    // structured field name stays role-agnostic.
     // ------------------------------------------------------------------
 
     /// <summary>
@@ -213,7 +215,7 @@ public static class SecurityEventIds
     // 6000s — Service-to-service auth (OAuth client-credentials grant)
     //
     // Token-endpoint events log {ClientId}, {Audience}, {Scopes}, {IpAddress}.
-    // Client-management events log {AdminUserId}, {ClientId}, {IpAddress}.
+    // Client-management events log {CallerUserId}, {ClientId}, {IpAddress}.
     // ------------------------------------------------------------------
 
     /// <summary>
@@ -250,4 +252,40 @@ public static class SecurityEventIds
     /// An admin removed a (audience, scope) tuple from a client's scope list.
     /// </summary>
     public static readonly EventId AdminRemovedClientScope = new(6105, nameof(AdminRemovedClientScope));
+
+    // ------------------------------------------------------------------
+    // 7000s — Tenant management (PlatformAdmin actions on tenants)
+    //
+    // Tenant lifecycle events log {CallerUserId} (the actor) and {TenantName}
+    // (the target) so SIEM can group by either dimension. Actor role is implicit in the
+    // 7000s event-id range so the structured field name stays role-agnostic.
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// A PlatformAdmin created a new tenant.
+    /// </summary>
+    public static readonly EventId TenantCreated = new(7001, nameof(TenantCreated));
+
+    /// <summary>
+    /// A PlatformAdmin suspended a tenant. Token issuance for the tenant is blocked;
+    /// existing tokens remain valid until expiry.
+    /// </summary>
+    public static readonly EventId TenantSuspended = new(7002, nameof(TenantSuspended));
+
+    /// <summary>
+    /// A PlatformAdmin lifted a tenant suspension.
+    /// </summary>
+    public static readonly EventId TenantUnsuspended = new(7003, nameof(TenantUnsuspended));
+
+    /// <summary>
+    /// A PlatformAdmin soft-deleted a tenant. Status set to PendingDeletion; refresh
+    /// tokens cascade-revoked; the deletion sweep hard-deletes after the retention window.
+    /// </summary>
+    public static readonly EventId TenantSoftDeleted = new(7004, nameof(TenantSoftDeleted));
+
+    /// <summary>
+    /// A PlatformAdmin force-deleted a tenant immediately (bypassing the soft-delete
+    /// retention window). Irreversible. Critical-severity event — SIEM may want to page.
+    /// </summary>
+    public static readonly EventId TenantForceDeleted = new(7005, nameof(TenantForceDeleted));
 }

@@ -21,6 +21,12 @@ public class DatabaseContext : IdentityDbContext<User, Role, string>
     public DbSet<Client> Clients { get; set; }
     public DbSet<ClientScope> ClientScopes { get; set; }
 
+    // Multi-tenancy Phase 1: Tenants + memberships. No TenantId on the entities
+    // above yet — that's Phase 2.
+    public DbSet<Tenant> Tenants { get; set; }
+    public DbSet<UserTenantMembership> UserTenantMemberships { get; set; }
+    public DbSet<UserTenantMembershipRole> UserTenantMembershipRoles { get; set; }
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -55,6 +61,14 @@ public class DatabaseContext : IdentityDbContext<User, Role, string>
             ConfigureMySqlDateTimeOffsetPrecision<SecurityEvent>(builder, s => s.Timestamp);
             ConfigureMySqlDateTimeOffsetPrecision<Client>(builder, c => c.CreatedAt);
             ConfigureMySqlDateTimeOffsetPrecision<Client>(builder, c => c.LastUsedAt);
+
+            // Multi-tenancy Phase 1.
+            ConfigureMySqlDateTimeOffsetPrecision<Tenant>(builder, t => t.CreatedAt);
+            ConfigureMySqlDateTimeOffsetPrecision<Tenant>(builder, t => t.SuspendedAt);
+            ConfigureMySqlDateTimeOffsetPrecision<Tenant>(builder, t => t.PendingDeletionAt);
+            ConfigureMySqlDateTimeOffsetPrecision<UserTenantMembership>(builder, m => m.CreatedAt);
+            ConfigureMySqlDateTimeOffsetPrecision<UserTenantMembership>(builder, m => m.RemovedAt);
+            ConfigureMySqlDateTimeOffsetPrecision<UserTenantMembershipRole>(builder, r => r.AssignedAt);
         }
 
         builder.Entity<RevokedToken>(entity =>
@@ -113,6 +127,51 @@ public class DatabaseContext : IdentityDbContext<User, Role, string>
             entity.HasOne(e => e.Client)
                   .WithMany(c => c.Scopes)
                   .HasForeignKey(e => e.ClientId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Multi-tenancy Phase 1.
+        builder.Entity<Tenant>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            // Name is the URL identifier and must be unique platform-wide.
+            entity.HasIndex(e => e.Name).IsUnique();
+            // Status is filtered on (e.g., listing all Active tenants) so worth indexing.
+            entity.HasIndex(e => e.Status);
+        });
+
+        builder.Entity<UserTenantMembership>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            // A user can have at most one membership per tenant — composite unique.
+            entity.HasIndex(e => new { e.UserId, e.TenantId }).IsUnique();
+            entity.HasIndex(e => e.TenantId);
+
+            entity.HasOne(e => e.User)
+                  .WithMany(u => u.Memberships)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Tenant)
+                  .WithMany(t => t.Memberships)
+                  .HasForeignKey(e => e.TenantId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<UserTenantMembershipRole>(entity =>
+        {
+            // Composite primary key — a role assignment is (Membership, Role).
+            entity.HasKey(e => new { e.MembershipId, e.RoleId });
+            entity.HasIndex(e => e.RoleId);
+
+            entity.HasOne(e => e.Membership)
+                  .WithMany(m => m.RoleAssignments)
+                  .HasForeignKey(e => e.MembershipId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Role)
+                  .WithMany()
+                  .HasForeignKey(e => e.RoleId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
     }

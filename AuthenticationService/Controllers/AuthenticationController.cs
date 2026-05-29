@@ -10,6 +10,7 @@ using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
 using AuthenticationService.Shared.Enums;
+using AuthenticationService.Shared.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -343,7 +344,7 @@ public class AuthenticationController : ControllerBase
             return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidToken));
         }
 
-        var sub = User.FindFirst(ClaimConstants.Sub)?.Value ?? string.Empty;
+        var sub = User.GetUserIdOrEmpty();
         var token = Request.Headers.Authorization.ToString().Replace(AuthSchemeConstants.BearerPrefix, string.Empty);
         var ipAddress = Request.GetRemoteIpAddress();
 
@@ -367,7 +368,7 @@ public class AuthenticationController : ControllerBase
     [HttpPost("logoutall")]
     public async Task<IActionResult> LogoutAllAsync()
     {
-        var sub = User.FindFirst(ClaimConstants.Sub)?.Value;
+        var sub = User.GetUserId();
         if (string.IsNullOrEmpty(sub))
         {
             return Unauthorized(new ApiResponse().AddError(ResponseConstants.Unauthorized, ErrorMessages.InvalidToken));

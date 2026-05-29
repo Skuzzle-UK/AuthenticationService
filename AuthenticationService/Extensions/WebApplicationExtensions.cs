@@ -106,6 +106,11 @@ public static class WebApplicationExtensions
     private static WebApplication UseApplicationMiddleware(this WebApplication app)
     {
         app.UseMiddleware<RevokedTokenMiddleware>();
+        // Multi-tenancy Phase 1: registered after JwtBearer auth so the principal
+        // exists. Reads `tid` claim if present, populates ITenantAccessor. No-op when
+        // unauthenticated or when the token doesn't carry tid (Phase 1 tokens don't —
+        // Phase 3 wires that in at issuance time).
+        app.UseMiddleware<TenantResolutionMiddleware>();
         return app;
     }
 

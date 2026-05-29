@@ -39,7 +39,7 @@ Alice has **one** identity (one email, one password, one MFA setup) and joins in
 GET  /login                       ← UI: tenant + email + password fields
 GET  /login?tenant=acme           ← same UI but tenant field pre-filled
 POST /api/Authentication/authenticate
-     body: { tenantSlug, email, password }
+     body: { tenantName, email, password }
      ← server validates credentials AND validates membership
      ← returns scoped JWT { sub, tid, roles, ... }
 ```
@@ -48,13 +48,13 @@ One login round-trip. The server checks both credentials *and* membership before
 
 **Rationale**: simpler than the "bootstrap then exchange" model (no special audience-restricted bootstrap token). The URL hint gives customer onboarding emails a branded direct-link path (`oursaas.com/login?tenant=acme`) without losing the "I forgot my tenant" recovery path.
 
-**In-app tenant switching** (Phase 2 enhancement): a separate `POST /api/Tenants/switch { tenantSlug }` endpoint exchanges the current JWT for one with a different `tid`, without re-validating credentials. Slack-style "switch workspace" dropdown.
+**In-app tenant switching** (Phase 2 enhancement): a separate `POST /api/Tenants/switch { tenantName }` endpoint exchanges the current JWT for one with a different `tid`, without re-validating credentials. Slack-style "switch workspace" dropdown.
 
 ---
 
 ## Decision 3 — Tenant resolution on authenticated requests: JWT `tid` claim alone
 
-**Locked**: clean URLs (`/api/Admin/users`), tenant is read from the JWT's signed `tid` claim. URLs do not carry `/t/{slug}/` prefixes.
+**Locked**: clean URLs (`/api/Admin/users`), tenant is read from the JWT's signed `tid` claim. URLs do not carry `/t/{name}/` prefixes.
 
 ```
 GET  /api/Admin/users
@@ -66,7 +66,7 @@ GET  /api/Admin/users
 
 **For unauthenticated endpoints that need tenant context** (password reset, email confirmation, MFA links, SSO callbacks): the tenant identifier is **embedded in the data-protected token payload**, not the URL. The payload is already where we put email + purpose; `tid` fits naturally and stays cryptographically bound.
 
-**Rationale**: the JWT signature is the cryptographic boundary; the `tid` claim is what makes the token tenant-bound. Adding `/t/{slug}/` URL prefixes adds a second source of truth that has to agree with the JWT (or you get 403s that look like bugs). Industry-standard shape — Auth0, Cognito, Keycloak all do JWT-claim-based tenant resolution.
+**Rationale**: the JWT signature is the cryptographic boundary; the `tid` claim is what makes the token tenant-bound. Adding `/t/{name}/` URL prefixes adds a second source of truth that has to agree with the JWT (or you get 403s that look like bugs). Industry-standard shape — Auth0, Cognito, Keycloak all do JWT-claim-based tenant resolution.
 
 **Implications**:
 - New `TenantResolutionMiddleware` registered **after** JwtBearer (so the principal exists). Populates `ITenantAccessor` (scoped service).
@@ -85,18 +85,19 @@ GET  /api/Admin/users
 
 ---
 
-## Decision 5 — Roles: multiple roles per membership, flag-on-User SuperAdmin, dedicated SuperAdminController
+## Decision 5 — Roles: tenant-scoped roles via memberships, platform-level via Identity roles, dedicated TenantsController
 
 **Locked**:
 
-- **Tenant-scoped roles**: many-to-many between `UserTenantMembership` and the existing ASP.NET Identity `Role` table (which we already inherit from `IdentityRole`). A new `UserTenantMembershipRole` join table replaces the use of Identity's `AspNetUserRoles` for tenant-scoped role assignments; `AspNetUserRoles` itself becomes unused for normal users. Alice in Acme can hold `{TenantAdmin, BillingAdmin}` simultaneously. JWT carries `roles: ["TenantAdmin", "BillingAdmin"]` array.
-- **Platform-level**: new `IsSuperAdmin: bool` column on `User` (defaults to `false`). SuperAdmins are not bound to tenants by default. The `super` claim name lives alongside the existing claim constants in `AuthenticationService.Shared/Constants/ClaimConstants.cs`.
-- **SuperAdmin cross-tenant ops**: separate `SuperAdminController` with explicit tenant-slug parameters. Bypasses EF global query filters via `IgnoreQueryFilters()`. Every action is audit-logged with `(superAdminUserId, targetTenantSlug, action)`.
+- **Tenant-scoped roles**: many-to-many between `UserTenantMembership` and the existing ASP.NET Identity `Role` table (which we already inherit from `IdentityRole`). A new `UserTenantMembershipRole` join table holds tenant-scoped role assignments. Alice in Acme can hold `{TenantAdmin, BillingAdmin}` simultaneously. JWT carries `roles: ["TenantAdmin", "BillingAdmin"]` array.
+- **Platform-level**: a `PlatformAdmin` role lives in Identity's normal `AspNetRoles` table and is assigned via `AspNetUserRoles` — i.e. through the standard `UserManager.AddToRoleAsync` flow, not via membership. PlatformAdmin holders are not bound to any tenant. The seeded admin user holds this role by default; Phase 4 adds an admin endpoint to assign it to other users.
+- **Cross-tenant ops**: dedicated `TenantsController` (route `/api/Tenants`) gated by `[Authorize(Policy = PolicyConstants.PlatformAdminOnly)]`. Bypasses EF global query filters via `IgnoreQueryFilters()`. Every action is audit-logged with `(platformAdminUserId, targetTenantName, action)`.
 
 **Rationale**:
 - Multiple roles per membership is composable without exploding the role list ("BillingAdmin + UserAdmin" doesn't need a third combined role).
-- Flag-on-User SuperAdmin keeps the platform-vs-tenant separation explicit (a SuperAdmin isn't "a TenantAdmin of a platform pseudo-tenant" — that conceptual contortion gets confusing).
-- Dedicated controller for cross-tenant ops gives a clean audit boundary and avoids the impersonation-token complexity (no separate token issuance just for SuperAdmin acting-as flows).
+- A platform-level role (rather than a `bool IsSuperAdmin` column) uses the standard ASP.NET Core authorization pipeline — no special-case claim, no custom policy beyond a one-line `RequireRole`, and platform roles can grow (`PlatformAuditor`, `PlatformBilling`) without schema churn.
+- The `AspNetUserRoles` table is the natural home for these — tenant-scoped roles still go through `UserTenantMembershipRole`, so the two scopes are cleanly separated by which join table they live in.
+- Dedicated controller for cross-tenant ops gives a clean audit boundary and avoids the impersonation-token complexity (no separate token issuance just for "act as" flows).
 
 **JWT shape**:
 
@@ -110,42 +111,46 @@ GET  /api/Admin/users
   ...
 }
 
-// SuperAdmin acting platform-wide:
+// PlatformAdmin acting platform-wide:
 {
   "sub": "u-99",
-  "super": true,
+  "roles": ["PlatformAdmin"],
   "aud": "platform-api",
   ...  // no tid
 }
 ```
 
-Consuming services unaware of SuperAdmin can check `tid` and `roles` as today. Services that want extra audit on super-admin actions can check the `super` claim.
+Consuming services treat `PlatformAdmin` like any other role on the `roles` claim — no custom claim shape, no custom validation logic. `tid` absence is the signal that the bearer is acting platform-wide.
+
+**Naming note**: `PlatformAdmin` (platform-scoped) is deliberately distinct from `TenantAdmin` (per-tenant scope). They live in different join tables and gate different controllers; reusing the same name would be a footgun given the very different blast radius.
 
 **Role seeding**: platform-level migration seeds:
-- `TenantAdmin` — full admin rights within a tenant.
-- `TenantMember` — default user role.
+- `Admin` and `DefaultUser` — pre-multi-tenancy roles, retained for the existing admin endpoints.
+- `PlatformAdmin` — new in Phase 1 for the `TenantsController` gate.
+- `TenantAdmin` (Phase 4) — full admin rights within a tenant.
+- `TenantMember` (Phase 4) — default user role inside a tenant.
 - Additional roles (e.g., `BillingAdmin`, `AuditViewer`) added as the product surface grows. Per-tenant custom roles are explicitly **deferred** to a future phase (not part of Phases 1-6; pulled in if and when there's real demand).
 
 ---
 
 ## Decision 6 — Lifecycle: admin-provisioned + soft-delete with retention + admin force-delete
 
-**Locked**: tenants are created by SuperAdmins via `POST /api/SuperAdmin/tenants`. Self-service tenant creation is deferred to a future product flow.
+**Locked**: tenants are created by PlatformAdmins via `POST /api/Tenants`. Self-service tenant creation is deferred to a future product flow.
 
 `Tenant.Status` is an enum:
 
 | Status | Token issuance | Existing tokens | Admin endpoints | Data |
 |---|---|---|---|---|
 | `Active` | ✅ Normal | ✅ Valid until expiry | ✅ Accessible | Present |
-| `Suspended` | ❌ Rejected with "tenant suspended" | Valid until expiry; SuperAdmin can force-revoke via cascade | ✅ SuperAdmin only | Present |
-| `PendingDeletion` | ❌ Rejected | ❌ Cascade-revoked at status transition | ✅ SuperAdmin only (to recover) | Present until sweep |
+| `Suspended` | ❌ Rejected with "tenant suspended" | Valid until expiry; PlatformAdmin can force-revoke via cascade | ✅ PlatformAdmin only | Present |
+| `PendingDeletion` | ❌ Rejected | ❌ Cascade-revoked at status transition | ✅ PlatformAdmin only (to recover) | Present until sweep |
 | (hard-deleted) | N/A | N/A | N/A | Removed by sweep |
 
-**Soft-delete** is the default. Calling `DELETE /api/SuperAdmin/tenants/{slug}` sets status to `PendingDeletion`, stamps `PendingDeletionAt = now`, and cascade-revokes refresh tokens. A new background worker (`TenantDeletionSweepService`, sibling of `DataRetentionCleanupService`) runs every 6 hours, finds tenants with `PendingDeletionAt + retentionDays < now`, and hard-deletes via EF cascade.
+**Soft-delete** is the default. Calling `DELETE /api/Tenants/{name}` sets status to `PendingDeletion`, stamps `PendingDeletionAt = now`, and cascade-revokes refresh tokens. A new background worker (`TenantDeletionSweepService`, sibling of `DataRetentionCleanupService`) runs every 6 hours, finds tenants with `PendingDeletionAt + retentionDays < now`, and hard-deletes via EF cascade.
 
-**Why suspension doesn't auto-revoke but deletion does**: suspension is deliberately *reversible without disrupting active sessions* — if a tenant is wrongly suspended (billing dispute, support ticket, etc.) we want unsuspending to put things back the way they were. A zero-trust posture that auto-revokes on suspend punishes active users for an administrative state change. Deletion is the opposite: the intent is to wind the tenant down, so revoking sessions at status-transition time aligns the security state with the operational intent. SuperAdmin can still force-revoke a suspended tenant's tokens via a separate cascade endpoint if a hostile-take-down case ever needs it.
+**Why suspension doesn't auto-revoke but deletion does**: suspension is deliberately *reversible without disrupting active sessions* — if a tenant is wrongly suspended (billing dispute, support ticket, etc.) we want unsuspending to put things back the way they were. A zero-trust posture that auto-revokes on suspend punishes active users for an administrative state change. Deletion is the opposite: the intent is to wind the tenant down, so revoking sessions at status-transition time aligns the security state with the operational intent. PlatformAdmin can still force-revoke a suspended tenant's tokens via a separate cascade endpoint if a hostile-take-down case ever needs it.
 
-**Force-delete** is the irreversible variant: `POST /api/SuperAdmin/tenants/{slug}/delete-now` with a confirmation body (e.g., `{ confirm: "acme" }` — the caller must type the slug back to confirm). Cascades immediately.
+**Force-delete** is the irreversible variant: `POST /api/Tenants/{name}/delete-now` with a confirmation body (e.g., `{ confirmName: "acme" }` — the caller must type the name back to confirm). Cascades immediately.
 
 **`Tenant` entity**:
 
@@ -153,7 +158,7 @@ Consuming services unaware of SuperAdmin can check `tid` and `roles` as today. S
 public class Tenant
 {
     public string Id { get; set; }                    // GUID (PK)
-    public string Slug { get; set; }                  // URL-safe, lowercase, unique
+    public string Name { get; set; }                  // URL-safe, lowercase, unique — e.g. "acme"
     public string DisplayName { get; set; }           // "Acme Corporation"
     public TenantStatus Status { get; set; }          // Active | Suspended | PendingDeletion
     public DateTimeOffset CreatedAt { get; set; }
@@ -164,9 +169,11 @@ public class Tenant
 }
 ```
 
-**Slug validator**: lowercase, regex `^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$` (must start and end with alphanumeric, hyphens allowed in the middle, 3-50 chars total). Additional rules: reject consecutive hyphens (`--`), reject pure-numeric slugs (`123`), reject reserved names (`admin`, `api`, `www`, `t`, `oauth`, `account`, `login`, `signup`, plus any other path segments the auth service uses). The reserved list is a `DatabaseProviders.cs`-style constants file.
+**Naming convention**: we follow the Microsoft / Active Directory shape — `Name` is the URL-safe canonical short identifier (`"acme"`) and `DisplayName` is the human-facing label (`"Acme Corporation"`). "Renaming" a tenant changes only `DisplayName`; `Name` is set once at creation and is immutable thereafter. We considered `Slug` (too slangy for a public data model), `Alias` (misleading — it's the primary name, not an alternative), and `Handle` / `Identifier` (less recognised by integrators).
 
-**URL vs Id convention**: URLs reference tenants by `slug` for human readability (`/api/SuperAdmin/tenants/acme`). The `Id` GUID is only used internally as the FK target on tenant-scoped entities. Slugs are immutable once a tenant is created — renaming a tenant changes only `DisplayName`, never `Slug`.
+**Name validator**: lowercase, regex `^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$` (must start and end with alphanumeric, hyphens allowed in the middle, 3-50 chars total). Additional rules: reject consecutive hyphens (`--`), reject pure-numeric names (`123`), reject reserved names (`admin`, `api`, `www`, `t`, `oauth`, `account`, `login`, `signup`, plus any other path segments the auth service uses). The reserved list is a `DatabaseProviders.cs`-style constants file.
+
+**URL vs Id convention**: URLs reference tenants by `Name` for human readability (`/api/Tenants/acme`). The `Id` GUID is only used internally as the FK target on tenant-scoped entities. The `Name` is immutable once a tenant is created — renaming a tenant changes only `DisplayName`, never `Name`.
 
 ---
 
@@ -179,7 +186,7 @@ This collapses Phase 2's migration story significantly:
 - **`TenantId` columns** are added as `NOT NULL` from the start, with no default and no backfill step.
 - **Lockout state stays on `User`** (user-scoped, per Decision 1's revised model). No column moves, no custom `IUserLockoutStore<User>` implementation, no call-site updates. Identity's standard lockout pipeline works unchanged — the threshold-escalation worker locks the whole user, affecting all their memberships simultaneously.
 - **Composite unique constraints** drop the old single-column versions and replace them — empty tables means no duplicate-value cleanup required.
-- **No `legacy` default tenant.** The first tenant in any deployment is whatever the operator creates via the SuperAdmin endpoint after their initial admin login.
+- **No `legacy` default tenant.** The first tenant in any deployment is whatever the operator creates via the `TenantsController` endpoint after their initial admin login.
 - **Single EF migration per provider** captures the whole Phase 2 shape — no need for the multi-step pattern (add nullable → backfill → set not-null → drop old constraint).
 
 **Developer workflow**: when pulling these changes into a local dev DB, drop and recreate:
@@ -191,7 +198,7 @@ dotnet ef database update --project AuthenticationService.Migrations.MySql --sta
 
 (Same shape for SqlServer and Postgres against their respective migrations projects.)
 
-**Future-deployed services**: when a real production deployment lands later, this is a clean migration with no schema migration drama — the service comes up with empty tenant tables and the operator's first action is to create their tenant via the admin reset flow + SuperAdmin endpoint sequence.
+**Future-deployed services**: when a real production deployment lands later, this is a clean migration with no schema migration drama — the service comes up with empty tenant tables and the operator's first action is to create their tenant via the admin reset flow + `TenantsController` endpoint sequence.
 
 ---
 
@@ -270,29 +277,29 @@ var length = tenant.Config?.Password?.RequiredLength ?? platform.Password.Requir
   "jti": "..."
 }
 
-// SuperAdmin acting platform-wide (no tid):
+// PlatformAdmin acting platform-wide (no tid):
 {
   "iss": "https://auth.example.com",
   "sub": "u-99",
-  "super": true,
+  "roles": ["PlatformAdmin"],
   "aud": "platform-api",
   ...
 }
 
-// SuperAdmin acting on a specific tenant (audited):
+// PlatformAdmin acting on a specific tenant (audited):
 {
   "iss": "https://auth.example.com",
   "sub": "u-99",
-  "super": true,
   "tid": "acme",
-  "audit_acting_as_super": true,
+  "roles": ["PlatformAdmin"],
+  "audit_acting_as_platform": true,
   ...
 }
 ```
 
 Consuming services (`TokenValidationLib`):
-- Today's `[Authorize(Roles = ...)]` continues to work — Identity's role-claim mapping reads `roles` (array) naturally.
-- New helpers: `HttpContext.User.GetTenantId()` and `HttpContext.User.IsSuperAdmin()` extensions in `TokenValidationLib` so consumers can apply their own per-tenant authorization easily.
+- Today's `[Authorize(Roles = ...)]` continues to work — Identity's role-claim mapping reads `roles` (array) naturally. `[Authorize(Roles = "PlatformAdmin")]` is the gate for platform-wide endpoints.
+- New helper: `HttpContext.User.GetTenantId()` extension in `TokenValidationLib` so consumers can apply their own per-tenant authorization easily. `IsInRole("PlatformAdmin")` covers the platform check — no separate helper.
 
 ---
 
@@ -326,11 +333,12 @@ Consuming services (`TokenValidationLib`):
 Each phase ships independently and leaves the codebase in a working state.
 
 ### Phase 1 — Foundation (~2 days)
-- `Tenant` entity, `Status` enum, slug validator.
+- `Tenant` entity, `Status` enum, name validator.
 - `UserTenantMembership` entity, `UserTenantMembershipRole` join.
 - `ITenantAccessor` service.
 - `TenantResolutionMiddleware` reading `tid` claim.
-- SuperAdmin endpoints to create / suspend / list tenants.
+- `PlatformAdmin` role seeded + assigned to the seeded admin user via `AspNetUserRoles`.
+- `TenantsController` endpoints (route `/api/Tenants`) to create / suspend / list tenants, gated by `[Authorize(Policy = PlatformAdminOnly)]`.
 - Migrations × 3 providers (Tenants + Memberships tables only — no `TenantId` on other entities yet).
 - Unit tests for tenant validation + lifecycle.
 
@@ -344,20 +352,20 @@ Each phase ships independently and leaves the codebase in a working state.
 - Existing scenario tests updated to seed via the new tenant/membership flow and pass.
 
 ### Phase 3 — Auth flow (~3 days)
-- Tenant-aware login (Model 2d: credentials + `tenantSlug`).
+- Tenant-aware login (Model 2d: credentials + `tenantName`).
 - `tid` + `roles` claims on every issued JWT.
 - Tenant-aware refresh / revoke / logout flows.
 - **Two cascade variants** for refresh-token revocation:
   - `RevokeAllRefreshTokensForUserAsync(userId)` — user-scoped, used by the threshold-escalation worker and the reuse-detection cascade (security incidents — Decision 1).
   - `RevokeAllRefreshTokensForUserInTenantAsync(userId, tenantId)` — tenant-scoped, used when a TenantAdmin removes a user from their tenant (administrative action).
 - Data-protected tokens (password reset, email confirm, MFA, lockout) carry `tid` in payload.
-- `TokenValidationLib` exposes `GetTenantId()` / `IsSuperAdmin()` extensions.
+- `TokenValidationLib` exposes a `GetTenantId()` extension. Platform-admin checks use the standard `IsInRole("PlatformAdmin")` — no helper needed.
 - Integration tests for tenant isolation (cross-tenant access blocked at every layer) *plus* security tests asserting that a security cascade locks across all of a user's memberships, not just the affected tenant.
 
-### Phase 4 — Admin + SuperAdmin model (~2 days)
-- `SuperAdminController` with cross-tenant operations.
-- `IsSuperAdmin` flag, JWT `super` claim, audit logging.
-- TenantAdmin role assignment endpoints.
+### Phase 4 — Admin + PlatformAdmin model (~2 days)
+- `TenantsController` evolves with cross-tenant inspection helpers (search users across tenants, etc.). Core CRUD already exists from Phase 1.
+- Admin endpoints for assigning / revoking the `PlatformAdmin` role.
+- TenantAdmin role assignment endpoints (per-tenant via `UserTenantMembershipRole`).
 - Multi-role membership UI / admin endpoints.
 
 ### Phase 5 — SSO per tenant (~3 days)
@@ -372,7 +380,7 @@ Each phase ships independently and leaves the codebase in a working state.
 - `ITenantPolicyResolver` service: per-setting "tenant value if set, otherwise platform default" merge.
 - Existing policy-aware services (password validator, lockout cascade, MFA gate, etc.) routed through the resolver instead of reading `IOptions` directly.
 - `TenantConfigValidator` enforcing lower/upper bounds per setting.
-- TenantAdmin endpoints for getting / updating the tenant's config; SuperAdmin can view any tenant's config.
+- TenantAdmin endpoints for getting / updating the tenant's config; PlatformAdmin can view any tenant's config.
 - Every config change writes a `SecurityEvent` with before/after diff for audit.
 - Tests across all three providers verifying JSON column round-trip + override resolution.
 

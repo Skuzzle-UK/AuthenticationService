@@ -4,6 +4,7 @@ using AuthenticationService.Services;
 using AuthenticationService.Shared.Constants;
 using AuthenticationService.Shared.Dtos;
 using AuthenticationService.Shared.Dtos.Response;
+using AuthenticationService.Shared.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -81,7 +82,8 @@ public class AdminController : ControllerBase
     {
         var result = await _adminService.CreateUserAsync(
             request,
-            adminUserId: GetCurrentAdminId(),
+            callerUserId: User.GetUserIdOrEmpty(),
+            callerRoles: User.GetRoles(),
             ipAddress: Request.GetRemoteIpAddress(),
             ct);
 
@@ -110,7 +112,7 @@ public class AdminController : ControllerBase
 
         var result = await _adminService.ResendInvitationAsync(
             targetUserId: id,
-            adminUserId: GetCurrentAdminId(),
+            callerUserId: User.GetUserIdOrEmpty(),
             ipAddress: Request.GetRemoteIpAddress(),
             ct);
 
@@ -137,7 +139,7 @@ public class AdminController : ControllerBase
 
         var info = await _adminService.LockUserAsync(
             targetUserId: id,
-            adminUserId: GetCurrentAdminId(),
+            callerUserId: User.GetUserIdOrEmpty(),
             ipAddress: Request.GetRemoteIpAddress(),
             ct);
 
@@ -157,7 +159,7 @@ public class AdminController : ControllerBase
 
         var info = await _adminService.UnlockUserAsync(
             targetUserId: id,
-            adminUserId: GetCurrentAdminId(),
+            callerUserId: User.GetUserIdOrEmpty(),
             ipAddress: Request.GetRemoteIpAddress(),
             ct);
 
@@ -177,7 +179,7 @@ public class AdminController : ControllerBase
 
         var ok = await _adminService.RevokeSessionsAsync(
             targetUserId: id,
-            adminUserId: GetCurrentAdminId(),
+            callerUserId: User.GetUserIdOrEmpty(),
             ipAddress: Request.GetRemoteIpAddress(),
             ct);
 
@@ -197,7 +199,7 @@ public class AdminController : ControllerBase
 
         var ok = await _adminService.ResetMfaAsync(
             targetUserId: id,
-            adminUserId: GetCurrentAdminId(),
+            callerUserId: User.GetUserIdOrEmpty(),
             ipAddress: Request.GetRemoteIpAddress(),
             ct);
 
@@ -220,7 +222,7 @@ public class AdminController : ControllerBase
 
         var ok = await _adminService.ForcePasswordResetAsync(
             targetUserId: id,
-            adminUserId: GetCurrentAdminId(),
+            callerUserId: User.GetUserIdOrEmpty(),
             ipAddress: Request.GetRemoteIpAddress(),
             callbackUri: request?.CallbackUri,
             ct);
@@ -261,13 +263,10 @@ public class AdminController : ControllerBase
     // Helpers
     // ------------------------------------------------------------------
 
-    private string GetCurrentAdminId() =>
-        User.FindFirst(ClaimConstants.Sub)?.Value ?? string.Empty;
-
     // Self-protection guard for destructive endpoints — returns true (with response) when targetId matches the current admin.
     private bool RejectIfSelf(string targetId, out IActionResult response)
     {
-        var currentId = GetCurrentAdminId();
+        var currentId = User.GetUserIdOrEmpty();
         if (string.Equals(targetId, currentId, StringComparison.Ordinal))
         {
             response = BadRequest(new ApiResponse().AddError(
@@ -306,8 +305,8 @@ public class AdminController : ControllerBase
 
         _logger.LogInformation(
             SecurityEventIds.AdminCreatedClient,
-            "Admin {AdminUserId} created client {ClientId} with {ScopeCount} scopes from {IpAddress}",
-            GetCurrentAdminId(),
+            "Admin {CallerUserId} created client {ClientId} with {ScopeCount} scopes from {IpAddress}",
+            User.GetUserIdOrEmpty(),
             client.Id,
             scopes.Count,
             Request.GetRemoteIpAddress());
@@ -389,9 +388,7 @@ public class AdminController : ControllerBase
             CreatedAt = client.CreatedAt,
             LastUsedAt = client.LastUsedAt,
             Description = client.Description,
-            Scopes = client.Scopes
-                .Select(s => new AdminClientScopeDto { Audience = s.Audience, Scope = s.Scope })
-                .ToList(),
+            Scopes = [.. client.Scopes.Select(s => new AdminClientScopeDto { Audience = s.Audience, Scope = s.Scope })],
         });
     }
 
@@ -410,8 +407,8 @@ public class AdminController : ControllerBase
 
         _logger.LogWarning(
             SecurityEventIds.AdminRotatedClientSecret,
-            "Admin {AdminUserId} rotated secret for client {ClientId} from {IpAddress}",
-            GetCurrentAdminId(),
+            "Admin {CallerUserId} rotated secret for client {ClientId} from {IpAddress}",
+            User.GetUserIdOrEmpty(),
             client.Id,
             Request.GetRemoteIpAddress());
 
@@ -439,8 +436,8 @@ public class AdminController : ControllerBase
 
         _logger.LogWarning(
             SecurityEventIds.AdminDisabledClient,
-            "Admin {AdminUserId} disabled client {ClientId} from {IpAddress}",
-            GetCurrentAdminId(),
+            "Admin {CallerUserId} disabled client {ClientId} from {IpAddress}",
+            User.GetUserIdOrEmpty(),
             id,
             Request.GetRemoteIpAddress());
 
@@ -466,8 +463,8 @@ public class AdminController : ControllerBase
         {
             _logger.LogInformation(
                 SecurityEventIds.AdminAddedClientScope,
-                "Admin {AdminUserId} added scope {Audience}/{Scope} to client {ClientId} from {IpAddress}",
-                GetCurrentAdminId(),
+                "Admin {CallerUserId} added scope {Audience}/{Scope} to client {ClientId} from {IpAddress}",
+                User.GetUserIdOrEmpty(),
                 request.Audience,
                 request.Scope,
                 id,
@@ -495,8 +492,8 @@ public class AdminController : ControllerBase
 
         _logger.LogWarning(
             SecurityEventIds.AdminRemovedClientScope,
-            "Admin {AdminUserId} removed scope {Audience}/{Scope} from client {ClientId} from {IpAddress}",
-            GetCurrentAdminId(),
+            "Admin {CallerUserId} removed scope {Audience}/{Scope} from client {ClientId} from {IpAddress}",
+            User.GetUserIdOrEmpty(),
             audience,
             scope,
             id,

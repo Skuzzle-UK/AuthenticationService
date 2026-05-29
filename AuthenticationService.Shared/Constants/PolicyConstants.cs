@@ -10,4 +10,11 @@ public static class PolicyConstants
     /// Restricts the action to users in the <see cref="RolesConstants.Admin"/> role.
     /// </summary>
     public const string AdminOnly = "AdminOnly";
+
+    /// <summary>
+    /// Restricts the action to users in the <see cref="RolesConstants.PlatformAdmin"/>
+    /// role (multi-tenancy Decision 5). Used on <c>TenantsController</c> and any future
+    /// cross-tenant management endpoint.
+    /// </summary>
+    public const string PlatformAdminOnly = "PlatformAdminOnly";
 }

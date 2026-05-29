@@ -196,7 +196,7 @@ public class AdminControllerTests
     {
         // arrange
         var (controller, deps) = BuildController();
-        deps.AdminService.CreateUserAsync(Arg.Any<AdminCreateUserDto>(), AdminId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+        deps.AdminService.CreateUserAsync(Arg.Any<AdminCreateUserDto>(), AdminId, Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AdminCreateUserResult.Success("new-user-id"));
 
         // act
@@ -212,7 +212,7 @@ public class AdminControllerTests
     {
         // arrange
         var (controller, deps) = BuildController();
-        deps.AdminService.CreateUserAsync(Arg.Any<AdminCreateUserDto>(), AdminId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+        deps.AdminService.CreateUserAsync(Arg.Any<AdminCreateUserDto>(), AdminId, Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AdminCreateUserResult.ValidationFailed(new Dictionary<string, string> { ["roles"] = "bad" }));
 
         // act
@@ -228,7 +228,7 @@ public class AdminControllerTests
     {
         // arrange
         var (controller, deps) = BuildController();
-        deps.AdminService.CreateUserAsync(Arg.Any<AdminCreateUserDto>(), AdminId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+        deps.AdminService.CreateUserAsync(Arg.Any<AdminCreateUserDto>(), AdminId, Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AdminCreateUserResult.UnknownRole("Wizard"));
 
         // act
@@ -244,7 +244,7 @@ public class AdminControllerTests
     {
         // arrange
         var (controller, deps) = BuildController();
-        deps.AdminService.CreateUserAsync(Arg.Any<AdminCreateUserDto>(), AdminId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+        deps.AdminService.CreateUserAsync(Arg.Any<AdminCreateUserDto>(), AdminId, Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AdminCreateUserResult.Conflict("email taken"));
 
         // act

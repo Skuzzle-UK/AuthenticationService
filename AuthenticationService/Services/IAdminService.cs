@@ -7,8 +7,8 @@ namespace AuthenticationService.Services;
 /// Business logic behind <c>AdminController</c>: list, detail, lock/unlock, session revoke,
 /// MFA reset, force-password-reset, and the admin-creates-user invitation flow.
 /// <b>Self-protection</b> is the caller's responsibility — destructive operations here will
-/// execute against any target including the calling admin. The controller rejects self-target
-/// before the call lands.
+/// execute against any target including the caller themselves. The controller rejects
+/// self-target before the call lands.
 /// </summary>
 public interface IAdminService
 {
@@ -21,43 +21,45 @@ public interface IAdminService
 
     /// <summary>
     /// Creates a user via the invitation flow: no password, <c>EmailConfirmed = false</c>,
-    /// roles assigned (defaults to <c>DefaultUser</c>; <c>Admin</c> rejected), invitation
-    /// email sent.
+    /// roles assigned (defaults to <c>DefaultUser</c>), invitation email sent. Role
+    /// assignment is gated by <see cref="IRoleAssignmentPolicy"/> against
+    /// <paramref name="callerRoles"/> — <c>Admin</c> is seed-only and never assignable;
+    /// <c>PlatformAdmin</c> requires the caller to already hold it.
     /// </summary>
-    Task<AdminCreateUserResult> CreateUserAsync(AdminCreateUserDto request, string adminUserId, string ipAddress, CancellationToken ct);
+    Task<AdminCreateUserResult> CreateUserAsync(AdminCreateUserDto request, string callerUserId, IReadOnlyCollection<string> callerRoles, string ipAddress, CancellationToken ct);
 
     /// <summary>
     /// Re-issues the invitation email if the user is still in the pending-invitation state
     /// (<c>!EmailConfirmed &amp;&amp; PasswordHash IS NULL</c>).
     /// </summary>
-    Task<AdminInvitationResendResult> ResendInvitationAsync(string targetUserId, string adminUserId, string ipAddress, CancellationToken ct);
+    Task<AdminInvitationResendResult> ResendInvitationAsync(string targetUserId, string callerUserId, string ipAddress, CancellationToken ct);
 
     /// <summary>
     /// Locks a user account indefinitely. Idempotent.
     /// </summary>
-    Task<LockoutInfoDto?> LockUserAsync(string targetUserId, string adminUserId, string ipAddress, CancellationToken ct);
+    Task<LockoutInfoDto?> LockUserAsync(string targetUserId, string callerUserId, string ipAddress, CancellationToken ct);
 
     /// <summary>
     /// Lifts an active lockout and resets the failed-attempt counter. Idempotent.
     /// </summary>
-    Task<LockoutInfoDto?> UnlockUserAsync(string targetUserId, string adminUserId, string ipAddress, CancellationToken ct);
+    Task<LockoutInfoDto?> UnlockUserAsync(string targetUserId, string callerUserId, string ipAddress, CancellationToken ct);
 
     /// <summary>
     /// Revokes refresh-token families + rotates security stamp. The "log out everywhere" hammer.
     /// </summary>
-    Task<bool> RevokeSessionsAsync(string targetUserId, string adminUserId, string ipAddress, CancellationToken ct);
+    Task<bool> RevokeSessionsAsync(string targetUserId, string callerUserId, string ipAddress, CancellationToken ct);
 
     /// <summary>
     /// Disables MFA, clears the authenticator key, and revokes all sessions — if MFA was the
     /// last barrier behind a leaked password, leaving live sessions undoes the protection.
     /// </summary>
-    Task<bool> ResetMfaAsync(string targetUserId, string adminUserId, string ipAddress, CancellationToken ct);
+    Task<bool> ResetMfaAsync(string targetUserId, string callerUserId, string ipAddress, CancellationToken ct);
 
     /// <summary>
     /// Generates a password-reset token and emails it to the user. Existing sessions are revoked.
     /// Admin never sees the new password.
     /// </summary>
-    Task<bool> ForcePasswordResetAsync(string targetUserId, string adminUserId, string ipAddress, string? callbackUri, CancellationToken ct);
+    Task<bool> ForcePasswordResetAsync(string targetUserId, string callerUserId, string ipAddress, string? callbackUri, CancellationToken ct);
 
     /// <summary>
     /// Reads from <c>SecurityEvents</c>. Returns null when the user doesn't exist (caller maps to 404).

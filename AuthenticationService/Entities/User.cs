@@ -40,4 +40,12 @@ public class User : IdentityUser
     /// DEFAULT only for backfilling existing rows.
     /// </summary>
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Navigation: tenants this user is a member of. Many-to-many via
+    /// <see cref="UserTenantMembership"/> (Decision 1). Platform-level (non-tenant)
+    /// roles such as <c>PlatformAdmin</c> live in Identity's <c>AspNetUserRoles</c>
+    /// table (Decision 5).
+    /// </summary>
+    public List<UserTenantMembership> Memberships { get; set; } = [];
 }

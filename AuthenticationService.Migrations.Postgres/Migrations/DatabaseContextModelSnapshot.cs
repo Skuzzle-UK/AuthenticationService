@@ -254,6 +254,14 @@ namespace AuthenticationService.Migrations.Postgres.Migrations
                             Description = "Default user role",
                             Name = "DefaultUser",
                             NormalizedName = "DEFAULTUSER"
+                        },
+                        new
+                        {
+                            Id = "8a0c1c8b-7e1f-4a31-9c8b-2f0aa9e5a701",
+                            ConcurrencyStamp = "5d2c1d4f-9b0a-4f2c-8b0d-7e1a4a9d2c3b",
+                            Description = "Platform-level tenant administration (multi-tenancy Decision 5).",
+                            Name = "PlatformAdmin",
+                            NormalizedName = "PLATFORMADMIN"
                         });
                 });
 
@@ -303,6 +311,52 @@ namespace AuthenticationService.Migrations.Postgres.Migrations
                     b.HasIndex("UserId", "Timestamp");
 
                     b.ToTable("SecurityEvents");
+                });
+
+            modelBuilder.Entity("AuthenticationService.Entities.Tenant", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DedicatedKeyId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTimeOffset?>("PendingDeletionAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("SuspendedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SuspensionReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("Tenants");
                 });
 
             modelBuilder.Entity("AuthenticationService.Entities.User", b =>
@@ -408,6 +462,60 @@ namespace AuthenticationService.Migrations.Postgres.Migrations
                         .HasDatabaseName("UserNameIndex");
 
                     b.ToTable("AspNetUsers", (string)null);
+                });
+
+            modelBuilder.Entity("AuthenticationService.Entities.UserTenantMembership", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("RemovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RemovedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UserId", "TenantId")
+                        .IsUnique();
+
+                    b.ToTable("UserTenantMemberships");
+                });
+
+            modelBuilder.Entity("AuthenticationService.Entities.UserTenantMembershipRole", b =>
+                {
+                    b.Property<string>("MembershipId")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<string>("RoleId")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("AssignedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("MembershipId", "RoleId");
+
+                    b.HasIndex("RoleId");
+
+                    b.ToTable("UserTenantMembershipRoles");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -538,6 +646,44 @@ namespace AuthenticationService.Migrations.Postgres.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("AuthenticationService.Entities.UserTenantMembership", b =>
+                {
+                    b.HasOne("AuthenticationService.Entities.Tenant", "Tenant")
+                        .WithMany("Memberships")
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AuthenticationService.Entities.User", "User")
+                        .WithMany("Memberships")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("AuthenticationService.Entities.UserTenantMembershipRole", b =>
+                {
+                    b.HasOne("AuthenticationService.Entities.UserTenantMembership", "Membership")
+                        .WithMany("RoleAssignments")
+                        .HasForeignKey("MembershipId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AuthenticationService.Entities.Role", "Role")
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Membership");
+
+                    b.Navigation("Role");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("AuthenticationService.Entities.Role", null)
@@ -592,6 +738,21 @@ namespace AuthenticationService.Migrations.Postgres.Migrations
             modelBuilder.Entity("AuthenticationService.Entities.Client", b =>
                 {
                     b.Navigation("Scopes");
+                });
+
+            modelBuilder.Entity("AuthenticationService.Entities.Tenant", b =>
+                {
+                    b.Navigation("Memberships");
+                });
+
+            modelBuilder.Entity("AuthenticationService.Entities.User", b =>
+                {
+                    b.Navigation("Memberships");
+                });
+
+            modelBuilder.Entity("AuthenticationService.Entities.UserTenantMembership", b =>
+                {
+                    b.Navigation("RoleAssignments");
                 });
 #pragma warning restore 612, 618
         }

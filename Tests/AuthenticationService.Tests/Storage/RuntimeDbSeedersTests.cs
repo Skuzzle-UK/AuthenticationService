@@ -255,6 +255,7 @@ public class RuntimeDbSeedersTests : IDisposable
         manager.GeneratePasswordResetTokenAsync(admin).Returns("tok");
         manager.ResetPasswordAsync(admin, "tok", Arg.Any<string>()).Returns(IdentityResult.Success);
         manager.IsInRoleAsync(admin, Arg.Any<string>()).Returns(true);
+        manager.UpdateAsync(admin).Returns(IdentityResult.Success);
 
         // act
         await app.ResetAdministratorAccountAsync();
@@ -267,7 +268,8 @@ public class RuntimeDbSeedersTests : IDisposable
     [Fact]
     public async Task ResetAdministratorAccountAsync_ReAddsMissingRoles()
     {
-        // arrange — defensive: if role membership was somehow lost (e.g. a manual DB edit), recovery restores it.
+        // arrange — defensive: if role membership was somehow lost (e.g. a manual DB
+        // edit), recovery restores it — including PlatformAdmin (multi-tenancy Decision 5).
         var (app, manager) = BuildApp();
         var admin = new User { Id = "admin-id", UserName = UserConstants.Admin, EmailConfirmed = true };
         manager.FindByNameAsync(UserConstants.Admin).Returns(admin);
@@ -275,6 +277,7 @@ public class RuntimeDbSeedersTests : IDisposable
         manager.ResetPasswordAsync(admin, "tok", Arg.Any<string>()).Returns(IdentityResult.Success);
         manager.IsInRoleAsync(admin, RolesConstants.Admin).Returns(false);
         manager.IsInRoleAsync(admin, RolesConstants.DefaultUser).Returns(false);
+        manager.IsInRoleAsync(admin, RolesConstants.PlatformAdmin).Returns(false);
 
         // act
         await app.ResetAdministratorAccountAsync();
@@ -282,6 +285,7 @@ public class RuntimeDbSeedersTests : IDisposable
         // assert
         await manager.Received(1).AddToRoleAsync(admin, RolesConstants.Admin);
         await manager.Received(1).AddToRoleAsync(admin, RolesConstants.DefaultUser);
+        await manager.Received(1).AddToRoleAsync(admin, RolesConstants.PlatformAdmin);
     }
 
     // ─── SeedAdministratorAccountAsync — ResetOnStartup flag ──────────────────────────────

@@ -25,6 +25,14 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
                 NormalizedName = RolesConstants.Normalised.DefaultUser,
                 Description = "Default user role",
                 ConcurrencyStamp = "ab5a8990-8062-41ea-b0ce-395599973a36"
+            },
+            new Role
+            {
+                Id = "8a0c1c8b-7e1f-4a31-9c8b-2f0aa9e5a701",
+                Name = RolesConstants.PlatformAdmin,
+                NormalizedName = RolesConstants.Normalised.PlatformAdmin,
+                Description = "Platform-level tenant administration (multi-tenancy Decision 5).",
+                ConcurrencyStamp = "5d2c1d4f-9b0a-4f2c-8b0d-7e1a4a9d2c3b"
             }
         );
     }

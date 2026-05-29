@@ -55,4 +55,14 @@ public static class ClaimConstants
     /// Authorized party — mirrors <see cref="ClientId"/> on service-identity tokens. Standard OIDC Core §2 claim.
     /// </summary>
     public const string Azp = "azp";
+
+    /// <summary>
+    /// Tenant id — the id of the tenant the bearer is acting on behalf of (multi-tenancy
+    /// Decision 3). Cryptographically bound via the JWT signature. Present on tenant-scoped
+    /// tokens; absent (or null) on platform-admin tokens that act platform-wide. Convention
+    /// is to carry the tenant <c>Name</c> for human readability; the canonical FK target
+    /// lives in the DB. Platform-level admins are identified by the <c>PlatformAdmin</c>
+    /// role on the standard <c>roles</c> claim (Decision 5), not by a separate claim.
+    /// </summary>
+    public const string Tid = "tid";
 }
