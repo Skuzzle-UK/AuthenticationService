@@ -1249,6 +1249,193 @@ spec:
             }
           }
         },
+        "/api/Tenants": {
+          "get": {
+            "tags": [
+              "Tenants"
+            ],
+            "responses": {
+              "200": {
+                "description": "OK"
+              }
+            }
+          },
+          "post": {
+            "tags": [
+              "Tenants"
+            ],
+            "requestBody": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CreateTenantDto"
+                  }
+                },
+                "text/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CreateTenantDto"
+                  }
+                },
+                "application/*+json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CreateTenantDto"
+                  }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "OK"
+              }
+            }
+          }
+        },
+        "/api/Tenants/{name}": {
+          "get": {
+            "tags": [
+              "Tenants"
+            ],
+            "parameters": [
+              {
+                "name": "name",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "OK"
+              }
+            }
+          },
+          "delete": {
+            "tags": [
+              "Tenants"
+            ],
+            "parameters": [
+              {
+                "name": "name",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "OK"
+              }
+            }
+          }
+        },
+        "/api/Tenants/{name}/suspend": {
+          "post": {
+            "tags": [
+              "Tenants"
+            ],
+            "parameters": [
+              {
+                "name": "name",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            ],
+            "requestBody": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SuspendTenantDto"
+                  }
+                },
+                "text/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SuspendTenantDto"
+                  }
+                },
+                "application/*+json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SuspendTenantDto"
+                  }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "OK"
+              }
+            }
+          }
+        },
+        "/api/Tenants/{name}/unsuspend": {
+          "post": {
+            "tags": [
+              "Tenants"
+            ],
+            "parameters": [
+              {
+                "name": "name",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "OK"
+              }
+            }
+          }
+        },
+        "/api/Tenants/{name}/delete-now": {
+          "post": {
+            "tags": [
+              "Tenants"
+            ],
+            "parameters": [
+              {
+                "name": "name",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            ],
+            "requestBody": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ForceDeleteTenantDto"
+                  }
+                },
+                "text/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ForceDeleteTenantDto"
+                  }
+                },
+                "application/*+json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ForceDeleteTenantDto"
+                  }
+                }
+              }
+            },
+            "responses": {
+              "200": {
+                "description": "OK"
+              }
+            }
+          }
+        },
         "/api/Test": {
           "get": {
             "tags": [
@@ -1517,11 +1704,45 @@ spec:
             },
             "additionalProperties": false
           },
+          "CreateTenantDto": {
+            "required": [
+              "displayName",
+              "name"
+            ],
+            "type": "object",
+            "properties": {
+              "name": {
+                "maxLength": 50,
+                "minLength": 1,
+                "type": "string"
+              },
+              "displayName": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
           "EnableMfaRequest": {
             "type": "object",
             "properties": {
               "preferredMfaProvider": {
                 "$ref": "#/components/schemas/MfaProviders"
+              }
+            },
+            "additionalProperties": false
+          },
+          "ForceDeleteTenantDto": {
+            "required": [
+              "confirmName"
+            ],
+            "type": "object",
+            "properties": {
+              "confirmName": {
+                "maxLength": 50,
+                "minLength": 1,
+                "type": "string"
               }
             },
             "additionalProperties": false
@@ -1754,6 +1975,20 @@ spec:
             },
             "additionalProperties": false
           },
+          "SuspendTenantDto": {
+            "required": [
+              "reason"
+            ],
+            "type": "object",
+            "properties": {
+              "reason": {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
           "UpdateProfileDto": {
             "type": "object",
             "properties": {
@@ -1840,6 +2075,9 @@ spec:
         },
         {
           "name": "Registration"
+        },
+        {
+          "name": "Tenants"
         },
         {
           "name": "Test"
